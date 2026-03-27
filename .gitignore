@@ -1,0 +1,35 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Build artifacts
+*.dylib
+*.so
+*.dll
+
+# iOS
+apps/ios/build/
+apps/ios/*.xcworkspace/xcuserdata/
+apps/ios/*.xcodeproj/xcuserdata/
+apps/ios/Pods/
+
+# Android
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+
+# Docs (generated, not committed)
+docs/audit/
+docs/plans/
+docs/guides/
+docs/architecture/

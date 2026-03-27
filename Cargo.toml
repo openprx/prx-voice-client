@@ -1,0 +1,95 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/session",
+    "crates/audio",
+    "crates/protocol",
+    "crates/config",
+    "crates/storage",
+    "crates/observe",
+    "crates/security",
+    "crates/ffi",
+    "crates/desktop-ui",
+    "crates/testkit",
+    "crates/i18n",
+    "apps/desktop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/nicejimmy/prx-voice-client"
+
+[workspace.dependencies]
+# Internal crates
+prxvc-core = { path = "crates/core" }
+prxvc-session = { path = "crates/session" }
+prxvc-audio = { path = "crates/audio" }
+prxvc-protocol = { path = "crates/protocol" }
+prxvc-config = { path = "crates/config" }
+prxvc-storage = { path = "crates/storage" }
+prxvc-observe = { path = "crates/observe" }
+prxvc-security = { path = "crates/security" }
+prxvc-ffi = { path = "crates/ffi" }
+prxvc-desktop-ui = { path = "crates/desktop-ui" }
+prxvc-testkit = { path = "crates/testkit" }
+prxvc-i18n = { path = "crates/i18n" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7" }
+futures = { version = "0.3" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+toml = { version = "0.8" }
+
+# Error handling
+thiserror = { version = "2" }
+anyhow = { version = "1" }
+
+# Observability
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# UI (desktop)
+egui = { version = "0.31" }
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "persistence"] }
+
+# Audio
+cpal = { version = "0.15" }
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Utilities
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = { version = "0.12" }
+tokio-tungstenite = { version = "0.26" }
+url = { version = "2" }
+directories = { version = "6" }
+global-hotkey = { version = "0.6" }
+tray-icon = { version = "0.19" }
+
+[workspace.lints.rust]
+dead_code = "warn"
+unused_imports = "warn"
+unused_variables = "warn"
+
+[workspace.lints.clippy]
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

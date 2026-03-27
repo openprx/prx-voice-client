@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PRX Voice Client — AI Native Voice Client</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&family=Bricolage+Grotesque:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════ TOKENS ═══════════════════ */
+:root {
+  --bg-deep:    #06080d;
+  --bg-surface: #0c1018;
+  --bg-card:    #111824;
+  --bg-glow:    #0e1a2e;
+
+  --cyan-50:  #e0fcff;
+  --cyan-300: #5eead4;
+  --cyan-400: #22d3ee;
+  --cyan-500: #06b6d4;
+  --cyan-700: #0e7490;
+
+  --blue-400: #60a5fa;
+  --blue-600: #2563eb;
+
+  --violet-400: #a78bfa;
+
+  --text-primary:   #e8edf5;
+  --text-secondary: #8896ab;
+  --text-dim:       #4a5568;
+
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body:    'Bricolage Grotesque', sans-serif;
+  --font-mono:    'DM Mono', 'Menlo', monospace;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ═══════════════════ RESET ═══════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; border: none; cursor: pointer; }
+
+/* ═══════════════════ CANVAS BG ═══════════════════ */
+#waveCanvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  z-index: 0;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ═══════════════════ NAV ═══════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 1.25rem 2.5rem;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(180deg, var(--bg-deep) 60%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.nav-brand {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  color: var(--cyan-300);
+}
+.nav-brand em { font-style: italic; color: var(--text-secondary); font-size: 0.85em; }
+.nav-links { display: flex; gap: 2rem; }
+.nav-links a {
+  font-size: 0.85rem; font-weight: 400;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: color 0.3s;
+}
+.nav-links a:hover { color: var(--cyan-400); }
+.nav-gh {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1.2rem;
+  border: 1px solid var(--text-dim);
+  border-radius: 2rem;
+  font-size: 0.8rem; font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.3s;
+}
+.nav-gh:hover { border-color: var(--cyan-400); color: var(--cyan-300); }
+.nav-gh svg { width: 16px; height: 16px; fill: currentColor; }
+
+/* ═══════════════════ HERO ═══════════════════ */
+.hero {
+  position: relative; z-index: 1;
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: 6rem 2rem 4rem;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--cyan-700);
+  border-radius: 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan-400);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2rem;
+  opacity: 0; animation: fadeUp 0.8s var(--ease-out-expo) 0.2s forwards;
+}
+.hero-badge::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--cyan-400);
+  box-shadow: 0 0 8px var(--cyan-400);
+  animation: pulse 2s ease-in-out infinite;
+}
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(3.2rem, 8vw, 7rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  max-width: 14ch;
+  opacity: 0; animation: fadeUp 1s var(--ease-out-expo) 0.4s forwards;
+}
+.hero h1 em {
+  font-style: italic;
+  background: linear-gradient(135deg, var(--cyan-300), var(--blue-400), var(--violet-400));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  max-width: 38ch;
+  margin-top: 1.5rem;
+  font-size: 1.15rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  opacity: 0; animation: fadeUp 1s var(--ease-out-expo) 0.6s forwards;
+}
+.hero-actions {
+  display: flex; gap: 1rem;
+  margin-top: 2.5rem;
+  opacity: 0; animation: fadeUp 1s var(--ease-out-expo) 0.8s forwards;
+}
+.btn-primary {
+  padding: 0.8rem 2rem;
+  background: linear-gradient(135deg, var(--cyan-500), var(--blue-600));
+  color: #fff;
+  border-radius: 2rem;
+  font-size: 0.9rem; font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: transform 0.3s, box-shadow 0.3s;
+  box-shadow: 0 4px 24px rgba(6, 182, 212, 0.25);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(6, 182, 212, 0.4); }
+.btn-secondary {
+  padding: 0.8rem 2rem;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--text-dim);
+  border-radius: 2rem;
+  font-size: 0.9rem; font-weight: 500;
+  transition: all 0.3s;
+}
+.btn-secondary:hover { border-color: var(--cyan-400); color: var(--cyan-300); }
+
+/* ═══════════════════ WAVEFORM VISUALIZER ═══════════════════ */
+.hero-viz {
+  margin-top: 4rem;
+  width: min(600px, 80vw);
+  height: 120px;
+  position: relative;
+  opacity: 0; animation: fadeUp 1s var(--ease-out-expo) 1s forwards;
+}
+.viz-bar {
+  position: absolute;
+  bottom: 50%;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(0deg, var(--cyan-500), var(--cyan-300));
+  transform-origin: bottom center;
+  animation: vizPulse 1.5s ease-in-out infinite alternate;
+}
+.viz-bar.mirror {
+  top: 50%; bottom: auto;
+  transform-origin: top center;
+  background: linear-gradient(180deg, var(--cyan-700), transparent);
+  opacity: 0.4;
+}
+
+/* ═══════════════════ FEATURES ═══════════════════ */
+.features {
+  position: relative; z-index: 1;
+  padding: 8rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.features-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan-500);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 1rem;
+}
+.features h2 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 400;
+  max-width: 20ch;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 4rem;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 1rem;
+  padding: 2rem;
+  transition: transform 0.4s var(--ease-out-expo), border-color 0.4s;
+}
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(34, 211, 238, 0.15);
+}
+.feature-icon {
+  width: 48px; height: 48px;
+  border-radius: 0.75rem;
+  display: grid; place-items: center;
+  font-size: 1.4rem;
+  margin-bottom: 1.25rem;
+  background: var(--bg-glow);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.feature-card h3 {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.feature-card p {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════ PLATFORMS ═══════════════════ */
+.platforms {
+  position: relative; z-index: 1;
+  padding: 6rem 2rem 8rem;
+  text-align: center;
+}
+.platforms h2 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  margin-bottom: 3rem;
+}
+.platform-cards {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.platform-card {
+  flex: 1; min-width: 240px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 1rem;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  transition: transform 0.4s var(--ease-out-expo), border-color 0.4s;
+}
+.platform-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(34, 211, 238, 0.15);
+}
+.platform-card .emoji { font-size: 2.5rem; margin-bottom: 1rem; }
+.platform-card h3 { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; }
+.platform-card .tech {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--cyan-500);
+  letter-spacing: 0.04em;
+  margin-bottom: 1rem;
+}
+.platform-card p { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
+
+/* ═══════════════════ CODE PREVIEW ═══════════════════ */
+.code-section {
+  position: relative; z-index: 1;
+  padding: 4rem 2rem 8rem;
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+.code-section h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  margin-bottom: 2rem;
+}
+.code-block {
+  background: var(--bg-surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  text-align: left;
+}
+.code-header {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.code-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.code-dot:nth-child(1) { background: #ff5f57; }
+.code-dot:nth-child(2) { background: #febc2e; }
+.code-dot:nth-child(3) { background: #28c840; }
+.code-header span {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+.code-body {
+  padding: 1.25rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  overflow-x: auto;
+}
+.code-body .cmd { color: var(--cyan-300); }
+.code-body .comment { color: var(--text-dim); }
+.code-body .str { color: var(--violet-400); }
+
+/* ═══════════════════ CTA ═══════════════════ */
+.cta {
+  position: relative; z-index: 1;
+  padding: 6rem 2rem 8rem;
+  text-align: center;
+}
+.cta-inner {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 4rem 3rem;
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+.cta-inner::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(ellipse at center, rgba(6,182,212,0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+.cta h2 {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+.cta p {
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+  position: relative;
+}
+.cta .btn-primary { position: relative; }
+
+/* ═══════════════════ FOOTER ═══════════════════ */
+footer {
+  position: relative; z-index: 1;
+  padding: 3rem 2rem;
+  text-align: center;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+footer p {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+footer a { color: var(--text-secondary); transition: color 0.3s; }
+footer a:hover { color: var(--cyan-400); }
+
+/* ═══════════════════ ANIMATIONS ═══════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+@keyframes vizPulse {
+  0%   { transform: scaleY(0.3); }
+  100% { transform: scaleY(1); }
+}
+
+/* ═══════════════════ SCROLL REVEAL ═══════════════════ */
+.reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.8s var(--ease-out-expo), transform 0.8s var(--ease-out-expo);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ═══════════════════ RESPONSIVE ═══════════════════ */
+@media (max-width: 768px) {
+  nav { padding: 1rem 1.25rem; }
+  .nav-links { display: none; }
+  .hero { padding: 5rem 1.5rem 3rem; }
+  .features { padding: 4rem 1.5rem; }
+  .platform-cards { flex-direction: column; align-items: center; }
+  .platform-card { min-width: unset; width: 100%; max-width: 360px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Background waveform canvas -->
+<canvas id="waveCanvas"></canvas>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-brand">PRX <em>voice</em></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#platforms">Platforms</a>
+    <a href="#quickstart">Quick Start</a>
+  </div>
+  <a href="https://github.com/nicejimmy/prx-voice-client" class="nav-gh" target="_blank">
+    <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    GitHub
+  </a>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">v0.1.0 Public Beta</div>
+  <h1>Speak naturally with <em>AI</em></h1>
+  <p class="hero-sub">
+    Open-source, cross-platform, real-time voice client.
+    Wake, talk, interrupt, continue &mdash; like a real conversation.
+  </p>
+  <div class="hero-actions">
+    <a href="#quickstart" class="btn-primary">Get Started</a>
+    <a href="https://github.com/nicejimmy/prx-voice-client" class="btn-secondary" target="_blank">View Source</a>
+  </div>
+  <div class="hero-viz" id="heroViz"></div>
+</section>
+
+<!-- Features -->
+<section class="features reveal" id="features">
+  <div class="features-label">Capabilities</div>
+  <h2>Built for real-time voice, not chat bubbles</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f399;</div>
+      <h3>Always Listening</h3>
+      <p>Desktop stays resident. One hotkey and you're talking. No app switching, no friction, no waiting.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x270b;</div>
+      <h3>Natural Interruption</h3>
+      <p>Cut in mid-sentence. The AI stops immediately. You take over. Just like a real conversation.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f504;</div>
+      <h3>Multi-turn Context</h3>
+      <p>Follow up, correct, refine. The session holds context across turns without starting over.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f50a;</div>
+      <h3>Audio Pipeline</h3>
+      <p>VAD, echo control, jitter buffer, device routing. Industrial-grade audio engineered in Rust.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f310;</div>
+      <h3>i18n Ready</h3>
+      <p>English and Chinese built-in. Add any language with a translation map. UI switches in real time.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">&#x1f6e1;</div>
+      <h3>Privacy First</h3>
+      <p>Audio captured only when active. Logs sanitized by default. No telemetry without consent.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Platforms -->
+<section class="platforms reveal" id="platforms">
+  <h2>One core, three platforms</h2>
+  <div class="platform-cards">
+    <div class="platform-card">
+      <div class="emoji">&#x1f5a5;</div>
+      <h3>Desktop</h3>
+      <div class="tech">Rust + egui</div>
+      <p>Persistent assistant. Hotkey activation. System tray. Always ready, never in the way.</p>
+    </div>
+    <div class="platform-card">
+      <div class="emoji">&#xf8ff;</div>
+      <h3>iOS</h3>
+      <div class="tech">SwiftUI + Rust Core</div>
+      <p>Native UI. AVAudioSession. Bluetooth routing. Lightweight voice entry on the go.</p>
+    </div>
+    <div class="platform-card">
+      <div class="emoji">&#x1f4f1;</div>
+      <h3>Android</h3>
+      <div class="tech">Compose + Rust Core</div>
+      <p>Material 3. Foreground service. Audio focus. Quick voice sessions anywhere.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Start -->
+<section class="code-section reveal" id="quickstart">
+  <h2>Up and running in seconds</h2>
+  <div class="code-block">
+    <div class="code-header">
+      <div class="code-dot"></div>
+      <div class="code-dot"></div>
+      <div class="code-dot"></div>
+      <span>terminal</span>
+    </div>
+    <div class="code-body">
+      <span class="comment"># Clone and build</span><br>
+      <span class="cmd">git clone</span> <span class="str">https://github.com/nicejimmy/prx-voice-client.git</span><br>
+      <span class="cmd">cd</span> prx-voice-client<br>
+      <span class="cmd">cargo run</span> -p prxvc-desktop<br>
+      <br>
+      <span class="comment"># Or build a release binary</span><br>
+      <span class="cmd">cargo build</span> -p prxvc-desktop --release<br>
+      <br>
+      <span class="comment"># Run all 151 tests</span><br>
+      <span class="cmd">cargo test</span> --workspace
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta reveal">
+  <div class="cta-inner">
+    <h2>Voice is the interface</h2>
+    <p>13 crates. 3 platforms. 151 tests. MIT / Apache-2.0.</p>
+    <a href="https://github.com/nicejimmy/prx-voice-client" class="btn-primary" target="_blank">Star on GitHub</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <p>PRX Voice Client &mdash; <a href="https://github.com/nicejimmy/prx-voice-client">Open Source</a> &middot; <a href="LICENSE">MIT / Apache-2.0</a></p>
+</footer>
+
+<script>
+/* ═══════════════════ WAVEFORM BACKGROUND ═══════════════════ */
+(function() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, t = 0;
+
+  function resize() {
+    w = canvas.width  = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    t += 0.003;
+
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      const amp = 30 + i * 12;
+      const freq = 0.003 + i * 0.001;
+      const yOff = h * 0.5 + i * 18;
+      const alpha = 0.12 - i * 0.025;
+
+      for (let x = 0; x < w; x += 2) {
+        const y = yOff + Math.sin(x * freq + t + i * 0.8) * amp * Math.sin(t * 0.5 + i);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.strokeStyle = `rgba(34, 211, 238, ${alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ═══════════════════ HERO VISUALIZER BARS ═══════════════════ */
+(function() {
+  const container = document.getElementById('heroViz');
+  const barCount = 80;
+  const totalW = container.offsetWidth || 600;
+  const gap = totalW / barCount;
+
+  for (let i = 0; i < barCount; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'viz-bar';
+    const h = 10 + Math.random() * 50;
+    bar.style.cssText = `
+      left: ${i * gap}px;
+      height: ${h}px;
+      animation-delay: ${(Math.sin(i * 0.3) * 0.5 + 0.5) * 1.2}s;
+      animation-duration: ${1 + Math.random() * 1}s;
+    `;
+    container.appendChild(bar);
+
+    const mirror = document.createElement('div');
+    mirror.className = 'viz-bar mirror';
+    mirror.style.cssText = `
+      left: ${i * gap}px;
+      height: ${h * 0.5}px;
+      animation-delay: ${(Math.sin(i * 0.3) * 0.5 + 0.5) * 1.2}s;
+      animation-duration: ${1 + Math.random() * 1}s;
+    `;
+    container.appendChild(mirror);
+  }
+})();
+
+/* ═══════════════════ SCROLL REVEAL ═══════════════════ */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+[package]
+name = "prxvc-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+prxvc-protocol = { workspace = true }
+prxvc-session = { workspace = true }
+prxvc-config = { workspace = true }
+prxvc-observe = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true
