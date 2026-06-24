@@ -12,7 +12,7 @@ If you discover a security vulnerability in PRX Voice Client, please report it r
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email security@prx.dev (or open a private security advisory on GitHub).
+Instead, please email security@spanbrain.org (or open a private security advisory on GitHub).
 
 Include:
 - Description of the vulnerability
