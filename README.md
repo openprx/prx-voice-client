@@ -1,7 +1,7 @@
 # PRX Voice Client
 
 <!-- Badges -->
-[![CI](https://github.com/nicejimmy/prx-voice-client/actions/workflows/ci.yml/badge.svg)](https://github.com/nicejimmy/prx-voice-client/actions)
+[![CI](https://github.com/openprx/prx-voice-client/actions/workflows/ci.yml/badge.svg)](https://github.com/openprx/prx-voice-client/actions)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Rust 1.85+](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
 
@@ -20,7 +20,7 @@ Users can wake AI at any time and engage in natural, multi-turn, interruptible r
 
 ```bash
 # Clone the repository
-git clone https://github.com/nicejimmy/prx-voice-client.git
+git clone https://github.com/openprx/prx-voice-client.git
 cd prx-voice-client
 
 # Build and run the desktop app

@@ -99,7 +99,7 @@ The binary will be at `target\release\prxvc-desktop.exe`.
 
 ```bash
 # Clone the repository
-git clone https://github.com/nicejimmy/prx-voice-client.git
+git clone https://github.com/openprx/prx-voice-client.git
 cd prx-voice-client
 
 # Build the entire workspace
@@ -125,7 +125,7 @@ cargo run -p prxvc-desktop
 ### Pre-built Binaries
 
 Pre-built binaries for macOS, Linux, and Windows are available on the
-[GitHub Releases](https://github.com/nicejimmy/prx-voice-client/releases) page.
+[GitHub Releases](https://github.com/openprx/prx-voice-client/releases) page.
 
 Download the appropriate archive for your platform, extract it, and run the binary.
 
