@@ -51,8 +51,8 @@ prx-voice-client/
 │   └── android/          # Native Android app
 ├── crates/
 │   ├── core/             # App-level shared entry, lifecycle, engine
-│   ├── session/          # Session state machine, turn management
-│   ├── audio/            # Audio I/O, frames, VAD, buffers
+│   ├── session/          # Session + interpreting state machines, turns, driver
+│   ├── audio/            # Audio I/O, per-app capture, resampling, VAD, buffers
 │   ├── protocol/         # Command/event contracts, transport
 │   ├── config/           # Configuration model, defaults, migration
 │   ├── storage/          # Local SQLite storage
@@ -61,6 +61,7 @@ prx-voice-client/
 │   ├── ffi/              # C API bridge for iOS/Android
 │   ├── desktop-ui/       # egui view layer
 │   ├── i18n/             # Internationalization (EN, ZH-CN)
+│   ├── adapters/         # MT/TTS adapters (translation, voice synthesis)
 │   └── testkit/          # Test utilities and mocks
 ├── docs/                 # Documentation
 └── scripts/              # Build and CI scripts

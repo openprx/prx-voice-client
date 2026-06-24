@@ -1,0 +1,28 @@
+[package]
+name = "prxvc-adapters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+prxvc-session = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+
+# Pulled in only by the `integration` feature (end-to-end example).
+# Path (not workspace-inherited) so we can disable default features here.
+prxvc-audio = { path = "../audio", default-features = false, optional = true }
+
+[features]
+default = []
+# Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
+integration = ["dep:prxvc-audio", "prxvc-audio/whisper"]
+
+[lints]
+workspace = true

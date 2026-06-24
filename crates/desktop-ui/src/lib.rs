@@ -16,6 +16,7 @@ use egui::Color32;
 // ---------------------------------------------------------------------------
 
 /// Orb colors mapped to session states.
+#[allow(dead_code)]
 struct OrbColors {
     /// Purple for idle / default state.
     idle: Color32,
@@ -27,6 +28,7 @@ struct OrbColors {
     speaking: Color32,
 }
 
+#[allow(dead_code)]
 const COLORS: OrbColors = OrbColors {
     idle: Color32::from_rgb(167, 139, 250),
     listening: Color32::from_rgb(94, 234, 212),
@@ -245,6 +247,10 @@ pub struct UiSettings {
     pub show_transcript: bool,
     /// Whether the global hotkey is enabled.
     pub hotkey_enabled: bool,
+    /// Server URL for prx-voice connection.
+    pub server_url: String,
+    /// Whether using mock mode (offline).
+    pub use_mock: bool,
 }
 
 impl Default for UiSettings {
@@ -257,6 +263,8 @@ impl Default for UiSettings {
             save_history: true,
             show_transcript: true,
             hotkey_enabled: false,
+            server_url: "http://localhost:3000".to_owned(),
+            use_mock: true,
         }
     }
 }
@@ -584,10 +592,10 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 
         // Nav items
         let items = [
-            ("Session", Page::Session),
-            ("History", Page::History),
-            ("Settings", Page::Settings),
-            ("Debug", Page::Debug),
+            (prxvc_i18n::t("nav.session"), Page::Session),
+            (prxvc_i18n::t("nav.history"), Page::History),
+            (prxvc_i18n::t("nav.settings"), Page::Settings),
+            (prxvc_i18n::t("nav.debug"), Page::Debug),
         ];
 
         for (label, page) in &items {
@@ -596,7 +604,7 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
             let text_color = if is_active { TEXT_PRIMARY } else { TEXT_SOFT };
 
             let resp = ui.add(
-                egui::Button::new(egui::RichText::new(*label).size(13.0).color(text_color))
+                egui::Button::new(egui::RichText::new(label.as_str()).size(13.0).color(text_color))
                     .fill(if is_active {
                         BG_ELEVATED
                     } else {
@@ -626,6 +634,7 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
             let dot_color = match state.network_status {
                 NetworkStatus::Connected => Color32::from_rgb(45, 212, 191),
                 NetworkStatus::Disconnected => Color32::from_rgb(158, 158, 158),
+                NetworkStatus::Connecting => Color32::from_rgb(100, 181, 246),
                 NetworkStatus::Reconnecting => Color32::from_rgb(255, 152, 0),
                 NetworkStatus::Failed => Color32::from_rgb(244, 67, 54),
             };
@@ -634,10 +643,11 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
                 .circle_filled(dot_rect.center(), 3.0, dot_color);
 
             let status_text = match state.network_status {
-                NetworkStatus::Connected => "Ready",
-                NetworkStatus::Disconnected => "Offline",
-                NetworkStatus::Reconnecting => "Reconnecting",
-                NetworkStatus::Failed => "Failed",
+                NetworkStatus::Connected => prxvc_i18n::t("status.ready"),
+                NetworkStatus::Disconnected => prxvc_i18n::t("status.offline"),
+                NetworkStatus::Connecting => prxvc_i18n::t("status.connecting"),
+                NetworkStatus::Reconnecting => prxvc_i18n::t("status.reconnecting"),
+                NetworkStatus::Failed => prxvc_i18n::t("status.failed"),
             };
             ui.label(egui::RichText::new(status_text).size(11.0).color(TEXT_DIM));
         });
@@ -706,7 +716,7 @@ pub fn render_transcript(ui: &mut egui::Ui, lines: &[TranscriptLine]) {
                     } else {
                         Color32::from_rgb(252, 165, 165) // coral light
                     };
-                    let role_text = if line.role == "user" { "YOU" } else { "AI" };
+                    let role_text = if line.role == "user" { prxvc_i18n::t("transcript.you") } else { prxvc_i18n::t("transcript.ai") };
                     ui.label(
                         egui::RichText::new(role_text)
                             .size(10.0)
@@ -742,7 +752,7 @@ pub fn render_controls(ui: &mut egui::Ui, state: &mut DesktopUiState) {
             && ui
                 .add(
                     egui::Button::new(
-                        egui::RichText::new("Interrupt")
+                        egui::RichText::new(prxvc_i18n::t("session.interrupt"))
                             .size(12.0)
                             .color(Color32::from_rgb(251, 191, 36)),
                     )
@@ -758,7 +768,7 @@ pub fn render_controls(ui: &mut egui::Ui, state: &mut DesktopUiState) {
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new("End")
+                    egui::RichText::new(prxvc_i18n::t("session.stop"))
                         .size(12.0)
                         .color(Color32::from_rgb(248, 113, 113)),
                 )
@@ -780,7 +790,7 @@ pub fn render_controls(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
     ui.vertical(|ui| {
         ui.label(
-            egui::RichText::new("Settings")
+            egui::RichText::new(prxvc_i18n::t("settings.title"))
                 .size(18.0)
                 .color(TEXT_PRIMARY)
                 .italics(),
@@ -788,7 +798,7 @@ pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
         ui.add_space(16.0);
 
         // Language section
-        ui.label(egui::RichText::new("LANGUAGE").size(10.0).color(TEXT_DIM));
+        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.language")).size(10.0).color(TEXT_DIM));
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             if ui
@@ -808,31 +818,31 @@ pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
         });
 
         ui.add_space(16.0);
-        ui.label(egui::RichText::new("AUDIO").size(10.0).color(TEXT_DIM));
+        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.audio")).size(10.0).color(TEXT_DIM));
         ui.add_space(4.0);
         ui.checkbox(
             &mut settings.auto_play,
-            egui::RichText::new("Auto-play replies").size(13.0).color(TEXT_SOFT),
+            egui::RichText::new(prxvc_i18n::t("settings.auto_play")).size(13.0).color(TEXT_SOFT),
         );
 
         ui.add_space(16.0);
-        ui.label(egui::RichText::new("PRIVACY").size(10.0).color(TEXT_DIM));
+        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.privacy")).size(10.0).color(TEXT_DIM));
         ui.add_space(4.0);
         ui.checkbox(
             &mut settings.save_history,
-            egui::RichText::new("Save history").size(13.0).color(TEXT_SOFT),
+            egui::RichText::new(prxvc_i18n::t("settings.save_history")).size(13.0).color(TEXT_SOFT),
         );
         ui.checkbox(
             &mut settings.show_transcript,
-            egui::RichText::new("Show transcript").size(13.0).color(TEXT_SOFT),
+            egui::RichText::new(prxvc_i18n::t("settings.show_transcript")).size(13.0).color(TEXT_SOFT),
         );
 
         ui.add_space(16.0);
-        ui.label(egui::RichText::new("SYSTEM").size(10.0).color(TEXT_DIM));
+        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.system")).size(10.0).color(TEXT_DIM));
         ui.add_space(4.0);
         ui.checkbox(
             &mut settings.hotkey_enabled,
-            egui::RichText::new("Global hotkey").size(13.0).color(TEXT_SOFT),
+            egui::RichText::new(prxvc_i18n::t("settings.hotkey")).size(13.0).color(TEXT_SOFT),
         );
     });
 }
@@ -845,7 +855,7 @@ pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
 pub fn render_history_panel(ui: &mut egui::Ui, entries: &[HistoryEntry]) {
     ui.vertical(|ui| {
         ui.label(
-            egui::RichText::new("History")
+            egui::RichText::new(prxvc_i18n::t("history.title"))
                 .size(18.0)
                 .color(TEXT_PRIMARY)
                 .italics(),
@@ -853,7 +863,7 @@ pub fn render_history_panel(ui: &mut egui::Ui, entries: &[HistoryEntry]) {
         ui.add_space(16.0);
 
         if entries.is_empty() {
-            ui.label(egui::RichText::new("No sessions yet").size(13.0).color(TEXT_DIM));
+            ui.label(egui::RichText::new(prxvc_i18n::t("history.empty")).size(13.0).color(TEXT_DIM));
             return;
         }
 
@@ -917,7 +927,7 @@ pub fn render_error_banner(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 /// Render the debug / diagnostics page.
 pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
     ui.label(
-        egui::RichText::new("Debug")
+        egui::RichText::new(prxvc_i18n::t("debug.title"))
             .size(18.0)
             .color(TEXT_PRIMARY)
             .italics(),
@@ -926,7 +936,7 @@ pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
 
     ui.horizontal(|ui| {
         ui.label(
-            egui::RichText::new("State Machine:")
+            egui::RichText::new(prxvc_i18n::t("debug.state_machine_label"))
                 .size(12.0)
                 .color(TEXT_DIM),
         );
@@ -942,7 +952,7 @@ pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
 
     ui.horizontal(|ui| {
         ui.label(
-            egui::RichText::new("Pending Commands:")
+            egui::RichText::new(prxvc_i18n::t("debug.pending_commands_label"))
                 .size(12.0)
                 .color(TEXT_DIM),
         );
@@ -954,14 +964,14 @@ pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
     });
 
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Recent Events:").size(12.0).color(TEXT_DIM));
+    ui.label(egui::RichText::new(prxvc_i18n::t("debug.recent_events")).size(12.0).color(TEXT_DIM));
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             if state.debug_events.is_empty() {
                 ui.label(
-                    egui::RichText::new("No events recorded")
+                    egui::RichText::new(prxvc_i18n::t("debug.no_events_recorded"))
                         .size(11.0)
                         .color(TEXT_DIM),
                 );
@@ -1040,6 +1050,7 @@ pub fn render_network_indicator(ui: &mut egui::Ui, state: &DesktopUiState) {
     let (color, label) = match state.network_status {
         NetworkStatus::Connected => (Color32::from_rgb(76, 175, 80), "\u{25cf}"),
         NetworkStatus::Disconnected => (Color32::from_rgb(158, 158, 158), "\u{25cb}"),
+        NetworkStatus::Connecting => (Color32::from_rgb(100, 181, 246), "\u{25d0}"),
         NetworkStatus::Reconnecting => (Color32::from_rgb(255, 152, 0), "\u{25d0}"),
         NetworkStatus::Failed => (Color32::from_rgb(244, 67, 54), "\u{2715}"),
     };
@@ -1049,6 +1060,7 @@ pub fn render_network_indicator(ui: &mut egui::Ui, state: &DesktopUiState) {
         let status_text = match state.network_status {
             NetworkStatus::Connected => prxvc_i18n::t("network.connected"),
             NetworkStatus::Disconnected => prxvc_i18n::t("network.disconnected"),
+            NetworkStatus::Connecting => prxvc_i18n::t("network.connecting"),
             NetworkStatus::Reconnecting => prxvc_i18n::t_with(
                 "network.reconnecting",
                 &[&state.reconnect_attempts.to_string()],
@@ -1158,7 +1170,7 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                                 } else {
                                     theme.orb_speaking
                                 };
-                                let role = if line.role == "user" { "YOU" } else { "AI" };
+                                let role = if line.role == "user" { prxvc_i18n::t("transcript.you") } else { prxvc_i18n::t("transcript.ai") };
                                 ui.label(egui::RichText::new(role).size(8.0).color(role_color).monospace());
                                 let tc = if line.is_final { theme.text_primary } else { theme.text_soft };
                                 ui.label(egui::RichText::new(&line.text).size(11.0).color(tc));
@@ -1252,7 +1264,7 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                 painter.text(
                     btn_rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    "End",
+                    &prxvc_i18n::t("session.stop"),
                     egui::FontId::new(9.0, egui::FontFamily::Proportional),
                     state.theme.orb_speaking,
                 );
@@ -1262,6 +1274,11 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
 
             // Click to start/stop/interrupt
             if orb_response.clicked() {
+                tracing::info!(
+                    session_active = state.session_active,
+                    session_state = %state.session_state,
+                    "orb clicked"
+                );
                 if !state.session_active {
                     state.pending_commands.push("CreateSession".into());
                     state.pending_commands.push("StartSession".into());
@@ -1453,7 +1470,7 @@ fn render_popup_settings(
     ui.add_space(8.0);
 
     // Section: Theme / Appearance
-    render_section_header(ui, "APPEARANCE", theme);
+    render_section_header(ui, &prxvc_i18n::t("settings.appearance"), theme);
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         for available_theme in Theme::all() {
@@ -1490,7 +1507,7 @@ fn render_popup_settings(
     ui.add_space(12.0);
 
     // Section: Language
-    render_section_header(ui, "LANGUAGE", theme);
+    render_section_header(ui, &prxvc_i18n::t("settings.section.language"), theme);
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         let en_selected = settings.language == "en";
@@ -1533,31 +1550,48 @@ fn render_popup_settings(
     ui.add_space(12.0);
 
     // Section: Audio
-    render_section_header(ui, "AUDIO", theme);
+    render_section_header(ui, &prxvc_i18n::t("settings.section.audio"), theme);
     ui.add_space(4.0);
-    render_toggle_row(ui, "Auto-play replies", &mut settings.auto_play, theme);
+    render_toggle_row(ui, &prxvc_i18n::t("settings.auto_play"), &mut settings.auto_play, theme);
 
     ui.add_space(12.0);
 
     // Section: Privacy
-    render_section_header(ui, "PRIVACY", theme);
+    render_section_header(ui, &prxvc_i18n::t("settings.section.privacy"), theme);
     ui.add_space(4.0);
-    render_toggle_row(ui, "Save history", &mut settings.save_history, theme);
-    render_toggle_row(ui, "Show transcript", &mut settings.show_transcript, theme);
+    render_toggle_row(ui, &prxvc_i18n::t("settings.save_history"), &mut settings.save_history, theme);
+    render_toggle_row(ui, &prxvc_i18n::t("settings.show_transcript"), &mut settings.show_transcript, theme);
+
+    ui.add_space(12.0);
+
+    // Section: Connection
+    render_section_header(ui, &prxvc_i18n::t("settings.section.connection"), theme);
+    ui.add_space(4.0);
+    render_toggle_row(ui, &prxvc_i18n::t("settings.use_mock"), &mut settings.use_mock, theme);
+    if !settings.use_mock {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("URL:").size(11.0).color(theme.text_dim));
+            ui.add(
+                egui::TextEdit::singleline(&mut settings.server_url)
+                    .desired_width(150.0)
+                    .font(egui::TextStyle::Small),
+            );
+        });
+    }
 
     ui.add_space(12.0);
 
     // Section: System
-    render_section_header(ui, "SYSTEM", theme);
+    render_section_header(ui, &prxvc_i18n::t("settings.section.system"), theme);
     ui.add_space(4.0);
-    render_toggle_row(ui, "Global hotkey", &mut settings.hotkey_enabled, theme);
+    render_toggle_row(ui, &prxvc_i18n::t("settings.hotkey"), &mut settings.hotkey_enabled, theme);
 
     ui.add_space(16.0);
 
     // Version info
     ui.horizontal(|ui| {
         ui.label(
-            egui::RichText::new("PRX Voice v0.1.0")
+            egui::RichText::new(format!("{} v{}", prxvc_i18n::t("app.name"), prxvc_i18n::t("app.version")))
                 .size(10.0)
                 .color(theme.text_dim),
         );
@@ -1572,7 +1606,7 @@ fn render_popup_history(ui: &mut egui::Ui, entries: &[HistoryEntry], theme: &The
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
             ui.label(
-                egui::RichText::new("No sessions yet")
+                egui::RichText::new(prxvc_i18n::t("history.empty"))
                     .size(13.0)
                     .color(theme.text_dim)
                     .italics(),
@@ -1661,7 +1695,7 @@ fn render_popup_debug(ui: &mut egui::Ui, state_info: &str, events: &[String], th
         .show(ui, |ui| {
             if events.is_empty() {
                 ui.label(
-                    egui::RichText::new("No events")
+                    egui::RichText::new(prxvc_i18n::t("debug.no_events_short"))
                         .size(10.0)
                         .color(theme.text_dim)
                         .italics(),

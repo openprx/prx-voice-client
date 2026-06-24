@@ -15,6 +15,8 @@ pub enum NetworkStatus {
     Connected,
     /// Transport has been disconnected.
     Disconnected,
+    /// Transport is establishing the initial connection.
+    Connecting,
     /// Transport is attempting to reconnect.
     Reconnecting,
     /// Transport reconnection has failed permanently.

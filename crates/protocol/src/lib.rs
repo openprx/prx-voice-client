@@ -5,6 +5,7 @@
 //! error codes, and contract versioning.
 
 pub mod mock;
+pub mod prx_voice_transport;
 pub mod transport;
 pub mod ws_transport;
 
@@ -130,6 +131,15 @@ pub enum Command {
         /// The identifier of the error to acknowledge.
         error_id: String,
     },
+    /// Send recognized text to the server (from local ASR).
+    ///
+    /// This skips server-side ASR and goes directly to the Agent pipeline.
+    SendText {
+        /// The target session.
+        session_id: uuid::Uuid,
+        /// The recognized text to send.
+        text: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +234,7 @@ pub enum Event {
 /// Convenience re-exports for downstream crates.
 pub mod prelude {
     pub use crate::mock::MockGateway;
+    pub use crate::prx_voice_transport::{PrxVoiceConfig, PrxVoiceTransport};
     pub use crate::transport::{Transport, TransportError, TransportState};
     pub use crate::ws_transport::WsTransport;
     pub use crate::{Command, ContractVersion, DeviceInfo, DeviceKind, ErrorCode, Event};

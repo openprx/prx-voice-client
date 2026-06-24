@@ -10,6 +10,7 @@ mod tray;
 use std::thread::JoinHandle;
 
 use eframe::egui;
+use prxvc_audio::audio_loop::{AudioProcessingLoop, RecognizedUtterance};
 use prxvc_desktop_ui::{
     EventSnapshot, HistoryEntry, NetworkStatus, SharedAppState, Theme, TranscriptLine,
 };
@@ -30,6 +31,8 @@ struct PrxVoiceApp {
     hotkey_manager: Option<hotkey::HotkeyManager>,
     /// System tray manager (optional — degrades gracefully).
     tray_manager: Option<tray::TrayManager>,
+    /// Last observed i18n locale, used to detect language changes reliably.
+    last_locale: String,
 }
 
 impl PrxVoiceApp {
@@ -85,7 +88,13 @@ impl PrxVoiceApp {
         let shared_clone = shared.clone();
 
         let handle = std::thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().expect("BUG: failed to create tokio runtime");
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    tracing::error!("Failed to create tokio runtime: {}", e);
+                    return;
+                }
+            };
             rt.block_on(run_engine_loop(shared_clone));
         });
 
@@ -117,6 +126,7 @@ impl PrxVoiceApp {
             _runtime_handle: Some(handle),
             hotkey_manager,
             tray_manager,
+            last_locale: "en".to_owned(),
         }
     }
 }
@@ -191,13 +201,15 @@ impl eframe::App for PrxVoiceApp {
 
         // Refresh tray menu labels when locale changes
         let current_locale = prxvc_i18n::current_locale().as_str().to_owned();
-        if current_locale != self.ui_state.settings.language {
-            // Language was switched — settings.language is the old value, current_locale is new
-            self.ui_state.settings.language = current_locale;
+        if current_locale != self.last_locale {
+            self.last_locale = current_locale;
             if let Some(ref tray) = self.tray_manager {
                 tray.refresh_labels();
             }
         }
+
+        // Persist settings to config.toml when they change
+        save_settings_to_config(&self.ui_state.settings);
 
         // Flush commands to async runtime
         self.ui_state.flush_commands_to_shared(&self.shared);
@@ -222,13 +234,36 @@ async fn run_engine_loop(shared: SharedAppState) {
         load_history_from_storage(storage, &shared);
     }
 
-    // Initialize config (used for future settings; defaults are fine).
-    let _config = initialize_config();
+    // Initialize config (used for transport selection and future settings).
+    let config = initialize_config();
 
-    // Create Engine with MockGateway transport.
+    // Create Engine with transport selected by config.
     let (event_tx, _event_rx) = prxvc_core::bus::event_channel(256);
-    let mock_gateway = Box::new(prxvc_protocol::mock::MockGateway::new());
-    let mut engine = prxvc_core::engine::Engine::new(mock_gateway, event_tx);
+
+    let transport: Box<dyn prxvc_protocol::transport::Transport> = if config.network.use_mock {
+        tracing::info!("Using MockGateway (offline mode)");
+        Box::new(prxvc_protocol::mock::MockGateway::new())
+    } else {
+        tracing::info!("Connecting to prx-voice server: {}", config.network.server_url);
+        let prx_config = prxvc_protocol::prx_voice_transport::PrxVoiceConfig {
+            base_url: config.network.server_url.clone(),
+            language: "zh-CN".into(),
+            asr_provider: "mock".into(),
+            agent_provider: "mock".into(),
+            tts_provider: "mock".into(),
+            channel: "app_sdk".into(),
+            client_id: uuid::Uuid::new_v4().to_string(),
+        };
+        Box::new(prxvc_protocol::prx_voice_transport::PrxVoiceTransport::new(prx_config))
+    };
+
+    let transport_label = if config.network.use_mock { "MockGateway" } else { "PrxVoiceTransport" };
+    let mut engine = prxvc_core::engine::Engine::new(transport, event_tx);
+
+    // Set initial network status based on mode.
+    if !config.network.use_mock {
+        shared.set_network_status(NetworkStatus::Connecting);
+    }
 
     // Connect transport and poll the initial AppReady event.
     if let Err(e) = engine.initialize() {
@@ -238,24 +273,54 @@ async fn run_engine_loop(shared: SharedAppState) {
             timestamp: chrono::Utc::now().to_rfc3339(),
         });
         shared.update_session_state("Failed", false);
+        if !config.network.use_mock {
+            shared.set_network_status(NetworkStatus::Failed);
+        }
         return;
     }
 
+    // Update network status after successful initialization.
+    shared.set_network_status(NetworkStatus::Connected);
+
     shared.push_event(EventSnapshot {
         event_type: "AppReady".into(),
-        detail: "Engine initialized with MockGateway".into(),
+        detail: format!("Engine initialized with {transport_label}"),
         timestamp: chrono::Utc::now().to_rfc3339(),
     });
+
+    // Audio processing loop (local Whisper ASR).
+    let mut audio_loop = AudioProcessingLoop::new();
+    let (asr_text_tx, asr_text_rx) = std::sync::mpsc::channel::<RecognizedUtterance>();
 
     // Main polling loop.
     loop {
         // 1. Drain UI commands and process them through the engine.
         let commands = shared.take_commands();
         for cmd in &commands {
-            process_command(&mut engine, cmd, &shared, &storage);
+            process_command(&mut engine, cmd, &shared, &storage, &mut audio_loop, &asr_text_tx);
         }
 
-        // 2. Poll transport events from the engine and update the UI.
+        // 2. Check for locally recognized speech and send to server.
+        while let Ok(utterance) = asr_text_rx.try_recv() {
+            if let Some(session) = engine.active_session() {
+                let sid = session.id.0;
+                tracing::info!(text = %utterance.text, "sending local ASR text to server");
+                shared.add_transcript_line(TranscriptLine {
+                    role: "user".into(),
+                    text: utterance.text.clone(),
+                    is_final: true,
+                });
+                let cmd = prxvc_protocol::Command::SendText {
+                    session_id: sid,
+                    text: utterance.text,
+                };
+                if let Err(e) = engine.process_command(cmd) {
+                    tracing::warn!("SendText failed: {e}");
+                }
+            }
+        }
+
+        // 3. Poll transport events from the engine and update the UI.
         match engine.poll_transport_events() {
             Ok(events) => {
                 for event in &events {
@@ -267,7 +332,7 @@ async fn run_engine_loop(shared: SharedAppState) {
             }
         }
 
-        // 3. Update debug state info from the active session.
+        // 4. Update debug state info from the active session.
         if let Some(session) = engine.active_session() {
             let state_str = format!("{:?}", session.state);
             let is_active = session.state != prxvc_session::SessionState::Completed
@@ -291,8 +356,12 @@ fn process_command(
     cmd: &str,
     shared: &SharedAppState,
     storage: &Option<prxvc_storage::StorageManager>,
+    audio_loop: &mut AudioProcessingLoop,
+    asr_text_tx: &std::sync::mpsc::Sender<RecognizedUtterance>,
 ) {
     use prxvc_protocol::Command;
+
+    tracing::info!("process_command: {}", cmd);
 
     let command = match cmd {
         "CreateSession" => Command::CreateSession,
@@ -324,6 +393,7 @@ fn process_command(
                     session_id: session.id.0,
                 }
             } else {
+                tracing::debug!("StopSession ignored: no active session");
                 return;
             }
         }
@@ -333,6 +403,7 @@ fn process_command(
                     session_id: session.id.0,
                 }
             } else {
+                tracing::debug!("InterruptPlayback ignored: no active session");
                 return;
             }
         }
@@ -363,6 +434,11 @@ fn process_command(
     let is_stop = cmd == "StopSession";
     let pre_session_id = engine.active_session().map(|s| s.id);
 
+    // Stop audio capture before StopSession.
+    if is_stop && audio_loop.is_running() {
+        audio_loop.stop();
+    }
+
     match engine.process_command(command) {
         Ok(()) => {
             // After CreateSession, propagate the session id to the UI.
@@ -370,6 +446,11 @@ fn process_command(
                 if let Some(session) = engine.active_session() {
                     shared.set_session_id(Some(session.id.0.to_string()));
                 }
+            }
+
+            // After StartSession, start the local audio ASR loop.
+            if cmd == "StartSession" {
+                start_audio_loop(engine, audio_loop, asr_text_tx, shared);
             }
 
             // After StopSession, persist the completed session and reset UI.
@@ -386,6 +467,53 @@ fn process_command(
             push_error(shared, &format!("Command '{cmd}' failed: {e}"));
         }
     }
+}
+
+/// Start the local audio capture + Whisper ASR loop for the active session.
+fn start_audio_loop(
+    engine: &prxvc_core::engine::Engine,
+    audio_loop: &mut AudioProcessingLoop,
+    asr_text_tx: &std::sync::mpsc::Sender<RecognizedUtterance>,
+    shared: &SharedAppState,
+) {
+    {
+        let Some(session) = engine.active_session() else {
+            return;
+        };
+        let session_id = session.id.0;
+
+        // Model paths — look in standard locations.
+        let models_dir = directories::ProjectDirs::from("com", "prx", "voice-client")
+            .map(|d| d.data_dir().join("models"))
+            .unwrap_or_else(|| std::path::PathBuf::from("models"));
+
+        let model_path = models_dir.join("ggml-small.bin");
+        let vad_model_path = models_dir.join("ggml-silero-vad.bin");
+
+        if !model_path.exists() || !vad_model_path.exists() {
+            tracing::warn!(
+                model = %model_path.display(),
+                vad = %vad_model_path.display(),
+                "Whisper model files not found — audio ASR disabled. \
+                 Download models to the paths above."
+            );
+            return;
+        }
+
+        let asr_config = prxvc_audio::whisper_asr::WhisperAsrConfig {
+            model_path: model_path.to_string_lossy().into(),
+            vad_model_path: vad_model_path.to_string_lossy().into(),
+            language: "zh".into(),
+            n_threads: 4,
+            ..Default::default()
+        };
+
+        if let Err(e) = audio_loop.start(asr_config, session_id, asr_text_tx.clone()) {
+            tracing::warn!(error = %e, "failed to start audio loop");
+            push_error(shared, &format!("Audio: {e}"));
+        }
+    }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -500,6 +628,43 @@ fn initialize_config() -> prxvc_config::AppConfig {
         Ok(mgr) => mgr.load().unwrap_or_default(),
         Err(_) => prxvc_config::AppConfig::default(),
     }
+}
+
+/// Persist UI settings to config.toml (debounced — only writes when values differ).
+fn save_settings_to_config(settings: &prxvc_desktop_ui::UiSettings) {
+    use std::sync::LazyLock;
+    use parking_lot::Mutex;
+
+    // Cache the last saved snapshot to avoid writing every frame
+    static LAST: LazyLock<Mutex<(bool, String, String)>> = LazyLock::new(|| {
+        Mutex::new((true, "http://localhost:3000".to_owned(), "en".to_owned()))
+    });
+
+    let current = (settings.use_mock, settings.server_url.clone(), settings.language.clone());
+    {
+        let last = LAST.lock();
+        if *last == current {
+            return;
+        }
+    }
+
+    // Values changed — write to disk
+    if let Ok(mgr) = prxvc_config::AppConfigManager::with_default_dir("prx-voice-client") {
+        let mut config = mgr.load().unwrap_or_default();
+        config.network.use_mock = settings.use_mock;
+        config.network.server_url = settings.server_url.clone();
+        config.ui.language = settings.language.clone();
+        config.audio.auto_play_reply = settings.auto_play;
+        config.privacy.save_history = settings.save_history;
+        if let Err(e) = mgr.save(&config) {
+            tracing::warn!("Failed to save config: {}", e);
+        } else {
+            tracing::debug!("Config saved to disk");
+        }
+    }
+
+    // Update cache
+    *LAST.lock() = current;
 }
 
 /// Populate the UI history list from persisted session records.

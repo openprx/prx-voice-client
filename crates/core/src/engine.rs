@@ -102,6 +102,7 @@ impl Engine {
     /// On failure an [`Event::ErrorOccurred`] is broadcast before the error
     /// is returned, so that UI subscribers are notified immediately.
     pub fn process_command(&mut self, command: Command) -> Result<(), PrxvcError> {
+        tracing::info!(?command, "Engine::process_command");
         let result = match command {
             Command::CreateSession => self.handle_create_session(),
             Command::StartSession { session_id } => self.handle_start_session(session_id),
@@ -144,7 +145,9 @@ impl Engine {
         // Check transport state for failure/disconnection.
         match self.transport.state() {
             TransportState::Disconnected | TransportState::Failed => {
-                if self.auto_reconnect && self.active_session.is_some() {
+                // Persistent connection should always be up — reconnect
+                // regardless of whether an active session exists.
+                if self.auto_reconnect {
                     self.attempt_reconnect()?;
                 }
                 return Ok(Vec::new());

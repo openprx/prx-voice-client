@@ -268,6 +268,18 @@ impl Transport for MockGateway {
                     ],
                 });
             }
+            Command::SendText { session_id, text } => {
+                // Simulate a full conversation turn triggered by local ASR text.
+                self.event_queue
+                    .push_back(Event::FinalTranscriptProduced {
+                        session_id: *session_id,
+                        text: text.clone(),
+                    });
+                let sid = self
+                    .current_session_id
+                    .unwrap_or(*session_id);
+                self.simulate_conversation_turn(sid);
+            }
             Command::ExportDiagnostics => {
                 self.event_queue.push_back(Event::DiagnosticsExported {
                     path: "/tmp/mock-diagnostics.json".to_owned(),

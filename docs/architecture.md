@@ -35,9 +35,9 @@
 |  +----------+  +-----------+  +----------+  +-----------+     |
 |  | core     |  | storage   |  | observe  |  | security  |     |
 |  +----------+  +-----------+  +----------+  +-----------+     |
-|  +----------+  +-----------+                                  |
-|  | i18n     |  | testkit   |                                  |
-|  +----------+  +-----------+                                  |
+|  +----------+  +-----------+  +----------+                    |
+|  | i18n     |  | testkit   |  | adapters |                    |
+|  +----------+  +-----------+  +----------+                    |
 +---------------------------------------------------------------+
                                 |
                                 v
@@ -55,8 +55,8 @@
 | Crate | Package Name | Purpose | Key Types |
 |-------|-------------|---------|-----------|
 | `crates/core` | `prxvc-core` | App context, lifecycle, engine orchestration | `AppContext`, `AppState`, `Engine`, `PrxvcError` |
-| `crates/session` | `prxvc-session` | Session state machine, turn management | `Session`, `SessionState`, `SessionManager`, `Turn` |
-| `crates/audio` | `prxvc-audio` | Audio I/O, frames, VAD, device profiles | `AudioFrame`, `AudioPipeline`, `VadDecision`, `DeviceProfile` |
+| `crates/session` | `prxvc-session` | Session + interpreting state machines, turns, driver | `Session`, `SessionState`, `InterpretSession`, `InterpretDriver`, `Turn` |
+| `crates/audio` | `prxvc-audio` | Audio I/O, per-app capture, resampling, VAD, routing | `AudioFrame`, `AudioPipeline`, `CoreAudioTapSource`, `MonoResampler16k`, `AppAudioSource` |
 | `crates/protocol` | `prxvc-protocol` | Command/event contracts, transport trait | `Command`, `Event`, `Transport`, `ContractVersion` |
 | `crates/config` | `prxvc-config` | Configuration model, TOML persistence | `AppConfig`, `ConfigManager`, `AppConfigManager` |
 | `crates/storage` | `prxvc-storage` | Local SQLite session persistence | `StorageManager`, `SessionRecord` |
@@ -65,6 +65,7 @@
 | `crates/ffi` | `prxvc-ffi` | FFI boundary for iOS/Android | `ffi_initialize`, `ffi_create_session`, `FfiEvent` |
 | `crates/desktop-ui` | `prxvc-desktop-ui` | egui view layer, shared UI state | `DesktopUiState`, `SharedAppState`, `SessionViewModel` |
 | `crates/i18n` | `prxvc-i18n` | Internationalization (EN, ZH-CN) | `Locale`, `t()`, `t_with()` |
+| `crates/adapters` | `prxvc-adapters` | MT/TTS adapters (translation, speech synthesis) | `Translator`, `Synthesizer`, `OpenAiTranslator`, `SineToneSynthesizer` |
 | `crates/testkit` | `prxvc-testkit` | Test utilities and mocks | `MockAudioSource`, test factory functions |
 | `apps/desktop` | `prxvc-desktop` | Desktop binary (egui + tokio) | `PrxVoiceApp`, `main()` |
 
@@ -260,3 +261,44 @@ Audio configuration defaults:
 - Format: F32
 - Echo control: enabled
 - Input/output gain: 1.0
+
+## Interpreting Pipeline
+
+The bilingual interpreter runs two independent, symmetric pipelines (one per
+direction) over a consecutive turn model. Each turn is captured, recognized,
+translated, synthesized, and played back before the floor is released; the
+per-turn latency is absorbed by turn-taking.
+
+```
+Capture (per application)
+    |
+    v
+AppAudioSource  (macOS: CoreAudioTapSource over a Core Audio process tap)
+    |
+    v
+MonoResampler16k  (downmix to mono, resample to 16 kHz)
+    |
+    v
+ASR  ->  recognized text
+    |
+    v
+InterpretDriver / InterpretSession  (state machine = single source of truth)
+    Listening -> Recognizing -> Translating -> Speaking -> Idle
+    |
+    |-- Translator (prxvc-adapters)   source text  -> target text
+    |-- Synthesizer (prxvc-adapters)  target text  -> audio (optional cloned voice)
+    |
+    v
+Playback
+    - to the ear (remote -> local direction), or
+    - into the meeting app via VirtualMicSink / BlackHoleSink (local -> remote)
+```
+
+The pipeline stays platform- and engine-agnostic through traits:
+
+- `AppAudioSource` / `VirtualMicSink` (`prxvc-audio`) abstract per-app capture and
+  virtual-mic injection. macOS backends are provided; other platforms plug in
+  behind the same traits.
+- `Translator` / `Synthesizer` (`prxvc-adapters`) abstract machine translation and
+  speech synthesis. Bundled implementations include an OpenAI-compatible
+  translator and a tone synthesizer for development.

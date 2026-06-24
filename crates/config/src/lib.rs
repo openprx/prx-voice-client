@@ -71,6 +71,10 @@ pub struct NetworkConfig {
     pub connect_timeout_ms: u64,
     pub reconnect_attempts: u32,
     pub reconnect_delay_ms: u64,
+    /// PRX Voice server base URL.
+    pub server_url: String,
+    /// Whether to use the mock gateway (offline) instead of a live server.
+    pub use_mock: bool,
 }
 
 impl Default for NetworkConfig {
@@ -79,6 +83,8 @@ impl Default for NetworkConfig {
             connect_timeout_ms: 5_000,
             reconnect_attempts: 3,
             reconnect_delay_ms: 1_000,
+            server_url: "http://localhost:3000".to_owned(),
+            use_mock: true,
         }
     }
 }

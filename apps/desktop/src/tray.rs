@@ -78,7 +78,7 @@ impl TrayManager {
             .map_err(|e| format!("failed to create icon: {e}"))?;
 
         let mut builder = TrayIconBuilder::new()
-            .with_tooltip("PRX Voice Client")
+            .with_tooltip(prxvc_i18n::t("app.name"))
             .with_menu(Box::new(menu))
             .with_icon(icon);
 
@@ -178,7 +178,7 @@ fn create_prx_icon() -> Vec<u8> {
                 pixels[idx] = 0;
                 pixels[idx + 1] = 0;
                 pixels[idx + 2] = 0;
-                pixels[idx + 3] = 220; // slightly less than 255 for softer look
+                pixels[idx + 3] = 255; // full opacity for crisp rendering
             }
             // Interior and exterior remain fully transparent
         }

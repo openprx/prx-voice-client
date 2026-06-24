@@ -11,6 +11,7 @@ name = "prxvc-desktop"
 path = "src/main.rs"
 
 [dependencies]
+prxvc-audio = { workspace = true }
 prxvc-core = { workspace = true }
 prxvc-session = { workspace = true }
 prxvc-desktop-ui = { workspace = true }

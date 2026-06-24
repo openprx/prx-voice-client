@@ -13,6 +13,7 @@ members = [
     "crates/desktop-ui",
     "crates/testkit",
     "crates/i18n",
+    "crates/adapters",
     "apps/desktop",
 ]
 
@@ -37,6 +38,7 @@ prxvc-ffi = { path = "crates/ffi" }
 prxvc-desktop-ui = { path = "crates/desktop-ui" }
 prxvc-testkit = { path = "crates/testkit" }
 prxvc-i18n = { path = "crates/i18n" }
+prxvc-adapters = { path = "crates/adapters" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -62,15 +64,21 @@ eframe = { version = "0.31", default-features = false, features = ["default_font
 
 # Audio
 cpal = { version = "0.15" }
+whisper-cpp-plus = { version = "0.1.4" }
+rubato = { version = "0.15" }
+
+# Native build (Core Audio Tap shim on macOS)
+cc = { version = "1" }
 
 # Storage
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Utilities
-uuid = { version = "1", features = ["v7", "serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = { version = "0.12" }
 tokio-tungstenite = { version = "0.26" }
+reqwest = { version = "0.12", features = ["json"] }
 url = { version = "2" }
 directories = { version = "6" }
 global-hotkey = { version = "0.6" }

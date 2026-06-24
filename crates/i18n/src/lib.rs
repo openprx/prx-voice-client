@@ -234,6 +234,7 @@ fn build_en_translations() -> HashMap<String, String> {
         // Network
         ("network.connected", "Connected"),
         ("network.disconnected", "Disconnected"),
+        ("network.connecting", "Connecting..."),
         ("network.reconnecting", "Reconnecting (attempt {0})..."),
         ("network.failed", "Connection Failed"),
         // Common
@@ -263,6 +264,30 @@ fn build_en_translations() -> HashMap<String, String> {
         ),
         ("session.hint.listening", "Speak naturally"),
         ("session.hint.speaking", "Click to interrupt"),
+        // Transcript
+        ("transcript.you", "YOU"),
+        ("transcript.ai", "AI"),
+        // Settings sections
+        ("settings.appearance", "APPEARANCE"),
+        ("settings.section.language", "LANGUAGE"),
+        ("settings.section.audio", "AUDIO"),
+        ("settings.section.privacy", "PRIVACY"),
+        ("settings.section.connection", "CONNECTION"),
+        ("settings.section.system", "SYSTEM"),
+        ("settings.use_mock", "Mock mode (offline)"),
+        ("settings.server_url", "Server URL"),
+        // Status
+        ("status.ready", "Ready"),
+        ("status.offline", "Offline"),
+        ("status.connecting", "Connecting"),
+        ("status.reconnecting", "Reconnecting"),
+        ("status.failed", "Failed"),
+        // Debug sections
+        ("debug.state_machine_label", "State Machine:"),
+        ("debug.pending_commands_label", "Pending Commands:"),
+        ("debug.recent_events", "Recent Events:"),
+        ("debug.no_events_recorded", "No events recorded"),
+        ("debug.no_events_short", "No events"),
     ];
     pairs
         .iter()
@@ -417,6 +442,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         // Network
         ("network.connected", "\u{5df2}\u{8fde}\u{63a5}"),
         ("network.disconnected", "\u{5df2}\u{65ad}\u{5f00}"),
+        ("network.connecting", "\u{8fde}\u{63a5}\u{4e2d}..."),
         (
             "network.reconnecting",
             "\u{91cd}\u{8fde}\u{4e2d}\u{ff08}\u{7b2c} {0} \u{6b21}\u{ff09}...",
@@ -449,6 +475,30 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ),
         ("session.hint.listening", "\u{81ea}\u{7136}\u{5730}\u{8bf4}\u{8bdd}"),
         ("session.hint.speaking", "\u{70b9}\u{51fb}\u{6253}\u{65ad}"),
+        // Transcript
+        ("transcript.you", "\u{4f60}"),
+        ("transcript.ai", "AI"),
+        // Settings sections
+        ("settings.appearance", "\u{5916}\u{89c2}"),
+        ("settings.section.language", "\u{8bed}\u{8a00}"),
+        ("settings.section.audio", "\u{97f3}\u{9891}"),
+        ("settings.section.privacy", "\u{9690}\u{79c1}"),
+        ("settings.section.connection", "\u{8fde}\u{63a5}"),
+        ("settings.section.system", "\u{7cfb}\u{7edf}"),
+        ("settings.use_mock", "\u{6a21}\u{62df}\u{6a21}\u{5f0f}\u{ff08}\u{79bb}\u{7ebf}\u{ff09}"),
+        ("settings.server_url", "\u{670d}\u{52a1}\u{5668}\u{5730}\u{5740}"),
+        // Status
+        ("status.ready", "\u{5c31}\u{7eea}"),
+        ("status.offline", "\u{79bb}\u{7ebf}"),
+        ("status.connecting", "\u{8fde}\u{63a5}\u{4e2d}"),
+        ("status.reconnecting", "\u{91cd}\u{8fde}\u{4e2d}"),
+        ("status.failed", "\u{5931}\u{8d25}"),
+        // Debug sections
+        ("debug.state_machine_label", "\u{72b6}\u{6001}\u{673a}\u{ff1a}"),
+        ("debug.pending_commands_label", "\u{5f85}\u{5904}\u{7406}\u{547d}\u{4ee4}\u{ff1a}"),
+        ("debug.recent_events", "\u{6700}\u{8fd1}\u{4e8b}\u{4ef6}\u{ff1a}"),
+        ("debug.no_events_recorded", "\u{6682}\u{65e0}\u{4e8b}\u{4ef6}\u{8bb0}\u{5f55}"),
+        ("debug.no_events_short", "\u{6682}\u{65e0}\u{4e8b}\u{4ef6}"),
     ];
     pairs
         .iter()
