@@ -1,0 +1,547 @@
+{
+  "schema_version": 1,
+  "catalogue_version": 2026112001,
+  "min_app_version": "0.2.0",
+  "models": [
+    {
+      "id": "silero-vad-6.2",
+      "role": "vad",
+      "display_name": "Silero VAD",
+      "description": {
+        "en": "Detects when someone is speaking.",
+        "zh-CN": "检测是否有人在说话。"
+      },
+      "version_label": "v6.2.0 (ggml)",
+      "languages": [
+        {
+          "kind": "any"
+        }
+      ],
+      "runtime": {
+        "name": "whisper.cpp"
+      },
+      "files": [
+        {
+          "name": "ggml-silero-v6.2.0.bin",
+          "purpose": "vad",
+          "size": 885098,
+          "sha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+          "source": {
+            "kind": "huggingface",
+            "repo": "ggml-org/whisper-vad",
+            "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+            "path": "ggml-silero-v6.2.0.bin"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "MIT",
+        "weights_url": "https://github.com/snakers4/silero-vad"
+      },
+      "memory_mb": 20,
+      "streaming": "native",
+      "recommended_for": [
+        {
+          "badge": "recommended",
+          "rank": 0
+        }
+      ],
+      "legacy_file_names": [
+        "ggml-silero-vad.bin"
+      ]
+    },
+    {
+      "id": "silero-vad-5.1.2",
+      "role": "vad",
+      "display_name": "Silero VAD (v5.1.2)",
+      "description": {
+        "en": "Detects when someone is speaking (older version, kept for migration).",
+        "zh-CN": "检测是否有人在说话（旧版本，仅用于迁移）。"
+      },
+      "version_label": "v5.1.2 (ggml)",
+      "languages": [
+        {
+          "kind": "any"
+        }
+      ],
+      "runtime": {
+        "name": "whisper.cpp"
+      },
+      "files": [
+        {
+          "name": "ggml-silero-v5.1.2.bin",
+          "purpose": "vad",
+          "size": 885098,
+          "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+          "source": {
+            "kind": "huggingface",
+            "repo": "ggml-org/whisper-vad",
+            "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+            "path": "ggml-silero-v5.1.2.bin"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "MIT",
+        "weights_url": "https://github.com/snakers4/silero-vad"
+      },
+      "memory_mb": 20,
+      "streaming": "native",
+      "recommended_for": [],
+      "legacy_file_names": [
+        "ggml-silero-vad.bin"
+      ],
+      "hidden": true
+    },
+    {
+      "id": "whisper-small",
+      "role": "asr",
+      "display_name": "Whisper small",
+      "description": {
+        "en": "Multilingual speech recognition, small and fast.",
+        "zh-CN": "多语种语音识别，体积小、速度快。"
+      },
+      "version_label": "ggml f16",
+      "languages": [
+        {
+          "kind": "lang",
+          "code": "zh"
+        },
+        {
+          "kind": "lang",
+          "code": "en"
+        }
+      ],
+      "runtime": {
+        "name": "whisper.cpp",
+        "params": {
+          "language_codes": {
+            "zh": "zh",
+            "en": "en"
+          }
+        }
+      },
+      "files": [
+        {
+          "name": "ggml-small.bin",
+          "purpose": "model",
+          "size": 487601967,
+          "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+          "source": {
+            "kind": "huggingface",
+            "repo": "ggerganov/whisper.cpp",
+            "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+            "path": "ggml-small.bin"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "MIT",
+        "weights_url": "https://github.com/openai/whisper/blob/main/LICENSE"
+      },
+      "memory_mb": 900,
+      "streaming": "segmented",
+      "recommended_for": [
+        {
+          "badge": "smallest",
+          "rank": 10
+        }
+      ],
+      "legacy_file_names": [
+        "ggml-small.bin"
+      ]
+    },
+    {
+      "id": "hy-mt2-7b-q4km",
+      "role": "mt",
+      "display_name": "Hy-MT2 7B",
+      "description": {
+        "en": "Chinese–English translation model.",
+        "zh-CN": "中英互译模型。"
+      },
+      "version_label": "Q4_K_M",
+      "languages": [
+        {
+          "kind": "pair",
+          "source": "zh",
+          "target": "en"
+        },
+        {
+          "kind": "pair",
+          "source": "en",
+          "target": "zh"
+        }
+      ],
+      "runtime": {
+        "name": "llama.cpp",
+        "params": {
+          "prompt_template": "hy-mt2"
+        }
+      },
+      "files": [
+        {
+          "name": "Hy-MT2-7B-Q4_K_M.gguf",
+          "purpose": "model",
+          "size": 4624648896,
+          "sha256": "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b",
+          "source": {
+            "kind": "huggingface",
+            "repo": "tencent/Hy-MT2-7B-GGUF",
+            "revision": "ab8472660ac61fac25f1af43fac2599d52a8a775",
+            "path": "Hy-MT2-7B-Q4_K_M.gguf"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "Apache-2.0",
+        "weights_url": "https://huggingface.co/tencent/Hy-MT2-7B-GGUF"
+      },
+      "memory_mb": 6000,
+      "streaming": "native",
+      "recommended_for": [
+        {
+          "badge": "recommended",
+          "rank": 0,
+          "min_memory_gb": 16
+        }
+      ]
+    },
+    {
+      "id": "qwen3-tts-1.7b-base-q8",
+      "role": "tts",
+      "display_name": "Qwen3-TTS 1.7B",
+      "description": {
+        "en": "Natural speech; can speak in your own voice.",
+        "zh-CN": "自然语音，可使用你自己的声音。"
+      },
+      "version_label": "Base Q8_0",
+      "languages": [
+        {
+          "kind": "lang",
+          "code": "zh"
+        },
+        {
+          "kind": "lang",
+          "code": "en"
+        }
+      ],
+      "runtime": {
+        "name": "qwentts.cpp"
+      },
+      "files": [
+        {
+          "name": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "purpose": "model",
+          "size": 1847874400,
+          "sha256": "ac7931aeb2e7aad1a6ed6602d353a5679c9d096b18ce8204ac730a8408d572e1",
+          "source": {
+            "kind": "huggingface",
+            "repo": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+            "revision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+            "path": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
+          }
+        },
+        {
+          "name": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "purpose": "codec",
+          "size": 446422912,
+          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+          "source": {
+            "kind": "huggingface",
+            "repo": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
+            "revision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
+            "path": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "Apache-2.0",
+        "weights_url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+      },
+      "memory_mb": 4000,
+      "streaming": "native",
+      "recommended_for": [
+        {
+          "badge": "recommended",
+          "rank": 0,
+          "min_memory_gb": 16,
+          "os": [
+            "macos"
+          ],
+          "arch": [
+            "aarch64"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kokoro-82m-q8f16",
+      "role": "tts-fallback",
+      "display_name": "Kokoro 82M",
+      "description": {
+        "en": "Lightweight voice used when the main voice is too slow.",
+        "zh-CN": "主语音过慢时使用的轻量语音。"
+      },
+      "version_label": "v1.0 ONNX q8f16",
+      "languages": [
+        {
+          "kind": "lang",
+          "code": "en"
+        }
+      ],
+      "runtime": {
+        "name": "onnxruntime"
+      },
+      "files": [
+        {
+          "name": "model_q8f16.onnx",
+          "purpose": "model",
+          "size": 86033585,
+          "sha256": "04c658aec1b6008857c2ad10f8c589d4180d0ec427e7e6118ceb487e215c3cd0",
+          "source": {
+            "kind": "huggingface",
+            "repo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+            "revision": "1939ad2a8e416c0acfeecc08a694d14ef25f2231",
+            "path": "onnx/model_q8f16.onnx"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "Apache-2.0",
+        "weights_url": "https://huggingface.co/hexgrad/Kokoro-82M"
+      },
+      "memory_mb": 300,
+      "streaming": "segmented",
+      "recommended_for": [
+        {
+          "badge": "recommended",
+          "rank": 0
+        }
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "id": "openai",
+      "display_name": "OpenAI",
+      "protocol": "openai-chat",
+      "roles": [
+        "mt"
+      ],
+      "default_base_url": "https://api.openai.com/v1",
+      "local_endpoint_default": false,
+      "needs_credential": true,
+      "credential_help_url": "https://platform.openai.com/api-keys",
+      "known_models": [
+        {
+          "name": "gpt-4.1-mini",
+          "roles": [
+            "mt"
+          ]
+        }
+      ],
+      "default_model": "gpt-4.1-mini",
+      "streaming": "native",
+      "egress": "text",
+      "params_schema": {
+        "temperature": {
+          "type": "number",
+          "default": 0.2,
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": "llama-server",
+      "display_name": "Local llama-server",
+      "protocol": "openai-chat",
+      "roles": [
+        "mt"
+      ],
+      "default_base_url": "http://127.0.0.1:8080/v1",
+      "local_endpoint_default": true,
+      "needs_credential": false,
+      "known_models": [],
+      "streaming": "native",
+      "egress": "text"
+    },
+    {
+      "id": "deepgram",
+      "display_name": "Deepgram",
+      "protocol": "deepgram-listen",
+      "roles": [
+        "asr"
+      ],
+      "default_base_url": "wss://api.deepgram.com/v1/listen",
+      "local_endpoint_default": false,
+      "needs_credential": true,
+      "credential_help_url": "https://console.deepgram.com/",
+      "known_models": [
+        {
+          "name": "nova-2",
+          "roles": [
+            "asr"
+          ],
+          "languages": [
+            {
+              "kind": "lang",
+              "code": "en"
+            },
+            {
+              "kind": "lang",
+              "code": "zh"
+            }
+          ]
+        }
+      ],
+      "default_model": "nova-2",
+      "streaming": "native",
+      "egress": "audio"
+    },
+    {
+      "id": "azure-speech",
+      "display_name": "Azure Speech",
+      "protocol": "azure-speech-tts",
+      "roles": [
+        "tts",
+        "tts-fallback"
+      ],
+      "default_base_url": "https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
+      "local_endpoint_default": false,
+      "needs_credential": true,
+      "known_models": [],
+      "streaming": "none",
+      "egress": "text",
+      "ineligible_reason": {
+        "en": "Waits for the whole sentence; doesn't stream yet.",
+        "zh-CN": "需等待整句合成，暂不支持流式。"
+      },
+      "params_schema": {
+        "region": {
+          "type": "string",
+          "default": "eastus"
+        },
+        "voice": {
+          "type": "string",
+          "default": "en-US-JennyNeural"
+        }
+      }
+    },
+    {
+      "id": "openai-audio-speech",
+      "display_name": "OpenAI-compatible speech",
+      "protocol": "openai-audio-speech",
+      "roles": [
+        "tts",
+        "tts-fallback"
+      ],
+      "default_base_url": "https://api.openai.com/v1",
+      "local_endpoint_default": false,
+      "needs_credential": true,
+      "credential_help_url": "https://platform.openai.com/api-keys",
+      "known_models": [
+        {
+          "name": "gpt-4o-mini-tts",
+          "roles": [
+            "tts",
+            "tts-fallback"
+          ]
+        }
+      ],
+      "default_model": "gpt-4o-mini-tts",
+      "streaming": "native",
+      "egress": "text",
+      "params_schema": {
+        "voice": {
+          "type": "string",
+          "default": "alloy"
+        }
+      }
+    }
+  ],
+  "setup_presets": [
+    {
+      "id": "local",
+      "display_name": {
+        "en": "All on this computer",
+        "zh-CN": "全部在本机运行"
+      },
+      "roles": {
+        "vad": {
+          "kind": "local-model"
+        },
+        "asr": {
+          "kind": "local-model"
+        },
+        "mt": {
+          "kind": "local-model"
+        },
+        "tts": {
+          "kind": "local-model"
+        },
+        "tts-fallback": {
+          "kind": "local-model"
+        }
+      }
+    },
+    {
+      "id": "hybrid",
+      "display_name": {
+        "en": "Hybrid",
+        "zh-CN": "混合"
+      },
+      "roles": {
+        "vad": {
+          "kind": "local-model"
+        },
+        "asr": {
+          "kind": "local-model"
+        },
+        "mt": {
+          "kind": "api",
+          "template": "openai"
+        },
+        "tts": {
+          "kind": "local-model"
+        },
+        "tts-fallback": {
+          "kind": "local-model"
+        }
+      }
+    },
+    {
+      "id": "cloud",
+      "display_name": {
+        "en": "All cloud",
+        "zh-CN": "全部使用云端"
+      },
+      "roles": {
+        "vad": {
+          "kind": "local-model"
+        },
+        "asr": {
+          "kind": "api",
+          "template": "deepgram"
+        },
+        "mt": {
+          "kind": "api",
+          "template": "openai"
+        },
+        "tts": {
+          "kind": "api",
+          "template": "openai-audio-speech"
+        },
+        "tts-fallback": {
+          "kind": "local-model"
+        }
+      }
+    }
+  ]
+}
