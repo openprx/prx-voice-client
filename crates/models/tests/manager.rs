@@ -713,6 +713,30 @@ fn resolve_explains_why_a_model_is_not_ready() {
 }
 
 #[test]
+fn ready_answers_for_any_catalogue_id_without_the_active_selection() {
+    let mut specs = names(2);
+    specs[1].runtime = "future.cpp";
+    specs[1].role = "mt";
+    let r = rig(specs, 1);
+    assert!(matches!(
+        r.handle.ready(&id("mod-a")),
+        Err(NotReady::NotInstalled { .. })
+    ));
+    assert!(matches!(
+        r.handle.ready(&id("mod-b")),
+        Err(NotReady::UnsupportedRuntime { .. })
+    ));
+    assert!(matches!(
+        r.handle.ready(&id("not-in-the-catalogue")),
+        Err(NotReady::NoSelection)
+    ));
+    r.send(ModelCommand::Download(id("mod-a")));
+    r.wait_installed("mod-a");
+    let ready = r.handle.ready(&id("mod-a")).expect("installed");
+    assert_eq!(ready.id, id("mod-a"));
+}
+
+#[test]
 fn the_active_selection_overrides_the_recommendation() {
     let mut specs = names(2);
     specs[1].files[0].0 = "second.bin".into();
