@@ -40,7 +40,7 @@ fn mac16() -> HardwareInfo {
 fn embedded_catalogue_parses_and_validates() {
     let cat = Catalogue::embedded();
     assert_eq!(cat.schema_version, 1);
-    assert_eq!(cat.catalogue_version, 2026112001);
+    assert_eq!(cat.catalogue_version, 2026112002);
     let warnings = cat.validate(&semver::Version::new(0, 2, 0), &ALL_RUNTIMES);
     assert!(warnings.is_empty(), "{warnings:?}");
     let ids: Vec<_> = cat.models().iter().map(|m| m.id.0.as_str()).collect();
@@ -52,6 +52,7 @@ fn embedded_catalogue_parses_and_validates() {
             "whisper-small",
             "hy-mt2-7b-q4km",
             "qwen3-tts-1.7b-base-q8",
+            "qwen3-tts-0.6b-base-q8",
             "kokoro-82m-q8f16"
         ]
     );
@@ -111,19 +112,37 @@ fn embedded_pins_are_exactly_the_ones_in_the_design() {
     assert_eq!(
         pin("qwen3-tts-1.7b-base-q8", 0),
         (
-            "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf".into(),
-            1847874400,
-            "ac7931aeb2e7aad1a6ed6602d353a5679c9d096b18ce8204ac730a8408d572e1".into(),
-            "ca27d74bc954b73dadab5b71ca265d87fc861a7c".into()
+            "qwen-talker-1.7b-base-Q8_0.gguf".into(),
+            2079448256,
+            "4b9a33a236908dd9435a42f7a396e38038329d053b704342a6413c08544c4fda".into(),
+            "b7ee2e8c7459c3bea99da23e3d178125a7d1713c".into()
         )
     );
     assert_eq!(
         pin("qwen3-tts-1.7b-base-q8", 1),
         (
-            "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf".into(),
-            446422912,
-            "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2".into(),
-            "ca27d74bc954b73dadab5b71ca265d87fc861a7c".into()
+            "qwen-tokenizer-12hz-Q8_0.gguf".into(),
+            291150624,
+            "1883beeed99348fc35e23dd225e9082f93f6f8c109330a33d935baa8acdbfd94".into(),
+            "b7ee2e8c7459c3bea99da23e3d178125a7d1713c".into()
+        )
+    );
+    assert_eq!(
+        pin("qwen3-tts-0.6b-base-q8", 0),
+        (
+            "qwen-talker-0.6b-base-Q8_0.gguf".into(),
+            992615488,
+            "d54dbaf10591421fa764ed630d764efa717ae40cd959bd48c66d4eb1af226426".into(),
+            "b7ee2e8c7459c3bea99da23e3d178125a7d1713c".into()
+        )
+    );
+    assert_eq!(
+        pin("qwen3-tts-0.6b-base-q8", 1),
+        (
+            "qwen-tokenizer-12hz-Q8_0.gguf".into(),
+            291150624,
+            "1883beeed99348fc35e23dd225e9082f93f6f8c109330a33d935baa8acdbfd94".into(),
+            "b7ee2e8c7459c3bea99da23e3d178125a7d1713c".into()
         )
     );
     assert_eq!(
