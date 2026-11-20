@@ -7,8 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-prxvc-core = { workspace = true }
-prxvc-protocol = { workspace = true }
+prxvc-media = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

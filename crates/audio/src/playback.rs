@@ -1,14 +1,16 @@
 //! Playback of assistant (TTS) audio delivered by a transport.
 //!
-//! [`AssistantPlayer`] turns [`TtsAudioChunk`]s (mono PCM16 at the rate the
-//! server announced) into frames for an [`AudioOutput`], which converts them
+//! [`AssistantPlayer`] turns [`PcmChunk`]s (mono f32 at the rate the server
+//! announced) into frames for an [`AudioOutput`], which converts them
 //! to the device format. The output device is opened lazily on the first
 //! chunk, so a session that never speaks never touches audio hardware, and a
 //! device that cannot be opened is reported instead of aborting the app.
 
 use std::time::{Duration, Instant};
 
-use prxvc_protocol::transport::TtsAudioChunk;
+use prxvc_media::PcmChunk;
+
+use uuid::Uuid;
 
 use crate::output::OutputStats;
 use crate::pipeline::AudioOutput;
@@ -44,26 +46,22 @@ impl AssistantPlayer {
     /// # Errors
     /// Fails if the device cannot be opened (retried after a short backoff,
     /// during which chunks are dropped silently) or the write fails.
-    pub fn play(&mut self, chunk: &TtsAudioChunk) -> Result<(), AudioError> {
-        if chunk.sample_rate == 0 {
-            return Err(AudioError::FormatMismatch {
-                expected: "non-zero sample rate".to_owned(),
-                got: "0 Hz".to_owned(),
-            });
-        }
+    pub fn play(&mut self, chunk: &PcmChunk) -> Result<(), AudioError> {
         let sequence_no = self.sequence_no;
         self.sequence_no += 1;
-        // PCM16 samples are two bytes; ignore a dangling odd byte.
-        let even = chunk.pcm16.len() & !1;
+        let mut data = Vec::with_capacity(chunk.samples.len() * std::mem::size_of::<f32>());
+        for sample in &chunk.samples {
+            data.extend_from_slice(&sample.to_le_bytes());
+        }
         let frame = AudioOutputFrame {
-            session_id: chunk.session_id,
+            session_id: Uuid::nil(),
             frame: AudioFrame {
                 sequence_no,
-                sample_rate: chunk.sample_rate,
+                sample_rate: chunk.rate.hz(),
                 channels: 1,
-                format: AudioFormat::I16,
+                format: AudioFormat::F32,
                 timestamp_ms: 0,
-                data: chunk.pcm16[..even].to_vec(),
+                data,
             },
         };
         match self.ensure_output()? {
@@ -142,7 +140,8 @@ impl AssistantPlayer {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use uuid::Uuid;
+
+    use prxvc_media::SampleRate;
 
     #[derive(Default)]
     struct Spy {
@@ -195,26 +194,25 @@ mod tests {
         (p, spy, opens)
     }
 
-    fn chunk(rate: u32, bytes: usize) -> TtsAudioChunk {
-        TtsAudioChunk {
-            session_id: Uuid::nil(),
-            sample_rate: rate,
-            pcm16: (0..bytes).map(|i| i as u8).collect(),
+    fn chunk(rate: u32, samples: usize) -> PcmChunk {
+        PcmChunk {
+            samples: (0..samples).map(|i| i as f32 / 1000.0).collect(),
+            rate: SampleRate::new(rate).expect("non-zero rate"),
         }
     }
 
     #[test]
-    fn chunks_are_played_as_mono_pcm16_at_the_announced_rate() {
+    fn chunks_are_played_as_mono_f32_at_the_announced_rate() {
         let (mut p, spy, _) = player();
-        p.play(&chunk(24_000, 640)).unwrap();
-        p.play(&chunk(16_000, 321)).unwrap();
+        p.play(&chunk(24_000, 320)).unwrap();
+        p.play(&chunk(16_000, 160)).unwrap();
         let spy = spy.lock();
         assert_eq!(spy.frames.len(), 2);
         let f = &spy.frames[0];
-        assert_eq!((f.sample_rate, f.channels, f.format), (24_000, 1, AudioFormat::I16));
-        assert_eq!(f.data.len(), 640);
+        assert_eq!((f.sample_rate, f.channels, f.format), (24_000, 1, AudioFormat::F32));
+        assert_eq!(f.data.len(), 320 * 4);
         assert_eq!(spy.frames[1].sample_rate, 16_000);
-        assert_eq!(spy.frames[1].data.len(), 320, "odd trailing byte dropped");
+        assert_eq!(spy.frames[1].data.len(), 160 * 4);
         assert_eq!(spy.frames[1].sequence_no, 1);
     }
 
@@ -225,15 +223,15 @@ mod tests {
         p.flush();
         p.end_stream();
         assert_eq!(*opens.lock(), 0, "flush/end_stream do not open the device");
-        p.play(&chunk(16_000, 64)).unwrap();
-        p.play(&chunk(16_000, 64)).unwrap();
+        p.play(&chunk(16_000, 32)).unwrap();
+        p.play(&chunk(16_000, 32)).unwrap();
         assert_eq!(*opens.lock(), 1);
     }
 
     #[test]
     fn flush_and_end_stream_reach_the_output() {
         let (mut p, spy, _) = player();
-        p.play(&chunk(16_000, 64)).unwrap();
+        p.play(&chunk(16_000, 32)).unwrap();
         p.end_stream();
         p.flush();
         let spy = spy.lock();
@@ -243,24 +241,18 @@ mod tests {
     #[test]
     fn a_device_that_cannot_open_is_reported_then_retried_later() {
         let mut p = AssistantPlayer::new(Box::new(|| Err(AudioError::OutputDeviceUnavailable)));
-        assert!(p.play(&chunk(16_000, 64)).is_err());
+        assert!(p.play(&chunk(16_000, 32)).is_err());
         // Inside the backoff, chunks are dropped without another open attempt.
-        assert!(p.play(&chunk(16_000, 64)).is_ok());
+        assert!(p.play(&chunk(16_000, 32)).is_ok());
         assert!(p.is_drained());
-    }
-
-    #[test]
-    fn zero_rate_is_rejected() {
-        let (mut p, _, _) = player();
-        assert!(p.play(&chunk(0, 64)).is_err());
     }
 
     #[test]
     fn close_releases_the_device_and_the_next_chunk_reopens_it() {
         let (mut p, _, opens) = player();
-        p.play(&chunk(16_000, 64)).unwrap();
+        p.play(&chunk(16_000, 32)).unwrap();
         p.close();
-        p.play(&chunk(16_000, 64)).unwrap();
+        p.play(&chunk(16_000, 32)).unwrap();
         assert_eq!(*opens.lock(), 2);
     }
 }

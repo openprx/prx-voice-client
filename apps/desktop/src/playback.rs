@@ -16,6 +16,7 @@ use std::time::Instant;
 use prxvc_audio::echo_gate::EchoGateHandle;
 use prxvc_audio::playback::AssistantPlayer;
 use prxvc_core::engine::Engine;
+use prxvc_media::{PcmChunk, SampleRate};
 use prxvc_protocol::transport::TtsAudioChunk;
 use prxvc_session::SessionState;
 
@@ -57,7 +58,14 @@ impl PlaybackDriver {
             // has started playing it.
             self.gate.with(|g| g.reply_activity(now));
             self.end_signalled = false;
-            if let Err(e) = self.player.play(chunk) {
+            let pcm = match pcm_chunk(chunk) {
+                Ok(pcm) => pcm,
+                Err(e) => {
+                    tracing::warn!("assistant audio playback failed: {e}");
+                    continue;
+                }
+            };
+            if let Err(e) = self.player.play(&pcm) {
                 tracing::warn!("assistant audio playback failed: {e}");
             }
         }
@@ -119,6 +127,19 @@ impl PlaybackDriver {
     pub fn mic_paused(&self, engine: &Engine, now: Instant) -> bool {
         engine.active_session().is_some() && self.gate.is_closed(now)
     }
+}
+
+/// Decode a transport chunk (mono PCM16 little-endian) into the playback
+/// chunk type. A dangling odd byte is ignored.
+fn pcm_chunk(chunk: &TtsAudioChunk) -> Result<PcmChunk, String> {
+    let rate = SampleRate::new(chunk.sample_rate)
+        .map_err(|_| "format mismatch: expected non-zero sample rate, got 0 Hz".to_owned())?;
+    let samples = chunk
+        .pcm16
+        .chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / i16::MAX as f32)
+        .collect();
+    Ok(PcmChunk { samples, rate })
 }
 
 /// Whether the active session plays its reply aloud.
@@ -323,5 +344,23 @@ mod tests {
             r.driver.gate.poll(ms(30)),
             GateState::Open { just_reopened: false }
         );
+    }
+
+    #[test]
+    fn transport_chunks_decode_to_f32_and_reject_a_zero_rate() {
+        let pcm = pcm_chunk(&TtsAudioChunk {
+            session_id: uuid::Uuid::nil(),
+            sample_rate: 24_000,
+            pcm16: vec![0xFF, 0x7F, 0x00, 0x00, 0x01],
+        })
+        .expect("valid chunk");
+        assert_eq!(pcm.rate, SampleRate::HZ_24000);
+        assert_eq!(pcm.samples, vec![1.0, 0.0], "odd trailing byte dropped");
+        let zero = TtsAudioChunk {
+            session_id: uuid::Uuid::nil(),
+            sample_rate: 0,
+            pcm16: vec![0; 4],
+        };
+        assert!(pcm_chunk(&zero).is_err());
     }
 }

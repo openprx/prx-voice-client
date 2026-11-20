@@ -491,7 +491,7 @@ dependencies = [
  "bitflags 2.13.2",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -897,9 +897,9 @@ dependencies = [
 
 [[package]]
 name = "coreaudio-sys"
-version = "0.2.17"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ceec7a6067e62d6f931a2baf6f3a751f4a892595bcec1461a3c94ef9949864b6"
+checksum = "b9b4739a805a62757a83e5654fa3faabec0442666b263bb2287d5a8185bfd953"
 dependencies = [
  "bindgen 0.72.1",
 ]
@@ -2588,15 +2588,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
@@ -3176,9 +3167,9 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.46"
+version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
 dependencies = [
  "num-traits",
 ]
@@ -4053,8 +4044,7 @@ dependencies = [
  "cc",
  "cpal",
  "parking_lot",
- "prxvc-core",
- "prxvc-protocol",
+ "prxvc-media",
  "rubato",
  "serde",
  "thiserror 2.0.18",
@@ -4106,6 +4096,7 @@ dependencies = [
  "prxvc-core",
  "prxvc-desktop-ui",
  "prxvc-i18n",
+ "prxvc-media",
  "prxvc-observe",
  "prxvc-protocol",
  "prxvc-session",
@@ -4125,12 +4116,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "parking_lot",
- "prxvc-config",
- "prxvc-core",
  "prxvc-i18n",
- "prxvc-protocol",
- "prxvc-session",
- "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -4256,14 +4242,11 @@ name = "prxvc-storage"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "prxvc-core",
  "prxvc-session",
  "rusqlite",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -4407,9 +4390,9 @@ dependencies = [
 
 [[package]]
 name = "realfft"
-version = "3.5.0"
+version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f821338fddb99d089116342c46e9f1fbf3828dba077674613e734e01d6ea8677"
+checksum = "538895ccf2006b473aafbe8d72770e21038961ab67aae34f3c577485fc703a7d"
 dependencies = [
  "rustfft",
 ]
