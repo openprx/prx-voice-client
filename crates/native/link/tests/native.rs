@@ -114,7 +114,7 @@ fn both_runtimes_load_in_one_process_and_answer() {
 fn transcribe_struct_layouts_match_the_library() {
     use prxvc_transcribe_sys as s;
     use std::mem::{align_of, size_of};
-    let cases: [(&str, i32, usize, usize); 7] = [
+    let cases: [(&str, i32, usize, usize); 10] = [
         (
             "model_load_params",
             s::TRANSCRIBE_ABI_MODEL_LOAD_PARAMS,
