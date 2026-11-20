@@ -54,6 +54,15 @@ struct SlotEntry {
     generation: u64,
 }
 
+/// Audio whose peak stays below this (about -80 dBFS, three steps of 16-bit audio) counts as
+/// silence: it is not decoded and has no text.
+pub(crate) const SILENT_PEAK: f32 = 1e-4;
+
+/// Whether `audio` is digital silence or below the noise floor of any real signal.
+fn is_silent(audio: &[f32]) -> bool {
+    audio.iter().all(|s| s.abs() < SILENT_PEAK)
+}
+
 /// A final or refine decode.
 pub(crate) struct Job {
     pub(crate) audio: Vec<f32>,
@@ -299,6 +308,11 @@ impl Core {
         lang: Lang,
         abort: &AtomicBool,
     ) -> Result<String, AsrError> {
+        // The model writes words for digital silence (a muted or zeroed stream decodes to a
+        // filler such as "嗯。"): silence has no text, and costs no decode.
+        if is_silent(audio) {
+            return Ok(String::new());
+        }
         let stop = || abort.load(Ordering::Acquire) || self.shutdown.load(Ordering::Acquire);
         let started = self.clock.now();
         let out = catch_unwind(AssertUnwindSafe(|| engine.decode(audio, lang, &stop)));

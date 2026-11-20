@@ -355,3 +355,40 @@ fn audio_with_a_non_finite_sample_is_refused() {
         Err(AsrError::Internal(_))
     ));
 }
+
+#[test]
+fn silence_has_no_text_and_costs_no_decode() {
+    let f = fixture(AsrParams::default());
+    let mut stream = open(&f, Lang::Zh);
+    let zeros = vec![0.0f32; 100 * MS];
+    for i in 0..10 {
+        f.clock.advance(Duration::from_millis(100));
+        let partial = stream.feed(&zeros, MonoTime::from_millis(i * 100)).unwrap();
+        assert!(partial.is_none_or(|h| h.text.is_empty()));
+    }
+    let fin = stream.finalize(&CancellationToken::new()).unwrap();
+    assert_eq!(fin.text, "");
+    let refined = f
+        .asr
+        .transcribe(
+            &zeros,
+            SampleRate::HZ_16000,
+            Lang::En,
+            &AsrContext::default(),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+    assert_eq!(refined.text, "");
+    assert_eq!(f.engine.started(), f.base, "the engine was never asked");
+}
+
+#[test]
+fn quiet_speech_is_still_decoded() {
+    let f = fixture(AsrParams::default());
+    let mut stream = open(&f, Lang::Zh);
+    let quiet: Vec<f32> = audio(200).into_iter().map(|s| s * 0.01).collect();
+    stream.feed(&quiet, MonoTime::ZERO).unwrap();
+    let fin = stream.finalize(&CancellationToken::new()).unwrap();
+    assert!(!fin.text.is_empty());
+    assert_eq!(f.engine.started(), f.base + 1);
+}

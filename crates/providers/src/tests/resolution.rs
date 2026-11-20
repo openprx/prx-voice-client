@@ -88,9 +88,7 @@ fn without_the_native_features_the_native_roles_are_typed_not_built_in_problems(
     ))
     .with_system_language(Some(Lang::Zh))
     .with_tts_loader(std::sync::Arc::new(crate::tts_loader::BuiltInTts));
-    let Err(problems) = registry.resolve_call() else {
-        panic!("the recognition adapters are not built in");
-    };
+    let problems = registry.resolve_call().err().unwrap_or_default();
     let not_built_in: Vec<_> = problems
         .iter()
         .filter_map(|p| match &p.kind {
@@ -100,22 +98,21 @@ fn without_the_native_features_the_native_roles_are_typed_not_built_in_problems(
             _ => None,
         })
         .collect();
-    assert!(not_built_in.contains(&(RoleKey::Vad, "silero-vad-6.2", "transcribe.cpp")));
-    assert!(not_built_in.contains(&(
-        RoleKey::Asr(Lang::Zh),
-        "qwen3-asr-0.6b-q8",
-        "transcribe.cpp"
-    )));
-    assert!(not_built_in.contains(&(
-        RoleKey::Asr(Lang::En),
-        "qwen3-asr-0.6b-q8",
-        "transcribe.cpp"
-    )));
-    assert!(not_built_in.contains(&(
-        RoleKey::AsrRefine(Lang::Zh),
-        "qwen3-asr-1.7b-q8",
-        "transcribe.cpp"
-    )));
+    // The recognition runtime is a problem exactly when the feature is off, for every role that
+    // uses it, under the catalogue's runtime name.
+    let recognition = [
+        (RoleKey::Vad, "silero-vad-6.2"),
+        (RoleKey::Asr(Lang::Zh), "qwen3-asr-0.6b-q8"),
+        (RoleKey::Asr(Lang::En), "qwen3-asr-0.6b-q8"),
+        (RoleKey::AsrRefine(Lang::Zh), "qwen3-asr-1.7b-q8"),
+    ];
+    for (role, id) in recognition {
+        assert_eq!(
+            not_built_in.contains(&(role, id, "transcribe.cpp")),
+            !cfg!(feature = "transcribe"),
+            "{role:?} {id}"
+        );
+    }
     assert_eq!(
         not_built_in.contains(&(RoleKey::Tts(Lang::En), TTS, "qwentts.cpp")),
         !cfg!(feature = "qwentts"),

@@ -13,6 +13,10 @@ default = []
 # default and additive (CS-7.5); without it a configured local TTS model is the typed problem
 # `RuntimeNotBuiltIn`.
 qwentts = ["prxvc-adapters/qwentts"]
+# The in-process recognition runtime (`transcribe.cpp`): Silero VAD and Qwen3-ASR. Off by default and
+# additive (CS-7.5); without it a configured local recognition or VAD model is the typed problem
+# `RuntimeNotBuiltIn`.
+transcribe = ["prxvc-adapters/transcribe"]
 
 [dependencies]
 prxvc-adapters = { workspace = true }

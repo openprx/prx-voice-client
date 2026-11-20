@@ -690,3 +690,26 @@ fn a_fallback_equal_to_the_primary_is_refused() {
     );
     assert!(r.fallback.is_none());
 }
+
+#[test]
+fn a_recognition_model_without_its_file_is_a_typed_problem_not_a_build_failure() {
+    let rig = Rig::new();
+    rig.models.set_without_files("qwen3-asr-0.6b-q8");
+    rig.models.set_without_files("silero-vad-6.2");
+    let p = only(rig.registry().resolve_asr(Lang::Zh));
+    assert_eq!(
+        p.kind,
+        ProblemKind::ModelFilesIncomplete {
+            model: ModelId::new("qwen3-asr-0.6b-q8"),
+            purpose: "model".into()
+        }
+    );
+    let p = only(rig.registry().resolve_vad());
+    assert_eq!(
+        p.kind,
+        ProblemKind::ModelFilesIncomplete {
+            model: ModelId::new("silero-vad-6.2"),
+            purpose: "vad".into()
+        }
+    );
+}

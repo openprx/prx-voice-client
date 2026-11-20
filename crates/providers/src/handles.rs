@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use prxvc_adapters::mt::OpenAiChatMt;
 use prxvc_adapters::tts::qwentts::QwenTts;
-use prxvc_media::{Lang, SampleRate};
+use prxvc_media::{Lang, MonoTime, SampleRate};
 use prxvc_ports::{
     AsrContext, AsrError, AsrHypothesis, AsrStream, CancellationToken, MtError, MtRequest,
     MtStream, PreparedVoice, ProviderDescriptor, RefineAsr, SpeechSynth, StreamingAsr, Translator,
@@ -120,14 +120,52 @@ impl VadProvider for SharedVad {
     }
 
     fn open(&self) -> Result<Box<dyn VadEngine>, VadError> {
-        let opened = self.lease.engine().open();
-        if matches!(
-            opened,
-            Err(VadError::Unavailable { .. } | VadError::Internal(_))
-        ) {
+        match self.lease.engine().open() {
+            Ok(inner) => Ok(Box::new(SharedVadEngine {
+                inner,
+                lease: self.lease.clone(),
+            })),
+            Err(e) => {
+                if vad_engine_failure(&e) {
+                    self.lease.report_failure();
+                }
+                Err(e)
+            }
+        }
+    }
+}
+
+fn vad_engine_failure(e: &VadError) -> bool {
+    matches!(e, VadError::Unavailable { .. } | VadError::Internal(_))
+}
+
+/// An open VAD session. It keeps the engine alive for as long as it is used.
+struct SharedVadEngine {
+    inner: Box<dyn VadEngine>,
+    lease: Lease<Arc<dyn VadProvider>>,
+}
+
+impl VadEngine for SharedVadEngine {
+    fn frame_len(&self) -> usize {
+        self.inner.frame_len()
+    }
+
+    fn rate(&self) -> SampleRate {
+        self.inner.rate()
+    }
+
+    fn probability(&mut self, frame: &[f32]) -> Result<f32, VadError> {
+        let result = self.inner.probability(frame);
+        if let Err(e) = &result
+            && vad_engine_failure(e)
+        {
             self.lease.report_failure();
         }
-        opened
+        result
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset();
     }
 }
 
@@ -146,13 +184,52 @@ impl StreamingAsr for SharedAsr {
     }
 
     fn open(&self, lang: Lang, ctx: AsrContext) -> Result<Box<dyn AsrStream>, AsrError> {
-        let opened = self.lease.engine().open(lang, ctx);
-        if let Err(e) = &opened
+        match self.lease.engine().open(lang, ctx) {
+            Ok(inner) => Ok(Box::new(SharedAsrStream {
+                inner,
+                lease: self.lease.clone(),
+            })),
+            Err(e) => {
+                if asr_engine_failure(&e) {
+                    self.lease.report_failure();
+                }
+                Err(e)
+            }
+        }
+    }
+}
+
+/// An open recognition stream. It keeps the engine alive while the direction uses it, and an
+/// engine-level failure of any call retires the engine.
+struct SharedAsrStream {
+    inner: Box<dyn AsrStream>,
+    lease: Lease<Arc<dyn StreamingAsr>>,
+}
+
+impl SharedAsrStream {
+    fn watch<T>(&self, result: Result<T, AsrError>) -> Result<T, AsrError> {
+        if let Err(e) = &result
             && asr_engine_failure(e)
         {
             self.lease.report_failure();
         }
-        opened
+        result
+    }
+}
+
+impl AsrStream for SharedAsrStream {
+    fn feed(&mut self, audio: &[f32], ts: MonoTime) -> Result<Option<AsrHypothesis>, AsrError> {
+        let result = self.inner.feed(audio, ts);
+        self.watch(result)
+    }
+
+    fn finalize(&mut self, cancel: &CancellationToken) -> Result<AsrHypothesis, AsrError> {
+        let result = self.inner.finalize(cancel);
+        self.watch(result)
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset();
     }
 }
 

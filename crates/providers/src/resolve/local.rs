@@ -10,6 +10,7 @@ use super::{Resolver, languages_cover};
 use crate::fingerprint::model_fingerprint;
 use crate::keys::CallRole;
 use crate::problem::ProblemKind;
+use crate::recognition::{ASR_FILE_PURPOSE, VAD_FILE_PURPOSE};
 use crate::runtime::Runtime;
 use crate::spec::{LocalModelSpec, TtsFiles, TtsSpec};
 
@@ -171,7 +172,22 @@ impl Resolver<'_> {
         lang: Option<Lang>,
     ) -> Result<LocalModelSpec, Vec<ProblemKind>> {
         let entry = self.model_entry(id, role).map_err(|p| vec![p])?;
-        let (problems, runtime, ready) = self.check_local(entry, role, lang);
+        let (mut problems, runtime, ready) = self.check_local(entry, role, lang);
+        if runtime == Runtime::Transcribe
+            && let Some(model) = &ready
+        {
+            let purpose = if role == CallRole::Vad {
+                VAD_FILE_PURPOSE
+            } else {
+                ASR_FILE_PURPOSE
+            };
+            if model.file(purpose).is_none() {
+                problems.push(ProblemKind::ModelFilesIncomplete {
+                    model: entry.id.clone(),
+                    purpose: purpose.to_owned(),
+                });
+            }
+        }
         match ready {
             Some(model) if problems.is_empty() => Ok(LocalModelSpec {
                 id: ProviderId::new(id),

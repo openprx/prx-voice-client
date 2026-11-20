@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use prxvc_adapters::asr::AsrParams;
 use prxvc_adapters::mt::{OpenAiChatConfig, OpenAiChatMt};
 use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_config::{AppConfig, NetworkPolicy};
@@ -25,7 +26,7 @@ use crate::keys::CallLanguages;
 use crate::model_source::ModelSource;
 use crate::plan::CallPlan;
 use crate::problem::{BuildError, Problem};
-use crate::recognition::{BuiltInRecognition, RecognitionLoader};
+use crate::recognition::{BuiltInRecognition, RecognitionLoader, asr_params};
 use crate::resolve::{Resolver, VoiceChoice, VoiceDirs};
 use crate::runtime::BuiltRuntimes;
 use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec, VoicePlan};
@@ -143,7 +144,7 @@ impl ProviderRegistry {
         self
     }
 
-    /// Replace the recognition loader: this is where the CT-11 adapters plug in.
+    /// Replace the recognition loader (the composition root, or a test).
     #[must_use]
     pub fn with_recognition_loader(mut self, loader: Arc<dyn RecognitionLoader>) -> Self {
         self.recognition = loader;
@@ -239,7 +240,8 @@ impl ProviderRegistry {
 
     // ---- construction ----------------------------------------------------------------------
 
-    /// Build the voice activity detector of `spec`.
+    /// Build the voice activity detector of `spec`. The engine is shared by the directions; each
+    /// opens its own session from the handle.
     pub fn build_vad(&self, spec: &LocalModelSpec) -> Result<Box<dyn VadProvider>, BuildError> {
         let lease = self
             .vad
@@ -248,13 +250,21 @@ impl ProviderRegistry {
         Ok(Box::new(SharedVad { lease }))
     }
 
-    /// Build the streaming recogniser of `spec`.
+    /// The recogniser parameters of the current configuration.
+    fn asr_params(&self) -> AsrParams {
+        asr_params(&self.state.read().cfg.pipeline)
+    }
+
+    /// Build the streaming recogniser of `spec`: one engine per model and parameter set, loaded and
+    /// warmed up by the first build, a handle per direction. The model must produce partial results
+    /// while audio arrives.
     pub fn build_asr(&self, spec: &LocalModelSpec) -> Result<Box<dyn StreamingAsr>, BuildError> {
-        let lease = self
-            .asr
-            .acquire(spec.id.as_str().to_owned(), || self.recognition.asr(spec))?;
+        let params = self.asr_params();
+        let lease = self.asr.acquire(recognition_key(spec, &params), || {
+            self.recognition.asr(spec, &params)
+        })?;
         let descriptor = lease.engine().descriptor();
-        descriptor.require_live()?;
+        descriptor.require_partials()?;
         if let Some(lang) = spec.lang {
             descriptor.require_lang(lang)?;
         }
@@ -266,8 +276,9 @@ impl ProviderRegistry {
         &self,
         spec: &LocalModelSpec,
     ) -> Result<Box<dyn RefineAsr>, BuildError> {
-        let lease = self.refine.acquire(spec.id.as_str().to_owned(), || {
-            self.recognition.refine(spec)
+        let params = self.asr_params();
+        let lease = self.refine.acquire(recognition_key(spec, &params), || {
+            self.recognition.refine(spec, &params)
         })?;
         let descriptor = lease.engine().descriptor();
         descriptor.require_live()?;
@@ -362,6 +373,12 @@ impl ProviderRegistry {
             vad: self.vad.live(),
         }
     }
+}
+
+/// The key of a recognition engine: the model and the parameters it was started with, so that a
+/// changed setting builds a new engine for the next call instead of reusing a live one.
+fn recognition_key(spec: &LocalModelSpec, params: &AsrParams) -> String {
+    format!("{}|{:?}", spec.id, params)
 }
 
 fn mt_key(spec: &MtSpec) -> String {

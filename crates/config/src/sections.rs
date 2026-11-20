@@ -372,6 +372,15 @@ pub struct PipelineConfig {
     pub jitter_buffer_ms: u32,
     /// Unplayed audio per direction above which the oldest clause is skipped, in milliseconds.
     pub max_backlog_ms: u32,
+    /// Time between two partial recognition passes of one segment, in milliseconds (the
+    /// recogniser re-decodes the growing audio of the open segment at this cadence).
+    pub asr_redecode_interval_ms: u32,
+    /// Audio a segment needs before its first partial recognition pass, in milliseconds.
+    pub asr_first_decode_after_ms: u32,
+    /// Consecutive partial results that must agree before text is declared stable (at least 2).
+    pub asr_stable_agreement: u32,
+    /// Words or characters at the end of a growing partial result that are never declared stable.
+    pub asr_stable_tail_guard: u32,
 }
 
 impl Default for PipelineConfig {
@@ -394,6 +403,10 @@ impl Default for PipelineConfig {
             mt_context_clauses: 2,
             jitter_buffer_ms: 150,
             max_backlog_ms: 6_000,
+            asr_redecode_interval_ms: 400,
+            asr_first_decode_after_ms: 480,
+            asr_stable_agreement: 4,
+            asr_stable_tail_guard: 6,
         }
     }
 }

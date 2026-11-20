@@ -66,6 +66,23 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert!(!p.split_target_clauses && !p.speculative_mt);
     assert_eq!(p.mt_context_clauses, 2);
     assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 6_000));
+    // The recogniser's cadence and stability keys default to the adapter's own values.
+    assert_eq!(
+        (p.asr_redecode_interval_ms, p.asr_first_decode_after_ms),
+        (400, 480)
+    );
+    assert_eq!((p.asr_stable_agreement, p.asr_stable_tail_guard), (4, 6));
+}
+
+#[test]
+fn a_file_without_the_recogniser_keys_gets_their_defaults_and_keeps_its_own_values() {
+    let c: AppConfig =
+        toml::from_str("[pipeline]\nmax_segment_s = 20\nasr_redecode_interval_ms = 500\n").unwrap();
+    assert_eq!(c.pipeline.max_segment_s, 20);
+    assert_eq!(c.pipeline.asr_redecode_interval_ms, 500);
+    assert_eq!(c.pipeline.asr_first_decode_after_ms, 480);
+    assert_eq!(c.pipeline.asr_stable_agreement, 4);
+    assert_eq!(c.pipeline.asr_stable_tail_guard, 6);
 }
 
 #[test]

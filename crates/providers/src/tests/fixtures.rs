@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
+use prxvc_adapters::asr::AsrParams;
 use prxvc_adapters::tts::qwentts::{
     CallControl, CallEnd, EngineError, QwenTts, QwenTtsConfig, SynthCall, SynthEngine,
 };
@@ -138,9 +139,15 @@ pub struct FakeModels {
     root: PathBuf,
     catalogue: Arc<Catalogue>,
     overrides: Mutex<HashMap<String, NotReady>>,
+    without_files: Mutex<Vec<String>>,
 }
 
 impl FakeModels {
+    /// The model is reported ready but its manager lists no files for it.
+    pub fn set_without_files(&self, id: &str) {
+        self.without_files.lock().push(id.to_owned());
+    }
+
     pub fn set(&self, id: &str, state: NotReady) {
         self.overrides.lock().insert(id.to_owned(), state);
     }
@@ -161,6 +168,7 @@ impl crate::model_source::ModelSource for FakeModels {
             files: entry
                 .files
                 .iter()
+                .filter(|_| !self.without_files.lock().iter().any(|i| i == id.as_str()))
                 .map(|f| ReadyFile {
                     purpose: f.purpose.clone(),
                     path: self.root.join(id.as_str()).join(&f.name),
@@ -267,6 +275,10 @@ pub struct FakeRecognition {
     pub vad_loads: AtomicUsize,
     pub asr_loads: AtomicUsize,
     pub refine_loads: AtomicUsize,
+    /// The parameters of the most recent `asr` load.
+    pub last_params: Mutex<Option<AsrParams>>,
+    /// When set, the streams of the first engine fail their `feed` with an engine error.
+    pub fail_first_asr: AtomicBool,
 }
 
 impl RecognitionLoader for FakeRecognition {
@@ -281,15 +293,30 @@ impl RecognitionLoader for FakeRecognition {
         ]))))
     }
 
-    fn asr(&self, _spec: &LocalModelSpec) -> Result<Arc<dyn StreamingAsr>, BuildError> {
-        self.asr_loads.fetch_add(1, Ordering::SeqCst);
-        Ok(Arc::new(FakeStreamingAsr::new(
-            ManualClock::new(),
-            AsrScript::new([], ""),
-        )))
+    fn asr(
+        &self,
+        _spec: &LocalModelSpec,
+        _params: &AsrParams,
+    ) -> Result<Arc<dyn StreamingAsr>, BuildError> {
+        let n = self.asr_loads.fetch_add(1, Ordering::SeqCst);
+        *self.last_params.lock() = Some(_params.clone());
+        let mut script = AsrScript::new(["hello"], "hello");
+        if n == 0 && self.fail_first_asr.load(Ordering::SeqCst) {
+            script = script.failing_feed_at(
+                0,
+                prxvc_ports::AsrError::Unavailable {
+                    reason: "the engine stopped".into(),
+                },
+            );
+        }
+        Ok(Arc::new(FakeStreamingAsr::new(ManualClock::new(), script)))
     }
 
-    fn refine(&self, _spec: &LocalModelSpec) -> Result<Arc<dyn RefineAsr>, BuildError> {
+    fn refine(
+        &self,
+        _spec: &LocalModelSpec,
+        _params: &AsrParams,
+    ) -> Result<Arc<dyn RefineAsr>, BuildError> {
         self.refine_loads.fetch_add(1, Ordering::SeqCst);
         Ok(Arc::new(FakeRefineAsr::new(
             ManualClock::new(),
@@ -330,6 +357,7 @@ impl Rig {
             root: dir.path().join("models"),
             catalogue: Arc::clone(&catalogue),
             overrides: Mutex::new(HashMap::new()),
+            without_files: Mutex::new(Vec::new()),
         });
         let mut cfg = AppConfig::default();
         cfg.voice.self_profile_id = OWNER.to_owned();
