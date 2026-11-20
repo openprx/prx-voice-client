@@ -632,8 +632,8 @@ fn start_audio_loop(
         let session_id = session.id.0;
 
         // Model paths — look in standard locations.
-        let models_dir = directories::ProjectDirs::from("com", "prx", "voice-client")
-            .map(|d| d.data_dir().join("models"))
+        let models_dir = app_paths()
+            .map(|p| p.models_dir.clone())
             .unwrap_or_else(|| std::path::PathBuf::from("models"));
 
         let model_path = models_dir.join("ggml-small.bin");
@@ -752,8 +752,7 @@ fn handle_engine_event(event: &prxvc_protocol::Event, shared: &SharedAppState) {
 /// be resolved or the database cannot be opened, so the app can continue
 /// without persistence.
 fn initialize_storage() -> Option<prxvc_storage::StorageManager> {
-    let dirs = directories::ProjectDirs::from("com", "prx", "prx-voice-client")?;
-    let db_path = dirs.data_dir().join("sessions.db");
+    let db_path = app_paths()?.data_dir.join("sessions.db");
     if let Some(parent) = db_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -769,14 +768,68 @@ fn initialize_storage() -> Option<prxvc_storage::StorageManager> {
     }
 }
 
-/// Load [`AppConfig`] from the platform-specific config directory.
-///
-/// Falls back to defaults if the directory or file cannot be accessed.
-fn initialize_config() -> prxvc_config::AppConfig {
-    match prxvc_config::AppConfigManager::with_default_dir("prx-voice-client") {
-        Ok(mgr) => mgr.load().unwrap_or_default(),
-        Err(_) => prxvc_config::AppConfig::default(),
+/// Directories resolved once at start-up by [`initialize_config`].
+static APP_PATHS: std::sync::OnceLock<prxvc_config::paths::AppPaths> = std::sync::OnceLock::new();
+
+/// The resolved application directories (`None` before [`initialize_config`]
+/// ran or when the platform has no home directory).
+fn app_paths() -> Option<&'static prxvc_config::paths::AppPaths> {
+    APP_PATHS.get()
+}
+
+/// Log what a legacy directory migration did.
+fn log_migration(what: &str, report: &prxvc_config::legacy::MigrationReport) {
+    if report.is_noop() {
+        return;
     }
+    tracing::info!(
+        "{what}: copied {}, moved {}, removed {} empty folder(s)",
+        report.copied.len(),
+        report.moved.len(),
+        report.removed_dirs.len()
+    );
+    for (path, reason) in &report.failures {
+        tracing::warn!("{what}: could not migrate {}: {reason}", path.display());
+    }
+}
+
+/// Migrate the legacy directories, load [`AppConfig`] and resolve the
+/// application directories.
+///
+/// A settings file that cannot be read is kept under another name and
+/// defaults are used (the user-facing notice is a later work package; for
+/// now it is logged). Falls back to defaults if the directory cannot be
+/// resolved.
+fn initialize_config() -> prxvc_config::AppConfig {
+    use prxvc_config::{legacy, paths::AppPaths};
+    let legacy_dirs = legacy::LegacyDirs::resolve().ok();
+    let default_paths = AppPaths::resolve(&prxvc_config::AppConfig::default()).ok();
+    if let (Some(l), Some(p)) = (&legacy_dirs, &default_paths) {
+        log_migration(
+            "config and database migration",
+            &legacy::migrate_legacy_config_and_database(&l.config_dir, &l.data_dir, &p.config_dir, &p.data_dir),
+        );
+    }
+    let config = match prxvc_config::AppConfigManager::with_default_dir() {
+        Ok(mgr) => mgr.load().unwrap_or_else(|e| {
+            tracing::error!("Failed to load config: {e}");
+            prxvc_config::AppConfig::default()
+        }),
+        Err(_) => prxvc_config::AppConfig::default(),
+    };
+    if let Ok(paths) = AppPaths::resolve(&config) {
+        if let Err(e) = paths.ensure_dirs() {
+            tracing::warn!("Failed to create application directories: {e}");
+        }
+        if let Some(l) = &legacy_dirs {
+            log_migration(
+                "model files migration",
+                &legacy::migrate_legacy_models(&l.models_dir, &paths.models_dir),
+            );
+        }
+        let _ = APP_PATHS.set(paths);
+    }
+    config
 }
 
 /// Persist UI settings to config.toml (debounced: only writes when a persisted
@@ -794,7 +847,7 @@ fn save_settings_to_config(
         return;
     }
     settings::apply_ui_settings(config, ui);
-    if let Ok(mgr) = prxvc_config::AppConfigManager::with_default_dir("prx-voice-client") {
+    if let Ok(mgr) = prxvc_config::AppConfigManager::with_default_dir() {
         if let Err(e) = mgr.save(config) {
             tracing::warn!("Failed to save config: {}", e);
         } else {
