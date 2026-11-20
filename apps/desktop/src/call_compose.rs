@@ -52,7 +52,11 @@ fn passthrough(setting: &str, key: &str) -> Passthrough {
         "original" => Passthrough::Original,
         "silence" => Passthrough::Silence,
         other => {
-            tracing::warn!(key, value = other, "unknown passthrough setting; using \"original\"");
+            tracing::warn!(
+                key,
+                value = other,
+                "unknown passthrough setting; using \"original\""
+            );
             Passthrough::Original
         }
     }
@@ -64,7 +68,10 @@ fn local_output_mode(setting: &str) -> LocalOutputMode {
         "both" => LocalOutputMode::Both,
         "original" => LocalOutputMode::Original,
         other => {
-            tracing::warn!(value = other, "unknown call.local_output_mode; using \"translation\"");
+            tracing::warn!(
+                value = other,
+                "unknown call.local_output_mode; using \"translation\""
+            );
             LocalOutputMode::Translation
         }
     }
@@ -109,7 +116,10 @@ impl CallControl {
     /// Run a `Call*` command from the UI; returns whether `cmd` was one.
     pub(crate) fn handle_command(&self, cmd: &str) -> bool {
         let typed = match cmd {
-            command::START => CallCommand::Start { target_app: None, translate: false },
+            command::START => CallCommand::Start {
+                target_app: None,
+                translate: false,
+            },
             command::STOP => CallCommand::Stop,
             command::PAUSE => CallCommand::Pause(DirSet::BOTH),
             command::RESUME => CallCommand::Resume,
@@ -156,7 +166,9 @@ impl CallControl {
         if let Some(mut handle) = handle
             && handle.shutdown(EXIT_TIMEOUT).is_err()
         {
-            tracing::error!("call mode did not stop in time; the routing journal stays for the next start");
+            tracing::error!(
+                "call mode did not stop in time; the routing journal stays for the next start"
+            );
         }
     }
 }
@@ -241,7 +253,10 @@ mod tests {
         assert_eq!(s.outgoing.on_failure, Passthrough::Original);
         assert_eq!(s.incoming.on_failure, Passthrough::Silence);
         assert_eq!(s.local_output_mode, LocalOutputMode::Original);
-        assert_eq!(s.default_target, Some(BundleId::new("org.telegram.desktop")));
+        assert_eq!(
+            s.default_target,
+            Some(BundleId::new("org.telegram.desktop"))
+        );
     }
 
     #[test]
@@ -255,7 +270,10 @@ mod tests {
         let shared = SharedAppState::new();
         let control = CallControl::start(&shared, &prxvc_config::AppConfig::default());
         assert!(control.claim_assistant().is_ok());
-        assert!(control.claim_assistant().is_ok(), "claiming again while holding it is harmless");
+        assert!(
+            control.claim_assistant().is_ok(),
+            "claiming again while holding it is harmless"
+        );
         // Call mode is refused while the assistant holds the microphone.
         assert_eq!(control.0.ownership.holder(), Some(MicOwner::Assistant));
         assert!(control.0.ownership.claim(MicOwner::Call).is_err());

@@ -23,7 +23,10 @@ fn translating_listeners_hear_the_translation() {
     rig.start_translating();
     let s = rig.last();
     assert_eq!(s.state, CallState::Translating);
-    assert_eq!(s.direction(Direction::Outgoing).state, DirectionState::Running);
+    assert_eq!(
+        s.direction(Direction::Outgoing).state,
+        DirectionState::Running
+    );
     assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Translation);
     assert_eq!(rig.hears(Direction::Incoming), OutputSource::Translation);
     assert!(rig.log().contains(&"outgoing.hears:Translation".to_owned()));
@@ -33,11 +36,16 @@ fn translating_listeners_hear_the_translation() {
 fn pause_plays_the_original_by_default_and_resume_brings_the_translation_back() {
     let mut rig = Rig::new();
     rig.start_translating();
-    rig.coord.handle(CallCommand::Pause(DirSet::one(Direction::Outgoing)));
+    rig.coord
+        .handle(CallCommand::Pause(DirSet::one(Direction::Outgoing)));
     let s = rig.last();
     assert!(matches!(s.state, CallState::Paused { .. }));
     assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Original);
-    assert_eq!(rig.hears(Direction::Incoming), OutputSource::Translation, "the other direction is untouched");
+    assert_eq!(
+        rig.hears(Direction::Incoming),
+        OutputSource::Translation,
+        "the other direction is untouched"
+    );
     let change = s.last_output_change.expect("announced");
     assert_eq!(
         (change.direction, change.from, change.to, change.cause),
@@ -48,7 +56,10 @@ fn pause_plays_the_original_by_default_and_resume_brings_the_translation_back() 
             OutputCause::Paused
         )
     );
-    assert!(rig.log().contains(&"outgoing.hears:Original".to_owned()), "the path crossfades");
+    assert!(
+        rig.log().contains(&"outgoing.hears:Original".to_owned()),
+        "the path crossfades"
+    );
 
     rig.coord.handle(CallCommand::Resume);
     assert_eq!(rig.last().state, CallState::Translating);
@@ -96,8 +107,15 @@ fn a_provider_failure_applies_the_failure_policy_through_the_direction_machines(
     rig.start_translating();
     let s = rig.last();
     assert!(matches!(s.state, CallState::Degraded { .. }));
-    assert!(matches!(s.direction(Direction::Outgoing).state, DirectionState::Failed { .. }));
-    assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Original, "the default policy is the original");
+    assert!(matches!(
+        s.direction(Direction::Outgoing).state,
+        DirectionState::Failed { .. }
+    ));
+    assert_eq!(
+        rig.hears(Direction::Outgoing),
+        OutputSource::Original,
+        "the default policy is the original"
+    );
     assert!(rig.has_issue(CallErrorCode::TranslationUnavailable));
 }
 

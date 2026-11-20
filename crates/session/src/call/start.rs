@@ -69,9 +69,11 @@ impl Coordinator {
                 "call mode needs the application bundle: the tap would deliver silence outside it",
             ));
         }
-        let target = target.filter(|t| !t.as_str().trim().is_empty()).ok_or_else(|| {
-            HostFault::new(CallErrorCode::NoCallApp, "no call application is selected")
-        })?;
+        let target = target
+            .filter(|t| !t.as_str().trim().is_empty())
+            .ok_or_else(|| {
+                HostFault::new(CallErrorCode::NoCallApp, "no call application is selected")
+            })?;
         self.host.ensure_microphone_consent()?;
         self.host.ensure_capture_consent()?;
         self.host.check_driver(&target)?;

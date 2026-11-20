@@ -112,7 +112,9 @@ pub fn ensure_microphone_consent(timeout: Duration) -> Result<(), MicConsentErro
         1 => Ok(()),
         0 => Err(MicConsentError::Denied),
         -2 => Err(MicConsentError::NotInAppBundle),
-        _ => Err(MicConsentError::NoAnswer { secs: timeout.as_secs() }),
+        _ => Err(MicConsentError::NoAnswer {
+            secs: timeout.as_secs(),
+        }),
     }
 }
 
@@ -125,8 +127,14 @@ mod tests {
     fn the_plan_covers_every_status_and_bundle_fact() {
         assert_eq!(plan_request(Granted, false), RequestPlan::AlreadyGranted);
         assert_eq!(plan_request(Granted, true), RequestPlan::AlreadyGranted);
-        assert_eq!(plan_request(Denied, true), RequestPlan::Fail(MicConsentError::Denied));
-        assert_eq!(plan_request(Denied, false), RequestPlan::Fail(MicConsentError::Denied));
+        assert_eq!(
+            plan_request(Denied, true),
+            RequestPlan::Fail(MicConsentError::Denied)
+        );
+        assert_eq!(
+            plan_request(Denied, false),
+            RequestPlan::Fail(MicConsentError::Denied)
+        );
         assert_eq!(plan_request(Undetermined, true), RequestPlan::Ask);
         assert_eq!(
             plan_request(Undetermined, false),
@@ -136,7 +144,15 @@ mod tests {
 
     #[test]
     fn errors_tell_the_user_what_to_do() {
-        assert!(MicConsentError::Denied.to_string().contains("System Settings"));
-        assert!(MicConsentError::NotInAppBundle.to_string().contains("application bundle"));
+        assert!(
+            MicConsentError::Denied
+                .to_string()
+                .contains("System Settings")
+        );
+        assert!(
+            MicConsentError::NotInAppBundle
+                .to_string()
+                .contains("application bundle")
+        );
     }
 }

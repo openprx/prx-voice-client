@@ -99,14 +99,19 @@ mod tests {
         assert_eq!(m.holder(), Some(MicOwner::Call));
         assert_eq!(
             m.claim(MicOwner::Assistant).unwrap_err(),
-            MicBusy { held_by: MicOwner::Call }
+            MicBusy {
+                held_by: MicOwner::Call
+            }
         );
         assert_eq!(m.claim(MicOwner::Call).unwrap_err().held_by, MicOwner::Call);
         drop(call);
         assert_eq!(m.holder(), None);
         let assistant = m.claim(MicOwner::Assistant).expect("released");
         assert_eq!(assistant.owner(), MicOwner::Assistant);
-        assert_eq!(m.claim(MicOwner::Call).unwrap_err().held_by, MicOwner::Assistant);
+        assert_eq!(
+            m.claim(MicOwner::Call).unwrap_err().held_by,
+            MicOwner::Assistant
+        );
     }
 
     #[test]

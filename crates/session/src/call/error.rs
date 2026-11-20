@@ -263,9 +263,18 @@ mod tests {
 
     #[test]
     fn reduced_operation_is_degraded_and_notes_are_info() {
-        assert_eq!(CallErrorCode::DefaultInputDisplaced.severity(), Severity::Degraded);
-        assert_eq!(CallErrorCode::CaptureNoSignal.severity(), Severity::Degraded);
+        assert_eq!(
+            CallErrorCode::DefaultInputDisplaced.severity(),
+            Severity::Degraded
+        );
+        assert_eq!(
+            CallErrorCode::CaptureNoSignal.severity(),
+            Severity::Degraded
+        );
         assert_eq!(CallErrorCode::MicrophoneChanged.severity(), Severity::Info);
-        assert_eq!(CallErrorCode::VirtualMicrophoneLost.severity(), Severity::Blocking);
+        assert_eq!(
+            CallErrorCode::VirtualMicrophoneLost.severity(),
+            Severity::Blocking
+        );
     }
 }

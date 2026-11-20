@@ -10,7 +10,9 @@
 use std::time::Duration;
 
 use prxvc_audio::call_activity::native::read_app_activity;
-use prxvc_audio::call_pump::{EventQueue, Pump, PumpConfig, PumpRoute, PumpSpec, PumpStage, PumpStats};
+use prxvc_audio::call_pump::{
+    EventQueue, Pump, PumpConfig, PumpRoute, PumpSpec, PumpStage, PumpStats,
+};
 use prxvc_audio::input_supervisor::PlatformInputBackend;
 use prxvc_audio::mix::{MixMode, Mixer, MixerConfig};
 use prxvc_audio::supervised_mic::SupervisedMic;
@@ -58,7 +60,10 @@ impl AudioPath for PumpPath {
 
     fn stop(&mut self) -> Result<(), HostFault> {
         self.pump.stop(STOP_TIMEOUT).map_err(|e| {
-            HostFault::new(CallErrorCode::StopLeak, format!("{} path: {e}", self.pump.name()))
+            HostFault::new(
+                CallErrorCode::StopLeak,
+                format!("{} path: {e}", self.pump.name()),
+            )
         })
     }
 }
@@ -91,8 +96,11 @@ pub(super) struct OutgoingPlan<'a> {
 
 /// Open the virtual microphone sink and the microphone and start the outgoing pump.
 pub(super) fn start_outgoing(plan: &OutgoingPlan<'_>) -> Result<Box<dyn AudioPath>, HostFault> {
-    let sink = VirtualMicSink::open(&VirtualMicOptions::from_config(plan.virtual_mic_device, None))
-        .map_err(|e| virtual_mic_fault(&e))?;
+    let sink = VirtualMicSink::open(&VirtualMicOptions::from_config(
+        plan.virtual_mic_device,
+        None,
+    ))
+    .map_err(|e| virtual_mic_fault(&e))?;
     let events = EventQueue::new();
     let source = SupervisedMic::new(PlatformInputBackend, plan.microphone, events.clone());
     let mixer = Box::new(Mixer::new(MixerConfig {
@@ -140,7 +148,10 @@ pub(super) fn start_incoming(target: &BundleId) -> Result<Box<dyn AudioPath>, Ho
         events,
     })
     .map_err(|e| {
-        HostFault::new(CallErrorCode::EndpointOpenFailed(Endpoint::RemoteInput), e.to_string())
+        HostFault::new(
+            CallErrorCode::EndpointOpenFailed(Endpoint::RemoteInput),
+            e.to_string(),
+        )
     })?;
     Ok(Box::new(PumpPath {
         pump,
@@ -164,7 +175,10 @@ mod tests {
             sink_device: Some("sink".into()),
             frames: 9,
             samples: 90,
-            level: Level { peak: 0.5, rms: 0.25 },
+            level: Level {
+                peak: 0.5,
+                rms: 0.25,
+            },
             last_frame_ts: Some(MonoTime::from_millis(5)),
             source_dropped_samples: 7,
             sink_dropped_samples: 3,

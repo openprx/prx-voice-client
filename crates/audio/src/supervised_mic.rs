@@ -59,11 +59,16 @@ impl<B: InputBackend + Send> SupervisedMic<B> {
     fn relay_changes(&mut self) {
         while let Ok(change) = self.changes.try_recv() {
             match change {
-                AudioLoopEvent::InputOpened { device, reason, previous } => {
+                AudioLoopEvent::InputOpened {
+                    device,
+                    reason,
+                    previous,
+                } => {
                     // Starting is reported by `start` itself; later moves are events.
                     if previous.is_some() || self.started {
-                        self.events
-                            .push(PumpEvent::DeviceChanged { device: device.name.clone() });
+                        self.events.push(PumpEvent::DeviceChanged {
+                            device: device.name.clone(),
+                        });
                     }
                     log_reason(&device, reason);
                     self.device = Some(device);
@@ -85,14 +90,19 @@ impl<B: InputBackend + Send> AudioSource for SupervisedMic<B> {
     fn start(&mut self) -> Result<SourceInfo, EndpointError> {
         self.supervisor
             .start(Instant::now())
-            .map_err(|e| EndpointError::Unavailable { reason: e.to_string() })?;
+            .map_err(|e| EndpointError::Unavailable {
+                reason: e.to_string(),
+            })?;
         self.relay_changes();
         self.started = true;
         let device = self
             .device
             .as_ref()
             .map_or_else(String::new, |d| d.name.clone());
-        Ok(SourceInfo { rate: NOMINAL_RATE, device })
+        Ok(SourceInfo {
+            rate: NOMINAL_RATE,
+            device,
+        })
     }
 
     fn read(&mut self, out: &mut Vec<AudioFrame>, max_wait: Duration) -> Result<(), EndpointError> {

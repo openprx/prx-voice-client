@@ -51,7 +51,10 @@ impl Coordinator {
                 continue;
             };
             let stats = path.stats();
-            let grew = lane.stats.as_ref().is_some_and(|old| stats.frames > old.frames);
+            let grew = lane
+                .stats
+                .as_ref()
+                .is_some_and(|old| stats.frames > old.frames);
             lane.stats = Some(stats);
             let events = path.take_events();
             if grew {
@@ -115,7 +118,10 @@ impl Coordinator {
         recovery.routing_left |= routing_left;
         if matches!(
             self.state,
-            CallState::AudioReady { .. } | CallState::Translating | CallState::Paused { .. } | CallState::Degraded { .. }
+            CallState::AudioReady { .. }
+                | CallState::Translating
+                | CallState::Paused { .. }
+                | CallState::Degraded { .. }
         ) {
             self.feed(CallEvent::EndpointLost(endpoint));
         }
@@ -152,7 +158,10 @@ impl Coordinator {
                 format!("the call application records from {}", devices.join(", ")),
             ),
             ActivityJudgement::Unavailable => {
-                self.raise(CallErrorCode::ActivityUnavailable, "call detection is not available");
+                self.raise(
+                    CallErrorCode::ActivityUnavailable,
+                    "call detection is not available",
+                );
             }
             _ => {}
         }
@@ -163,7 +172,10 @@ impl Coordinator {
         match notice {
             RoutingNotice::DefaultInputDisplaced { to } => {
                 self.routing.default_input_is_ours = false;
-                self.raise(CallErrorCode::DefaultInputDisplaced, format!("the default input is now {to}"));
+                self.raise(
+                    CallErrorCode::DefaultInputDisplaced,
+                    format!("the default input is now {to}"),
+                );
                 self.routing.displaced_to = Some(to);
             }
             RoutingNotice::OwnMicrophoneReselected => {
@@ -175,7 +187,9 @@ impl Coordinator {
             RoutingNotice::VirtualMicrophoneLost => self.on_virtual_microphone_lost(),
             RoutingNotice::DefaultOutputChanged { to } => self.routing.default_output = Some(to),
             RoutingNotice::SystemSleeping => self.on_sleep(),
-            RoutingNotice::SystemWoke { default_input_intact } => {
+            RoutingNotice::SystemWoke {
+                default_input_intact,
+            } => {
                 tracing::info!(default_input_intact, "system woke");
                 self.on_wake();
             }
@@ -184,10 +198,17 @@ impl Coordinator {
 
     /// The virtual microphone is gone: restore the user's microphone now, then try to bring call mode back.
     fn on_virtual_microphone_lost(&mut self) {
-        self.raise(CallErrorCode::VirtualMicrophoneLost, "the virtual microphone disappeared");
+        self.raise(
+            CallErrorCode::VirtualMicrophoneLost,
+            "the virtual microphone disappeared",
+        );
         let was_in_call_mode = self.routing.in_call_mode;
         self.restore_routing();
-        self.lose_path(Direction::Outgoing, Endpoint::RemoteOutput, was_in_call_mode);
+        self.lose_path(
+            Direction::Outgoing,
+            Endpoint::RemoteOutput,
+            was_in_call_mode,
+        );
     }
 
     fn on_sleep(&mut self) {
@@ -205,7 +226,9 @@ impl Coordinator {
             routing_left,
             missing: Endpoint::LocalInput,
         });
-        if !self.feed(CallEvent::SystemWillSleep) && !matches!(self.state, CallState::Recovering { .. }) {
+        if !self.feed(CallEvent::SystemWillSleep)
+            && !matches!(self.state, CallState::Recovering { .. })
+        {
             self.recovery = None;
         }
     }
@@ -258,7 +281,10 @@ impl Coordinator {
         } else if now.saturating_since(recovery.since) >= self.settings.recovery_timeout {
             let missing = recovery.missing;
             self.recovery = None;
-            self.raise(CallErrorCode::RecoveryTimeout, format!("{missing:?} did not come back"));
+            self.raise(
+                CallErrorCode::RecoveryTimeout,
+                format!("{missing:?} did not come back"),
+            );
             self.feed(CallEvent::RecoveryTimeout { missing });
         }
     }

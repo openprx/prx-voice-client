@@ -9,8 +9,8 @@ use prxvc_ports::BundleId;
 
 use crate::call::{
     ActivityJudgement, AudioPath, CallCommand, CallErrorCode, CallHost, CallSettings, CallSnapshot,
-    Coordinator, CoordinatorDeps, EnteredRouting, HostFault, LeftRouting, MicOwnership,
-    PathEvent, PathStats, RoutingNotice,
+    Coordinator, CoordinatorDeps, EnteredRouting, HostFault, LeftRouting, MicOwnership, PathEvent,
+    PathStats, RoutingNotice,
 };
 use crate::fault::ProviderRole;
 use crate::output::OutputSource;
@@ -72,18 +72,18 @@ impl World {
 
     /// Fail the next call of `step` with `code`.
     pub fn fail_once(&self, step: &'static str, code: CallErrorCode) {
-        self.script
-            .lock()
-            .fail
-            .insert(step, HostFault::new(code, format!("{step} failed (scripted)")));
+        self.script.lock().fail.insert(
+            step,
+            HostFault::new(code, format!("{step} failed (scripted)")),
+        );
     }
 
     /// Fail every call of `step` until [`World::heal`].
     pub fn fail_always(&self, step: &'static str, code: CallErrorCode) {
-        self.script
-            .lock()
-            .fail_always
-            .insert(step, HostFault::new(code, format!("{step} failed (scripted)")));
+        self.script.lock().fail_always.insert(
+            step,
+            HostFault::new(code, format!("{step} failed (scripted)")),
+        );
     }
 
     pub fn heal(&self, step: &'static str) {
@@ -105,7 +105,10 @@ impl World {
     pub fn fail_providers(&self, role: ProviderRole) {
         self.script.lock().providers = Some((
             role,
-            HostFault::new(CallErrorCode::TranslationUnavailable, "no providers (scripted)"),
+            HostFault::new(
+                CallErrorCode::TranslationUnavailable,
+                "no providers (scripted)",
+            ),
         ));
     }
 
@@ -115,7 +118,12 @@ impl World {
     }
 
     pub fn push_path_event(&self, name: &'static str, event: PathEvent) {
-        self.paths.lock().events.entry(name).or_default().push(event);
+        self.paths
+            .lock()
+            .events
+            .entry(name)
+            .or_default()
+            .push(event);
     }
 
     pub fn set_path_stats(&self, name: &'static str, stats: PathStats) {
@@ -182,7 +190,10 @@ impl AudioPath for FakePath {
         let mut s = self.world.script.lock();
         if let Some(i) = s.stop_fails.iter().position(|n| *n == self.name) {
             s.stop_fails.remove(i);
-            return Err(HostFault::new(CallErrorCode::StopLeak, "did not end (scripted)"));
+            return Err(HostFault::new(
+                CallErrorCode::StopLeak,
+                "did not end (scripted)",
+            ));
         }
         Ok(())
     }
@@ -218,7 +229,9 @@ impl CallHost for FakeHost {
     }
 
     fn check_microphone(&mut self) -> Result<String, HostFault> {
-        self.world.step("mic_check").map(|()| "Built-in Mic".to_owned())
+        self.world
+            .step("mic_check")
+            .map(|()| "Built-in Mic".to_owned())
     }
 
     fn start_outgoing(&mut self) -> Result<Box<dyn AudioPath>, HostFault> {
@@ -358,7 +371,11 @@ impl Rig {
     }
 
     pub fn last(&self) -> CallSnapshot {
-        self.snapshots.lock().last().cloned().expect("a snapshot was published")
+        self.snapshots
+            .lock()
+            .last()
+            .cloned()
+            .expect("a snapshot was published")
     }
 
     pub fn log(&self) -> Vec<String> {

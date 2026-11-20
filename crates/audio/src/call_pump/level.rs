@@ -118,7 +118,16 @@ mod tests {
     fn shared_level_round_trips() {
         let s = SharedLevel::default();
         assert_eq!(s.load(), Level::default());
-        s.store(Level { peak: 0.25, rms: 0.125 });
-        assert_eq!(s.load(), Level { peak: 0.25, rms: 0.125 });
+        s.store(Level {
+            peak: 0.25,
+            rms: 0.125,
+        });
+        assert_eq!(
+            s.load(),
+            Level {
+                peak: 0.25,
+                rms: 0.125
+            }
+        );
     }
 }

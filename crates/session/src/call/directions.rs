@@ -78,7 +78,13 @@ impl Coordinator {
         if let Some(path) = lane.path.as_mut() {
             path.set_listener_hears(to);
         }
-        tracing::info!(?direction, ?from, ?to, ?cause, "what the listener hears changed");
+        tracing::info!(
+            ?direction,
+            ?from,
+            ?to,
+            ?cause,
+            "what the listener hears changed"
+        );
         self.last_change = Some(OutputChange {
             direction,
             from,
@@ -115,7 +121,9 @@ impl Coordinator {
                 self.feed_dir(d, DirectionEvent::Start);
                 self.feed_dir(d, failed);
             }
-            DirectionState::Starting { .. } | DirectionState::Running | DirectionState::Degraded { .. } => {
+            DirectionState::Starting { .. }
+            | DirectionState::Running
+            | DirectionState::Degraded { .. } => {
                 self.feed_dir(d, failed);
             }
             // Already failed, paused (the pause policy is audible), suspended or stopping.

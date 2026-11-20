@@ -32,7 +32,8 @@ const FRAME: usize = 480; // 10 ms
 fn write_tone_wav(path: &Path, seconds: f32) {
     let samples: Vec<i16> = (0..(RATE as f32 * seconds) as usize)
         .map(|i| {
-            let x = AMPLITUDE * (2.0 * std::f32::consts::PI * TONE_HZ * i as f32 / RATE as f32).sin();
+            let x =
+                AMPLITUDE * (2.0 * std::f32::consts::PI * TONE_HZ * i as f32 / RATE as f32).sin();
             (x * f32::from(i16::MAX)) as i16
         })
         .collect();
@@ -151,14 +152,20 @@ fn dominant_hz(samples: &[f32]) -> f32 {
 fn live_call_audio_loop() {
     let status = DriverStatus::detect();
     println!("driver status: {status:#?}");
-    status.check(None).expect("driver installed, loaded and current");
+    status
+        .check(None)
+        .expect("driver installed, loaded and current");
 
     // The stand-in microphone: a tone in a WAV file, read back from disk.
     let dir = tempfile::tempdir().expect("temp dir");
     let wav = dir.path().join("tone.wav");
     write_tone_wav(&wav, 1.0);
     let samples = read_wav(&wav);
-    println!("source file: {} ({} samples at {RATE} Hz)", wav.display(), samples.len());
+    println!(
+        "source file: {} ({} samples at {RATE} Hz)",
+        wav.display(),
+        samples.len()
+    );
 
     // Capture from the virtual microphone, opened by UID (never the default input).
     let mic = list_input_devices()
@@ -171,7 +178,9 @@ fn live_call_audio_loop() {
     let info = capture.start().expect("start capture");
     println!("capture: {} at {} Hz", info.device, info.rate.hz());
     let mut frames: Vec<AudioFrame> = Vec::new();
-    capture.read(&mut frames, Duration::from_millis(300)).expect("settle read");
+    capture
+        .read(&mut frames, Duration::from_millis(300))
+        .expect("settle read");
     frames.clear();
 
     // The outgoing path: file source, real mixer (original lane), real virtual microphone sink.
@@ -204,9 +213,15 @@ fn live_call_audio_loop() {
     let mut got: Vec<(Instant, MonoTime, Vec<f32>)> = Vec::new();
     while started_at.elapsed() < Duration::from_millis(2_500) {
         frames.clear();
-        capture.read(&mut frames, Duration::from_millis(50)).expect("read");
+        capture
+            .read(&mut frames, Duration::from_millis(50))
+            .expect("read");
         let read_at = Instant::now();
-        got.extend(frames.drain(..).map(|f| (read_at, f.ts(), f.samples().to_vec())));
+        got.extend(
+            frames
+                .drain(..)
+                .map(|f| (read_at, f.ts(), f.samples().to_vec())),
+        );
     }
     let stats = pump.stats();
     pump.stop(Duration::from_secs(2)).expect("the pump stops");
@@ -234,20 +249,37 @@ fn live_call_audio_loop() {
     let first = first_frame_at.lock().expect("the source delivered frames");
     let latency = arrival.expect("arrival").saturating_duration_since(first);
     println!("captured {} samples at {rate} Hz", flat.len());
-    println!("end-to-end latency, file source's first frame to first tone sample out of the microphone: {latency:?}");
+    println!(
+        "end-to-end latency, file source's first frame to first tone sample out of the microphone: {latency:?}"
+    );
     assert!(latency < Duration::from_millis(500), "latency {latency:?}");
 
-    assert!(flat.len() >= start + rate * 3 / 4, "capture shorter than the tone");
+    assert!(
+        flat.len() >= start + rate * 3 / 4,
+        "capture shorter than the tone"
+    );
     let middle = &flat[start + rate / 10..start + rate * 7 / 10];
     let hz = dominant_hz(middle);
     let rms = (middle.iter().map(|s| s * s).sum::<f32>() / middle.len() as f32).sqrt();
     let expected_rms = AMPLITUDE / 2f32.sqrt();
-    println!("dominant frequency: {hz} Hz (expected {TONE_HZ}), RMS {rms:.3} (expected {expected_rms:.3})");
-    assert!((hz - TONE_HZ).abs() <= 2.0, "dominant frequency {hz} Hz, expected {TONE_HZ}");
-    assert!(rms > expected_rms * 0.7 && rms < expected_rms * 1.3, "tone level {rms}");
+    println!(
+        "dominant frequency: {hz} Hz (expected {TONE_HZ}), RMS {rms:.3} (expected {expected_rms:.3})"
+    );
+    assert!(
+        (hz - TONE_HZ).abs() <= 2.0,
+        "dominant frequency {hz} Hz, expected {TONE_HZ}"
+    );
+    assert!(
+        rms > expected_rms * 0.7 && rms < expected_rms * 1.3,
+        "tone level {rms}"
+    );
 
     // The pump saw the same signal and dropped nothing.
     assert_eq!(stats.sink_dropped_samples, 0, "the sink dropped samples");
     assert!(stats.frames >= 90, "frames read: {}", stats.frames);
-    assert!(stats.level.peak > AMPLITUDE * 0.8, "metered peak {}", stats.level.peak);
+    assert!(
+        stats.level.peak > AMPLITUDE * 0.8,
+        "metered peak {}",
+        stats.level.peak
+    );
 }

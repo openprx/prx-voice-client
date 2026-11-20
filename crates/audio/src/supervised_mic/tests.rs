@@ -22,18 +22,30 @@ impl InputBackend for FakeBackend {
         Ok(self.0.lock().devices.clone())
     }
 
-    fn open(&mut self, _id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError> {
+    fn open(
+        &mut self,
+        _id: Uuid,
+        device: &InputDevice,
+    ) -> Result<Box<dyn AudioSource>, AudioError> {
         self.0.lock().opened.push(device.uid.clone());
         Ok(Box::new(MockAudioSource::new(SampleRate::HZ_16000)))
     }
 }
 
 fn dev(uid: &str, name: &str, transport: InputTransport, is_default: bool) -> InputDevice {
-    InputDevice { uid: uid.into(), name: name.into(), transport, is_default }
+    InputDevice {
+        uid: uid.into(),
+        name: name.into(),
+        transport,
+        is_default,
+    }
 }
 
 fn setup(devices: Vec<InputDevice>) -> (SupervisedMic<FakeBackend>, Arc<Mutex<World>>, EventQueue) {
-    let world = Arc::new(Mutex::new(World { devices, opened: Vec::new() }));
+    let world = Arc::new(Mutex::new(World {
+        devices,
+        opened: Vec::new(),
+    }));
     let events = EventQueue::new();
     let mic = SupervisedMic::new(FakeBackend(Arc::clone(&world)), "", events.clone());
     (mic, world, events)
@@ -53,7 +65,10 @@ fn start_reports_the_chosen_device_and_never_opens_our_microphone() {
     let info = mic.start().expect("start");
     assert_eq!(info.device, "Built-in Mic");
     assert_eq!(world.lock().opened, ["builtin"]);
-    assert!(events.drain().is_empty(), "the first choice is not a change");
+    assert!(
+        events.drain().is_empty(),
+        "the first choice is not a change"
+    );
     assert_eq!(mic.device().map(|d| d.uid.as_str()), Some("builtin"));
 }
 
@@ -68,7 +83,10 @@ fn start_with_no_physical_microphone_is_a_typed_unavailable_error() {
 #[test]
 fn read_delivers_frames_and_counts_them() {
     let (mut mic, _world, _events) = setup(vec![builtin(true)]);
-    assert_eq!(mic.read(&mut Vec::new(), Duration::ZERO), Err(EndpointError::NotStarted));
+    assert_eq!(
+        mic.read(&mut Vec::new(), Duration::ZERO),
+        Err(EndpointError::NotStarted)
+    );
     mic.start().unwrap();
     let mut out = Vec::new();
     mic.read(&mut out, Duration::from_millis(50)).unwrap();
@@ -86,9 +104,13 @@ fn losing_the_microphone_is_an_event_not_an_error_and_capture_resumes() {
     // The supervisor re-reads the device list once a second.
     std::thread::sleep(Duration::from_millis(1_100));
     let mut out = Vec::new();
-    mic.read(&mut out, Duration::from_millis(5)).expect("not an error");
+    mic.read(&mut out, Duration::from_millis(5))
+        .expect("not an error");
     assert!(out.is_empty());
-    assert!(matches!(events.drain().as_slice(), [PumpEvent::DeviceUnavailable { .. }]));
+    assert!(matches!(
+        events.drain().as_slice(),
+        [PumpEvent::DeviceUnavailable { .. }]
+    ));
     assert!(mic.device().is_none());
 
     world.lock().devices = vec![own(false), dev("usb", "USB Mic", InputTransport::Usb, true)];
@@ -96,7 +118,9 @@ fn losing_the_microphone_is_an_event_not_an_error_and_capture_resumes() {
     mic.read(&mut out, Duration::from_millis(50)).unwrap();
     assert_eq!(
         events.drain(),
-        [PumpEvent::DeviceChanged { device: "USB Mic".into() }]
+        [PumpEvent::DeviceChanged {
+            device: "USB Mic".into()
+        }]
     );
     assert!(!out.is_empty(), "capture resumed on the new device");
 }

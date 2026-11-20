@@ -35,8 +35,14 @@ fn the_full_start_sequence_runs_in_the_designed_order() {
     assert_eq!(s.devices.virtual_sink.as_deref(), Some("virtual-sink"));
     assert_eq!(s.devices.call_app.as_deref(), Some(super::kit::APP));
     // M1: both listeners hear the original, both paths run.
-    assert_eq!(s.direction(Direction::Outgoing).hears, OutputSource::Original);
-    assert_eq!(s.direction(Direction::Incoming).hears, OutputSource::Original);
+    assert_eq!(
+        s.direction(Direction::Outgoing).hears,
+        OutputSource::Original
+    );
+    assert_eq!(
+        s.direction(Direction::Incoming).hears,
+        OutputSource::Original
+    );
     assert!(s.direction(Direction::Outgoing).path.is_some());
     assert!(s.direction(Direction::Incoming).path.is_some());
 }
@@ -52,7 +58,12 @@ fn the_driver_is_checked_for_the_selected_application() {
 fn a_snapshot_is_published_for_every_transition_including_initializing() {
     let mut rig = Rig::new();
     rig.start();
-    let states: Vec<CallState> = rig.snapshots.lock().iter().map(|s| s.state.clone()).collect();
+    let states: Vec<CallState> = rig
+        .snapshots
+        .lock()
+        .iter()
+        .map(|s| s.state.clone())
+        .collect();
     assert_eq!(
         states,
         [
@@ -65,12 +76,25 @@ fn a_snapshot_is_published_for_every_transition_including_initializing() {
     let revisions: Vec<u64> = rig.snapshots.lock().iter().map(|s| s.revision).collect();
     assert_eq!(revisions, [1, 2], "revisions count the publications");
     rig.stop();
-    let states: Vec<CallState> = rig.snapshots.lock().iter().map(|s| s.state.clone()).collect();
-    assert!(states.ends_with(&[CallState::Stopping, CallState::Idle]), "{states:?}");
+    let states: Vec<CallState> = rig
+        .snapshots
+        .lock()
+        .iter()
+        .map(|s| s.state.clone())
+        .collect();
+    assert!(
+        states.ends_with(&[CallState::Stopping, CallState::Idle]),
+        "{states:?}"
+    );
 }
 
 /// A failure before anything changed: the machine goes straight to Idle, nothing is started.
-fn preflight_failure(setup: impl FnOnce(&mut Rig), code: CallErrorCode, blocker: Blocker, last_step: &str) {
+fn preflight_failure(
+    setup: impl FnOnce(&mut Rig),
+    code: CallErrorCode,
+    blocker: Blocker,
+    last_step: &str,
+) {
     let mut rig = Rig::new();
     setup(&mut rig);
     rig.start();
@@ -82,7 +106,10 @@ fn preflight_failure(setup: impl FnOnce(&mut Rig), code: CallErrorCode, blocker:
     assert_eq!(code.blocker(), blocker);
     let log = rig.log();
     assert_eq!(steps(&log).last().copied(), Some(last_step), "{log:?}");
-    assert!(!log.iter().any(|e| e == "start_outgoing" || e == "enter"), "{log:?}");
+    assert!(
+        !log.iter().any(|e| e == "start_outgoing" || e == "enter"),
+        "{log:?}"
+    );
     assert!(!s.routing.in_call_mode);
     assert_eq!(rig.ownership.holder(), None, "the microphone is released");
 }
@@ -100,17 +127,26 @@ fn not_running_from_the_bundle_blocks_first() {
 #[test]
 fn no_call_application_blocks_before_any_consent_is_asked() {
     let mut rig = Rig::new();
-    rig.coord.handle(CallCommand::Start { target_app: None, translate: false });
+    rig.coord.handle(CallCommand::Start {
+        target_app: None,
+        translate: false,
+    });
     let s = rig.last();
     assert_eq!(s.state, CallState::Idle);
-    assert_eq!(s.last_error.as_ref().map(|i| i.code), Some(CallErrorCode::NoCallApp));
+    assert_eq!(
+        s.last_error.as_ref().map(|i| i.code),
+        Some(CallErrorCode::NoCallApp)
+    );
     assert_eq!(steps(&rig.log()), ["bundle"]);
 }
 
 #[test]
 fn microphone_consent_denied_blocks() {
     preflight_failure(
-        |r| r.world.fail_once("mic_consent", CallErrorCode::MicrophoneConsentDenied),
+        |r| {
+            r.world
+                .fail_once("mic_consent", CallErrorCode::MicrophoneConsentDenied)
+        },
         CallErrorCode::MicrophoneConsentDenied,
         Blocker::PermissionDenied,
         "mic_consent",
@@ -120,7 +156,10 @@ fn microphone_consent_denied_blocks() {
 #[test]
 fn capture_consent_denied_blocks() {
     preflight_failure(
-        |r| r.world.fail_once("capture_consent", CallErrorCode::CaptureConsentDenied),
+        |r| {
+            r.world
+                .fail_once("capture_consent", CallErrorCode::CaptureConsentDenied)
+        },
         CallErrorCode::CaptureConsentDenied,
         Blocker::PermissionDenied,
         "capture_consent",
@@ -140,7 +179,10 @@ fn a_missing_driver_blocks() {
 #[test]
 fn a_wrong_driver_variant_blocks() {
     preflight_failure(
-        |r| r.world.fail_once("driver", CallErrorCode::DriverWrongVariant),
+        |r| {
+            r.world
+                .fail_once("driver", CallErrorCode::DriverWrongVariant)
+        },
         CallErrorCode::DriverWrongVariant,
         Blocker::DriverUnusable,
         "driver",
@@ -160,8 +202,10 @@ fn no_microphone_blocks() {
 #[test]
 fn failing_to_open_the_outgoing_path_leaves_nothing_behind() {
     let mut rig = Rig::new();
-    rig.world
-        .fail_once("start_outgoing", CallErrorCode::EndpointOpenFailed(Endpoint::RemoteOutput));
+    rig.world.fail_once(
+        "start_outgoing",
+        CallErrorCode::EndpointOpenFailed(Endpoint::RemoteOutput),
+    );
     rig.start();
     let s = rig.last();
     assert_eq!(s.state, CallState::Idle);
@@ -170,7 +214,10 @@ fn failing_to_open_the_outgoing_path_leaves_nothing_behind() {
         Some(CallErrorCode::EndpointOpenFailed(Endpoint::RemoteOutput))
     );
     let log = rig.log();
-    assert!(!log.contains(&"enter".to_owned()), "the default input was never touched: {log:?}");
+    assert!(
+        !log.contains(&"enter".to_owned()),
+        "the default input was never touched: {log:?}"
+    );
     assert!(!log.contains(&"leave".to_owned()));
     assert_eq!(rig.ownership.holder(), None);
 }
@@ -178,11 +225,15 @@ fn failing_to_open_the_outgoing_path_leaves_nothing_behind() {
 #[test]
 fn failing_to_switch_the_default_input_closes_the_outgoing_path() {
     let mut rig = Rig::new();
-    rig.world.fail_once("enter", CallErrorCode::RoutingSwitchFailed);
+    rig.world
+        .fail_once("enter", CallErrorCode::RoutingSwitchFailed);
     rig.start();
     let s = rig.last();
     assert_eq!(s.state, CallState::Idle);
-    assert_eq!(s.last_error.as_ref().map(|i| i.code), Some(CallErrorCode::RoutingSwitchFailed));
+    assert_eq!(
+        s.last_error.as_ref().map(|i| i.code),
+        Some(CallErrorCode::RoutingSwitchFailed)
+    );
     let log = rig.log();
     assert!(log.contains(&"outgoing.stop".to_owned()), "{log:?}");
     assert!(!log.contains(&"start_incoming".to_owned()), "{log:?}");
@@ -193,15 +244,25 @@ fn failing_to_switch_the_default_input_closes_the_outgoing_path() {
 #[test]
 fn failing_to_tap_the_application_restores_the_microphone_then_closes_the_feeder() {
     let mut rig = Rig::new();
-    rig.world.fail_once("start_incoming", CallErrorCode::TargetNotRunning);
+    rig.world
+        .fail_once("start_incoming", CallErrorCode::TargetNotRunning);
     rig.start();
     let s = rig.last();
     assert_eq!(s.state, CallState::Idle);
-    assert_eq!(s.last_error.as_ref().map(|i| i.code), Some(CallErrorCode::TargetNotRunning));
+    assert_eq!(
+        s.last_error.as_ref().map(|i| i.code),
+        Some(CallErrorCode::TargetNotRunning)
+    );
     let log = rig.log();
     let leave = log.iter().position(|e| e == "leave").expect("routing left");
-    let stop = log.iter().position(|e| e == "outgoing.stop").expect("feeder closed");
-    assert!(leave < stop, "the default input returns before the feeder stops: {log:?}");
+    let stop = log
+        .iter()
+        .position(|e| e == "outgoing.stop")
+        .expect("feeder closed");
+    assert!(
+        leave < stop,
+        "the default input returns before the feeder stops: {log:?}"
+    );
     assert!(!rig.world.in_call_mode());
     assert!(s.direction(Direction::Outgoing).path.is_none());
 }
@@ -209,14 +270,18 @@ fn failing_to_tap_the_application_restores_the_microphone_then_closes_the_feeder
 #[test]
 fn a_restore_failure_while_unwinding_still_closes_the_endpoints() {
     let mut rig = Rig::new();
-    rig.world.fail_once("start_incoming", CallErrorCode::TargetNotRunning);
+    rig.world
+        .fail_once("start_incoming", CallErrorCode::TargetNotRunning);
     rig.world.fail_once("leave", CallErrorCode::RestoreFailed);
     rig.start();
     let s = rig.last();
     assert_eq!(s.state, CallState::Idle);
     assert!(rig.has_issue(CallErrorCode::RestoreFailed));
     assert!(rig.log().contains(&"outgoing.stop".to_owned()));
-    assert!(s.routing.in_call_mode, "the journal stays: the next start retries the restore");
+    assert!(
+        s.routing.in_call_mode,
+        "the journal stays: the next start retries the restore"
+    );
     // The next start first retries the restore.
     rig.world.clear_log();
     rig.start();
@@ -229,7 +294,8 @@ fn a_restore_failure_while_unwinding_still_closes_the_endpoints() {
 #[test]
 fn a_failing_activity_probe_is_shown_and_does_not_block() {
     let mut rig = Rig::new();
-    rig.world.fail_once("probe", CallErrorCode::ActivityUnavailable);
+    rig.world
+        .fail_once("probe", CallErrorCode::ActivityUnavailable);
     rig.start();
     assert_eq!(rig.last().state, CallState::AudioReady { translate: false });
     assert!(rig.has_issue(CallErrorCode::ActivityUnavailable));

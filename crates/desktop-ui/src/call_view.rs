@@ -211,7 +211,11 @@ mod tests {
 
     #[test]
     fn reapply_is_offered_only_after_a_displacement() {
-        let mut p = CallPanel { in_call_mode: true, default_input_ours: true, ..CallPanel::default() };
+        let mut p = CallPanel {
+            in_call_mode: true,
+            default_input_ours: true,
+            ..CallPanel::default()
+        };
         assert!(!p.can_reapply());
         p.default_input_ours = false;
         assert!(p.can_reapply());

@@ -68,7 +68,10 @@ impl Coordinator {
             CallAction::StopDirections => self.stop_directions(),
             CallAction::ForceClose => self.force_close(),
             CallAction::ReportLeak => {
-                self.raise(CallErrorCode::StopLeak, "something was still running after the stop timeout");
+                self.raise(
+                    CallErrorCode::StopLeak,
+                    "something was still running after the stop timeout",
+                );
             }
         }
     }
@@ -113,7 +116,9 @@ impl Coordinator {
                 self.routing.restored_to = left.restored_to;
                 self.clear(CallErrorCode::DefaultInputDisplaced);
                 if left.previous_gone {
-                    tracing::info!("the previous microphone is gone; the policy's choice was restored");
+                    tracing::info!(
+                        "the previous microphone is gone; the policy's choice was restored"
+                    );
                 }
             }
             Err(fault) => {

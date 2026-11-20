@@ -34,8 +34,8 @@
 mod level;
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -323,7 +323,9 @@ impl Pump {
         shared.running.store(true, Ordering::Release);
         let has_mixer = matches!(route, PumpRoute::Mix { .. });
         if let PumpRoute::Mix { mixer, .. } = &route {
-            shared.mode.store(mode_code(mixer.mode()), Ordering::Relaxed);
+            shared
+                .mode
+                .store(mode_code(mixer.mode()), Ordering::Relaxed);
         }
         let name = config.name.clone();
         let worker = Worker {
@@ -389,7 +391,9 @@ impl Pump {
             lane_underruns: s.lane_underruns.load(Ordering::Relaxed),
             lane_dropped_samples: s.lane_dropped.load(Ordering::Relaxed),
             sink_queued: Duration::from_micros(s.sink_queued_us.load(Ordering::Relaxed)),
-            mode: self.has_mixer.then(|| mode_of(s.mode.load(Ordering::Relaxed))),
+            mode: self
+                .has_mixer
+                .then(|| mode_of(s.mode.load(Ordering::Relaxed))),
         }
     }
 
@@ -484,8 +488,7 @@ impl Worker {
     fn account(&self, frame: &prxvc_media::AudioFrame, meter: &mut LevelMeter) {
         let s = &self.shared;
         s.frames.fetch_add(1, Ordering::Relaxed);
-        s.samples
-            .fetch_add(frame.len() as u64, Ordering::Relaxed);
+        s.samples.fetch_add(frame.len() as u64, Ordering::Relaxed);
         s.last_ts.store(frame.ts().as_nanos(), Ordering::Relaxed);
         if let Some(level) = meter.feed(frame.samples(), frame.rate().hz()) {
             s.level.store(level);

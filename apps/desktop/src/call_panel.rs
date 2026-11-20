@@ -72,7 +72,10 @@ fn heard(source: OutputSource) -> Heard {
 
 fn lane(d: &DirectionSnapshot) -> LaneView {
     let Some(path) = &d.path else {
-        return LaneView { hears: heard(d.hears), ..LaneView::default() };
+        return LaneView {
+            hears: heard(d.hears),
+            ..LaneView::default()
+        };
     };
     LaneView {
         running: path.running,
@@ -106,7 +109,9 @@ pub(crate) fn panel_of(s: &CallSnapshot) -> CallPanel {
         ActivityJudgement::Unavailable => (ActivityView::Unavailable, String::new()),
         ActivityJudgement::NotRunning => (ActivityView::NotRunning, String::new()),
         ActivityJudgement::Idle => (ActivityView::Idle, String::new()),
-        ActivityJudgement::ActiveOnOurMicrophone { .. } => (ActivityView::OnOurMicrophone, String::new()),
+        ActivityJudgement::ActiveOnOurMicrophone { .. } => {
+            (ActivityView::OnOurMicrophone, String::new())
+        }
         ActivityJudgement::ActiveOnOtherMicrophone { devices } => {
             (ActivityView::OnOtherMicrophone, devices.join(", "))
         }
@@ -171,10 +176,15 @@ mod tests {
             routing: RoutingSnapshot {
                 in_call_mode: true,
                 default_input_is_ours: true,
-                call_activity: ActivityJudgement::ActiveOnOtherMicrophone { devices: vec!["A".into(), "B".into()] },
+                call_activity: ActivityJudgement::ActiveOnOtherMicrophone {
+                    devices: vec!["A".into(), "B".into()],
+                },
                 ..RoutingSnapshot::default()
             },
-            devices: DeviceNames { microphone: Some("Built-in Mic".into()), ..DeviceNames::default() },
+            devices: DeviceNames {
+                microphone: Some("Built-in Mic".into()),
+                ..DeviceNames::default()
+            },
             issues: vec![CallIssue {
                 code: CallErrorCode::CaptureNoSignal,
                 severity: Severity::Degraded,
@@ -192,7 +202,15 @@ mod tests {
         assert_eq!(p.phase, CallPhase::AudioReady);
         assert!(p.in_call_mode && p.default_input_ours);
         assert!(p.outgoing.running && !p.incoming.running);
-        assert_eq!((p.outgoing.frames, p.outgoing.overruns, p.outgoing.drops, p.outgoing.underruns), (5, 1, 2, 3));
+        assert_eq!(
+            (
+                p.outgoing.frames,
+                p.outgoing.overruns,
+                p.outgoing.drops,
+                p.outgoing.underruns
+            ),
+            (5, 1, 2, 3)
+        );
         assert_eq!(p.outgoing.device, "Built-in Mic");
         assert_eq!(p.activity, ActivityView::OnOtherMicrophone);
         assert_eq!(p.activity_devices, "A, B");

@@ -3,25 +3,66 @@
 //! Layout is minimal on purpose (the real call UI is a later package); every
 //! string goes through i18n and every button has its label as accessible name.
 
-use crate::call_view::{ActivityView, CallPanel, Heard, IssueSeverity, IssueView, LaneView, command};
+use crate::call_view::{
+    ActivityView, CallPanel, Heard, IssueSeverity, IssueView, LaneView, command,
+};
 use crate::theme::{Tokens, size, space};
 use crate::widgets::{self, ButtonKind, Tone};
 
 /// Draw the control; clicks push command strings into `commands`.
-pub(crate) fn call_section(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, commands: &mut Vec<String>) {
+pub(crate) fn call_section(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    panel: &CallPanel,
+    commands: &mut Vec<String>,
+) {
     widgets::section_header(ui, tk, &prxvc_i18n::t("call.title"), false);
 
     ui.horizontal_wrapped(|ui| {
         let buttons = [
-            (ButtonKind::Primary, "call.start", command::START, panel.can_start()),
-            (ButtonKind::Secondary, "call.stop", command::STOP, panel.can_stop()),
-            (ButtonKind::Secondary, "call.pause", command::PAUSE, panel.can_pause()),
-            (ButtonKind::Secondary, "call.resume", command::RESUME, panel.can_resume()),
-            (ButtonKind::Secondary, "call.reapply", command::REAPPLY_MICROPHONE, panel.can_reapply()),
+            (
+                ButtonKind::Primary,
+                "call.start",
+                command::START,
+                panel.can_start(),
+            ),
+            (
+                ButtonKind::Secondary,
+                "call.stop",
+                command::STOP,
+                panel.can_stop(),
+            ),
+            (
+                ButtonKind::Secondary,
+                "call.pause",
+                command::PAUSE,
+                panel.can_pause(),
+            ),
+            (
+                ButtonKind::Secondary,
+                "call.resume",
+                command::RESUME,
+                panel.can_resume(),
+            ),
+            (
+                ButtonKind::Secondary,
+                "call.reapply",
+                command::REAPPLY_MICROPHONE,
+                panel.can_reapply(),
+            ),
         ];
         for (kind, key, cmd, enabled) in buttons {
             let label = prxvc_i18n::t(key);
-            if widgets::button_with(ui, tk, kind, &label, crate::theme::layout::CONTROL_HEIGHT, enabled).clicked() {
+            if widgets::button_with(
+                ui,
+                tk,
+                kind,
+                &label,
+                crate::theme::layout::CONTROL_HEIGHT,
+                enabled,
+            )
+            .clicked()
+            {
                 commands.push(cmd.to_owned());
             }
         }
@@ -36,20 +77,44 @@ pub(crate) fn call_section(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, co
     row(ui, tk, "call.activity", &activity_text(panel));
 
     ui.add_space(space::S8);
-    lane(ui, tk, "call.path.outgoing", "call.they_hear", &panel.outgoing);
-    lane(ui, tk, "call.path.incoming", "call.you_hear", &panel.incoming);
+    lane(
+        ui,
+        tk,
+        "call.path.outgoing",
+        "call.they_hear",
+        &panel.outgoing,
+    );
+    lane(
+        ui,
+        tk,
+        "call.path.incoming",
+        "call.you_hear",
+        &panel.incoming,
+    );
 
     ui.add_space(space::S8);
-    ui.label(widgets::text(prxvc_i18n::t("call.issues"), size::SECONDARY, tk.text));
+    ui.label(widgets::text(
+        prxvc_i18n::t("call.issues"),
+        size::SECONDARY,
+        tk.text,
+    ));
     if panel.issues.is_empty() {
-        ui.label(widgets::text(prxvc_i18n::t("call.no_issues"), size::META, tk.secondary));
+        ui.label(widgets::text(
+            prxvc_i18n::t("call.no_issues"),
+            size::META,
+            tk.secondary,
+        ));
     }
     for issue in &panel.issues {
         issue_row(ui, tk, issue);
     }
     if let Some(error) = &panel.last_error {
         ui.add_space(space::S4);
-        ui.label(widgets::text(prxvc_i18n::t("call.last_error"), size::SECONDARY, tk.text));
+        ui.label(widgets::text(
+            prxvc_i18n::t("call.last_error"),
+            size::SECONDARY,
+            tk.text,
+        ));
         issue_row(ui, tk, error);
     }
 }
@@ -60,7 +125,11 @@ fn dash(s: &str) -> &str {
 
 fn row(ui: &mut egui::Ui, tk: &Tokens, label_key: &str, value: &str) {
     ui.horizontal_wrapped(|ui| {
-        ui.label(widgets::text(prxvc_i18n::t(label_key), size::META, tk.secondary));
+        ui.label(widgets::text(
+            prxvc_i18n::t(label_key),
+            size::META,
+            tk.secondary,
+        ));
         ui.label(widgets::text(value, size::META, tk.text));
     });
 }
@@ -89,9 +158,17 @@ fn activity_text(panel: &CallPanel) -> String {
 }
 
 fn lane(ui: &mut egui::Ui, tk: &Tokens, title_key: &str, hear_key: &str, lane: &LaneView) {
-    ui.label(widgets::text(prxvc_i18n::t(title_key), size::SECONDARY, tk.text));
+    ui.label(widgets::text(
+        prxvc_i18n::t(title_key),
+        size::SECONDARY,
+        tk.text,
+    ));
     if !lane.running {
-        ui.label(widgets::text(prxvc_i18n::t("call.path.off"), size::META, tk.secondary));
+        ui.label(widgets::text(
+            prxvc_i18n::t("call.path.off"),
+            size::META,
+            tk.secondary,
+        ));
         return;
     }
     row(ui, tk, hear_key, &heard_text(hear_key, lane.hears));
@@ -114,7 +191,9 @@ fn heard_text(hear_key: &str, hears: Heard) -> String {
     match hears {
         Heard::Translation => prxvc_i18n::t("call.hears.translation"),
         // The local user hears the original from the call application itself in this build.
-        Heard::Original if hear_key == "call.you_hear" => prxvc_i18n::t("call.hears.original_by_app"),
+        Heard::Original if hear_key == "call.you_hear" => {
+            prxvc_i18n::t("call.hears.original_by_app")
+        }
         Heard::Original => prxvc_i18n::t("call.hears.original"),
         Heard::Nothing => prxvc_i18n::t("call.hears.nothing"),
     }

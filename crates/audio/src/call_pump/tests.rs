@@ -1,7 +1,7 @@
 //! Tests of the pump: ordering and latency through the real mixer, back-pressure, cancellation, failure and start-up errors.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
@@ -12,7 +12,7 @@ use prxvc_ports::{
 };
 
 use super::*;
-use crate::mix::{MixerConfig, MixMode};
+use crate::mix::{MixMode, MixerConfig};
 
 const RATE: SampleRate = SampleRate::HZ_48000;
 const FRAME: usize = 480; // 10 ms
@@ -80,7 +80,10 @@ impl CollectSink {
 impl AudioSink for CollectSink {
     fn start(&mut self) -> Result<SinkInfo, EndpointError> {
         self.started = Instant::now();
-        Ok(SinkInfo { rate: RATE, device: "collect".into() })
+        Ok(SinkInfo {
+            rate: RATE,
+            device: "collect".into(),
+        })
     }
 
     fn write(&mut self, frame: &AudioFrame) -> WriteOutcome {
@@ -88,7 +91,10 @@ impl AudioSink for CollectSink {
         let mut out = self.out.lock();
         out.extend(frame.samples().iter().map(|s| (now, *s)));
         self.written += frame.duration();
-        WriteOutcome { accepted: frame.len(), dropped: 0 }
+        WriteOutcome {
+            accepted: frame.len(),
+            dropped: 0,
+        }
     }
 
     fn flush(&mut self) {}
@@ -98,7 +104,10 @@ impl AudioSink for CollectSink {
     }
 
     fn health(&self) -> EndpointHealth {
-        EndpointHealth { running: true, ..EndpointHealth::default() }
+        EndpointHealth {
+            running: true,
+            ..EndpointHealth::default()
+        }
     }
 
     fn stop(&mut self) {
@@ -130,13 +139,22 @@ impl FlagSource {
 impl AudioSource for FlagSource {
     fn start(&mut self) -> Result<SourceInfo, EndpointError> {
         if self.fail_start {
-            return Err(EndpointError::Unavailable { reason: "no device".into() });
+            return Err(EndpointError::Unavailable {
+                reason: "no device".into(),
+            });
         }
         self.started.store(true, Ordering::SeqCst);
-        Ok(SourceInfo { rate: RATE, device: "flag".into() })
+        Ok(SourceInfo {
+            rate: RATE,
+            device: "flag".into(),
+        })
     }
 
-    fn read(&mut self, _out: &mut Vec<AudioFrame>, _max_wait: Duration) -> Result<(), EndpointError> {
+    fn read(
+        &mut self,
+        _out: &mut Vec<AudioFrame>,
+        _max_wait: Duration,
+    ) -> Result<(), EndpointError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(self.read_takes);
         Ok(())
@@ -168,7 +186,10 @@ fn frames_flow_through_the_mixer_in_order_with_bounded_latency() {
     let mut pump = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(MixerConfig::default()), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
     ))
     .expect("start");
 
@@ -179,7 +200,10 @@ fn frames_flow_through_the_mixer_in_order_with_bounded_latency() {
     pump.stop(Duration::from_secs(1)).expect("stop");
 
     let out = out.lock();
-    let first = out.iter().position(|(_, s)| s.abs() > 1e-4).expect("audio came out");
+    let first = out
+        .iter()
+        .position(|(_, s)| s.abs() > 1e-4)
+        .expect("audio came out");
     let latency = out[first].0.duration_since(begin);
     assert!(latency < Duration::from_millis(250), "latency {latency:?}");
 
@@ -187,7 +211,10 @@ fn frames_flow_through_the_mixer_in_order_with_bounded_latency() {
     let body: Vec<f32> = out[first + 2 * FRAME..].iter().map(|(_, s)| *s).collect();
     let peak_at = body.iter().position(|s| *s > 0.45).expect("the ramp rose");
     for pair in body[..peak_at].windows(2) {
-        assert!(pair[1] >= pair[0] - 1e-6, "samples went backwards: {pair:?}");
+        assert!(
+            pair[1] >= pair[0] - 1e-6,
+            "samples went backwards: {pair:?}"
+        );
     }
     let stats = pump.stats();
     assert_eq!(stats.frames, 30);
@@ -206,11 +233,17 @@ fn a_slow_sink_applies_back_pressure_and_never_blocks_the_pump() {
     // 2 s of input into a sink that holds 20 ms (less than the 40 ms the pump
     // tries to keep queued) and a lane that holds 200 ms.
     let source = FakeAudioSource::new(RATE, ramp_frames(200)).with_frames_per_read(200);
-    let cfg = MixerConfig { max_buffer: Duration::from_millis(200), ..MixerConfig::default() };
+    let cfg = MixerConfig {
+        max_buffer: Duration::from_millis(200),
+        ..MixerConfig::default()
+    };
     let mut pump = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(cfg), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(cfg),
+            sink: Box::new(sink),
+        },
     ))
     .expect("start");
 
@@ -220,8 +253,15 @@ fn a_slow_sink_applies_back_pressure_and_never_blocks_the_pump() {
     });
     let stats = pump.stats();
     assert!(stats.running, "a full sink must not end the pump");
-    assert!(stats.sink_queued <= Duration::from_millis(20), "queued {:?}", stats.sink_queued);
-    assert!(stats.lane_dropped_samples > 0, "the lane must drop what cannot be played");
+    assert!(
+        stats.sink_queued <= Duration::from_millis(20),
+        "queued {:?}",
+        stats.sink_queued
+    );
+    assert!(
+        stats.lane_dropped_samples > 0,
+        "the lane must drop what cannot be played"
+    );
 
     // The device starts draining: writes are accepted again.
     let accepted_before = probe.written().iter().filter(|w| w.accepted > 0).count();
@@ -246,7 +286,10 @@ fn cancellation_stops_both_endpoints_promptly() {
     let mut pump = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(MixerConfig::default()), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
     ))
     .expect("start");
     assert!(started.load(Ordering::SeqCst));
@@ -254,17 +297,23 @@ fn cancellation_stops_both_endpoints_promptly() {
 
     let begin = Instant::now();
     pump.stop(Duration::from_millis(500)).expect("stop");
-    assert!(begin.elapsed() < Duration::from_millis(200), "took {:?}", begin.elapsed());
+    assert!(
+        begin.elapsed() < Duration::from_millis(200),
+        "took {:?}",
+        begin.elapsed()
+    );
     assert!(stopped.load(Ordering::SeqCst), "source stopped");
     assert!(sink_stopped.load(Ordering::SeqCst), "sink stopped");
     assert!(!pump.stats().running);
-    pump.stop(Duration::from_millis(10)).expect("a second stop is harmless");
+    pump.stop(Duration::from_millis(10))
+        .expect("a second stop is harmless");
 }
 
 #[test]
 fn a_source_that_ignores_the_wait_is_reported_as_a_stop_timeout() {
     let source = FlagSource::idle(Duration::from_millis(600));
-    let mut pump = Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
+    let mut pump =
+        Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
     std::thread::sleep(Duration::from_millis(20));
     assert_eq!(pump.stop(Duration::from_millis(50)), Err(PumpStopTimeout));
 }
@@ -272,12 +321,19 @@ fn a_source_that_ignores_the_wait_is_reported_as_a_stop_timeout() {
 #[test]
 fn a_failing_source_ends_the_pump_and_reports_the_loss() {
     let (sink, _out, sink_stopped) = CollectSink::new();
-    let source = FakeAudioSource::new(RATE, ramp_frames(10))
-        .failing_read_at(3, EndpointError::DeviceLost { device: "usb mic".into() });
+    let source = FakeAudioSource::new(RATE, ramp_frames(10)).failing_read_at(
+        3,
+        EndpointError::DeviceLost {
+            device: "usb mic".into(),
+        },
+    );
     let pump = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(MixerConfig::default()), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
     ))
     .expect("start");
     wait_until("the pump to end", || !pump.stats().running);
@@ -287,14 +343,18 @@ fn a_failing_source_ends_the_pump_and_reports_the_loss() {
         matches!(events.as_slice(), [PumpEvent::SourceLost { reason }] if reason.contains("usb mic")),
         "{events:?}"
     );
-    assert!(sink_stopped.load(Ordering::SeqCst), "the sink is released too");
+    assert!(
+        sink_stopped.load(Ordering::SeqCst),
+        "the sink is released too"
+    );
     assert!(pump.take_events().is_empty(), "events are taken once");
 }
 
 #[test]
 fn meter_only_reads_and_measures_without_a_sink() {
     let source = FakeAudioSource::new(RATE, ramp_frames(20)).with_frames_per_read(20);
-    let mut pump = Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
+    let mut pump =
+        Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
     wait_until("the frames to be read", || pump.stats().frames == 20);
     let stats = pump.stats();
     assert_eq!(stats.sink_device, None);
@@ -309,14 +369,18 @@ fn meter_only_reads_and_measures_without_a_sink() {
 #[test]
 fn a_sink_that_does_not_start_leaves_the_source_unstarted() {
     let clock = ManualClock::new();
-    let sink = FakeAudioSink::new(RATE, clock)
-        .failing_start(EndpointError::Unavailable { reason: "driver missing".into() });
+    let sink = FakeAudioSink::new(RATE, clock).failing_start(EndpointError::Unavailable {
+        reason: "driver missing".into(),
+    });
     let source = FlagSource::idle(Duration::from_millis(1));
     let started = Arc::clone(&source.started);
     let err = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(MixerConfig::default()), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
     ))
     .err()
     .expect("must fail");
@@ -332,7 +396,10 @@ fn a_source_that_does_not_start_releases_the_sink() {
     let err = Pump::start(spec(
         "outgoing",
         Box::new(source),
-        PumpRoute::Mix { mixer: mixer(MixerConfig::default()), sink: Box::new(sink) },
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
     ))
     .err()
     .expect("must fail");

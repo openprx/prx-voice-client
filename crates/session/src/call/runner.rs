@@ -70,10 +70,12 @@ impl CallHandle {
     /// # Errors
     /// [`SendError`] when the channel is full or the coordinator has ended.
     pub fn send(&self, command: CallCommand) -> Result<(), SendError> {
-        self.tx.try_send(Input::Command(command)).map_err(|e| match e {
-            TrySendError::Full(_) => SendError::Busy,
-            TrySendError::Disconnected(_) => SendError::Ended,
-        })
+        self.tx
+            .try_send(Input::Command(command))
+            .map_err(|e| match e {
+                TrySendError::Full(_) => SendError::Busy,
+                TrySendError::Disconnected(_) => SendError::Ended,
+            })
     }
 
     /// Ask the coordinator to stop call mode and end, and wait up to `timeout` for the thread.

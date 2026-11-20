@@ -61,7 +61,11 @@ impl RealCallHost {
     pub(crate) fn new(config: HostConfig) -> Self {
         let controller = CoreAudioRouting::new()
             .map(|routing| {
-                RoutingController::new(routing, OsSystem, FileJournalStore::in_dir(&config.data_dir))
+                RoutingController::new(
+                    routing,
+                    OsSystem,
+                    FileJournalStore::in_dir(&config.data_dir),
+                )
             })
             .map_err(|e| e.to_string());
         if let Err(reason) = &controller {

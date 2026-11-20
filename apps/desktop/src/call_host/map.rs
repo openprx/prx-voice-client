@@ -77,10 +77,13 @@ pub(super) fn capture_consent_fault(e: &TapError) -> HostFault {
 pub(super) fn virtual_mic_fault(e: &VirtualMicError) -> HostFault {
     match e {
         VirtualMicError::Driver(issue) => driver_fault(issue),
-        VirtualMicError::DeviceMissing { .. } => HostFault::new(Code::DriverNotLoaded, e.to_string()),
-        VirtualMicError::UnexpectedFormat { .. } | VirtualMicError::Audio(_) => {
-            HostFault::new(Code::EndpointOpenFailed(Endpoint::RemoteOutput), e.to_string())
+        VirtualMicError::DeviceMissing { .. } => {
+            HostFault::new(Code::DriverNotLoaded, e.to_string())
         }
+        VirtualMicError::UnexpectedFormat { .. } | VirtualMicError::Audio(_) => HostFault::new(
+            Code::EndpointOpenFailed(Endpoint::RemoteOutput),
+            e.to_string(),
+        ),
     }
 }
 
@@ -121,9 +124,11 @@ pub(super) fn routing_notice(event: RoutingEvent) -> RoutingNotice {
             RoutingNotice::DefaultOutputChanged { to: to.to_string() }
         }
         RoutingEvent::SystemSleeping => RoutingNotice::SystemSleeping,
-        RoutingEvent::SystemWoke { default_input_intact } => {
-            RoutingNotice::SystemWoke { default_input_intact }
-        }
+        RoutingEvent::SystemWoke {
+            default_input_intact,
+        } => RoutingNotice::SystemWoke {
+            default_input_intact,
+        },
     }
 }
 
@@ -132,11 +137,17 @@ pub(super) fn judgement(j: &CallJudgement) -> ActivityJudgement {
         CallJudgement::NotRunning => ActivityJudgement::NotRunning,
         CallJudgement::Idle => ActivityJudgement::Idle,
         CallJudgement::ActiveOnOurMicrophone { output_running } => {
-            ActivityJudgement::ActiveOnOurMicrophone { output_running: *output_running }
+            ActivityJudgement::ActiveOnOurMicrophone {
+                output_running: *output_running,
+            }
         }
         CallJudgement::ActiveOnOtherMicrophone { devices } => {
             ActivityJudgement::ActiveOnOtherMicrophone {
-                devices: devices.iter().map(ProcessDevice::label).map(str::to_owned).collect(),
+                devices: devices
+                    .iter()
+                    .map(ProcessDevice::label)
+                    .map(str::to_owned)
+                    .collect(),
             }
         }
     }
@@ -185,18 +196,33 @@ mod tests {
             required_variant(&BundleId::new("net.whatsapp.WhatsApp")),
             Some(DriverVariant::Usb)
         );
-        assert_eq!(required_variant(&BundleId::new("ru.keepcoder.Telegram")), None);
+        assert_eq!(
+            required_variant(&BundleId::new("ru.keepcoder.Telegram")),
+            None
+        );
     }
 
     #[test]
     fn driver_issues_map_to_driver_codes() {
         let cases = [
             (DriverIssue::DriverMissing, Code::DriverMissing),
-            (DriverIssue::BundleUnreadable("x".into()), Code::DriverUnusable),
-            (DriverIssue::NotLoaded { uid: "u".into() }, Code::DriverNotLoaded),
-            (DriverIssue::NotAlive { uid: "u".into() }, Code::DriverNotLoaded),
             (
-                DriverIssue::DriverStale { installed: "0.0.1".into(), bundled: "0.1.0".into() },
+                DriverIssue::BundleUnreadable("x".into()),
+                Code::DriverUnusable,
+            ),
+            (
+                DriverIssue::NotLoaded { uid: "u".into() },
+                Code::DriverNotLoaded,
+            ),
+            (
+                DriverIssue::NotAlive { uid: "u".into() },
+                Code::DriverNotLoaded,
+            ),
+            (
+                DriverIssue::DriverStale {
+                    installed: "0.0.1".into(),
+                    bundled: "0.1.0".into(),
+                },
                 Code::DriverStale,
             ),
             (
@@ -214,7 +240,10 @@ mod tests {
 
     #[test]
     fn consent_errors_map_to_consent_codes() {
-        assert_eq!(code(mic_consent_fault(&MicConsentError::Denied)), Code::MicrophoneConsentDenied);
+        assert_eq!(
+            code(mic_consent_fault(&MicConsentError::Denied)),
+            Code::MicrophoneConsentDenied
+        );
         assert_eq!(
             code(mic_consent_fault(&MicConsentError::NotInAppBundle)),
             Code::MicrophoneConsentUnavailable
@@ -223,9 +252,14 @@ mod tests {
             code(mic_consent_fault(&MicConsentError::NoAnswer { secs: 30 })),
             Code::MicrophoneConsentUnavailable
         );
-        assert_eq!(code(capture_consent_fault(&TapError::PermissionDenied)), Code::CaptureConsentDenied);
         assert_eq!(
-            code(capture_consent_fault(&TapError::ConsentNoAnswer { reason: "x".into() })),
+            code(capture_consent_fault(&TapError::PermissionDenied)),
+            Code::CaptureConsentDenied
+        );
+        assert_eq!(
+            code(capture_consent_fault(&TapError::ConsentNoAnswer {
+                reason: "x".into()
+            })),
             Code::CaptureConsentUnavailable
         );
     }
@@ -235,24 +269,51 @@ mod tests {
         let uid = DeviceUid::new("ours");
         let unavailable = RoutingError::Unavailable { reason: "x".into() };
         let cases = [
-            (CallModeError::DriverNotReady(DriverIssue::DriverMissing), Code::DriverMissing),
+            (
+                CallModeError::DriverNotReady(DriverIssue::DriverMissing),
+                Code::DriverMissing,
+            ),
             (
                 CallModeError::NoPhysicalMicrophone(InputPolicyError::NoUsableDevice),
                 Code::NoMicrophone,
             ),
-            (CallModeError::JournalPresent { owner_pid: 1, owner_alive: false }, Code::RoutingJournalPresent),
-            (CallModeError::JournalCorrupt, Code::RoutingJournalPresent),
-            (CallModeError::SwitchFailed(unavailable.clone()), Code::RoutingSwitchFailed),
             (
-                CallModeError::SwitchNotApplied { expected: uid.clone(), actual: None },
+                CallModeError::JournalPresent {
+                    owner_pid: 1,
+                    owner_alive: false,
+                },
+                Code::RoutingJournalPresent,
+            ),
+            (CallModeError::JournalCorrupt, Code::RoutingJournalPresent),
+            (
+                CallModeError::SwitchFailed(unavailable.clone()),
                 Code::RoutingSwitchFailed,
             ),
-            (CallModeError::VirtualMicrophoneLost, Code::VirtualMicrophoneLost),
+            (
+                CallModeError::SwitchNotApplied {
+                    expected: uid.clone(),
+                    actual: None,
+                },
+                Code::RoutingSwitchFailed,
+            ),
+            (
+                CallModeError::VirtualMicrophoneLost,
+                Code::VirtualMicrophoneLost,
+            ),
             (CallModeError::NoRestoreTarget, Code::RestoreFailed),
-            (CallModeError::RestoreFailed(unavailable.clone()), Code::RestoreFailed),
+            (
+                CallModeError::RestoreFailed(unavailable.clone()),
+                Code::RestoreFailed,
+            ),
             (CallModeError::AlreadyInCallMode, Code::RoutingUnavailable),
-            (CallModeError::JournalWrite("disk".into()), Code::RoutingUnavailable),
-            (CallModeError::Routing(unavailable), Code::RoutingUnavailable),
+            (
+                CallModeError::JournalWrite("disk".into()),
+                Code::RoutingUnavailable,
+            ),
+            (
+                CallModeError::Routing(unavailable),
+                Code::RoutingUnavailable,
+            ),
         ];
         for (error, expected) in cases {
             assert_eq!(code(call_mode_fault(&error)), expected, "{error}");
@@ -262,21 +323,40 @@ mod tests {
     #[test]
     fn routing_events_keep_their_meaning() {
         assert_eq!(
-            routing_notice(RoutingEvent::DefaultInputDisplaced { to: DeviceUid::new("airpods") }),
-            RoutingNotice::DefaultInputDisplaced { to: "airpods".into() }
+            routing_notice(RoutingEvent::DefaultInputDisplaced {
+                to: DeviceUid::new("airpods")
+            }),
+            RoutingNotice::DefaultInputDisplaced {
+                to: "airpods".into()
+            }
         );
         assert_eq!(
             routing_notice(RoutingEvent::RestoreTargetChanged {
-                target: Some(DeviceRef { uid: DeviceUid::new("u"), name: "Studio Mic".into() })
+                target: Some(DeviceRef {
+                    uid: DeviceUid::new("u"),
+                    name: "Studio Mic".into()
+                })
             }),
-            RoutingNotice::RestoreTargetChanged { target: Some("Studio Mic".into()) }
+            RoutingNotice::RestoreTargetChanged {
+                target: Some("Studio Mic".into())
+            }
         );
         assert_eq!(
-            routing_notice(RoutingEvent::SystemWoke { default_input_intact: false }),
-            RoutingNotice::SystemWoke { default_input_intact: false }
+            routing_notice(RoutingEvent::SystemWoke {
+                default_input_intact: false
+            }),
+            RoutingNotice::SystemWoke {
+                default_input_intact: false
+            }
         );
-        assert_eq!(routing_notice(RoutingEvent::VirtualMicrophoneLost), RoutingNotice::VirtualMicrophoneLost);
-        assert_eq!(routing_notice(RoutingEvent::SystemSleeping), RoutingNotice::SystemSleeping);
+        assert_eq!(
+            routing_notice(RoutingEvent::VirtualMicrophoneLost),
+            RoutingNotice::VirtualMicrophoneLost
+        );
+        assert_eq!(
+            routing_notice(RoutingEvent::SystemSleeping),
+            RoutingNotice::SystemSleeping
+        );
     }
 
     #[test]
@@ -289,28 +369,55 @@ mod tests {
             output_channels: 0,
         };
         assert_eq!(
-            judgement(&CallJudgement::ActiveOnOtherMicrophone { devices: vec![airpods] }),
-            ActivityJudgement::ActiveOnOtherMicrophone { devices: vec!["AirPods".into()] }
+            judgement(&CallJudgement::ActiveOnOtherMicrophone {
+                devices: vec![airpods]
+            }),
+            ActivityJudgement::ActiveOnOtherMicrophone {
+                devices: vec!["AirPods".into()]
+            }
         );
-        assert_eq!(judgement(&CallJudgement::NotRunning), ActivityJudgement::NotRunning);
         assert_eq!(
-            judgement(&CallJudgement::ActiveOnOurMicrophone { output_running: true }),
-            ActivityJudgement::ActiveOnOurMicrophone { output_running: true }
+            judgement(&CallJudgement::NotRunning),
+            ActivityJudgement::NotRunning
+        );
+        assert_eq!(
+            judgement(&CallJudgement::ActiveOnOurMicrophone {
+                output_running: true
+            }),
+            ActivityJudgement::ActiveOnOurMicrophone {
+                output_running: true
+            }
         );
     }
 
     #[test]
     fn a_lost_source_names_the_endpoint_of_its_path() {
-        let lost = |kind| path_event(kind, PumpEvent::SourceLost { reason: "gone".into() });
+        let lost = |kind| {
+            path_event(
+                kind,
+                PumpEvent::SourceLost {
+                    reason: "gone".into(),
+                },
+            )
+        };
         assert_eq!(
             lost(PathKind::Outgoing),
-            Some(PathEvent::Lost(HostFault::new(Code::EndpointLost(Endpoint::LocalInput), "gone")))
+            Some(PathEvent::Lost(HostFault::new(
+                Code::EndpointLost(Endpoint::LocalInput),
+                "gone"
+            )))
         );
         assert_eq!(
             lost(PathKind::Incoming),
-            Some(PathEvent::Lost(HostFault::new(Code::EndpointLost(Endpoint::RemoteInput), "gone")))
+            Some(PathEvent::Lost(HostFault::new(
+                Code::EndpointLost(Endpoint::RemoteInput),
+                "gone"
+            )))
         );
-        assert_eq!(path_event(PathKind::Incoming, PumpEvent::TargetGone), Some(PathEvent::TargetGone));
+        assert_eq!(
+            path_event(PathKind::Incoming, PumpEvent::TargetGone),
+            Some(PathEvent::TargetGone)
+        );
         assert!(matches!(
             path_event(PathKind::Incoming, PumpEvent::CaptureDenied { detail: "d".into() }),
             Some(PathEvent::Fault(f)) if f.code == Code::CaptureConsentDenied

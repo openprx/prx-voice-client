@@ -22,23 +22,37 @@ pub fn map_tap_event(event: TapEvent) -> Option<PumpEvent> {
         TapEvent::TargetGone => Some(PumpEvent::TargetGone),
         TapEvent::Started { restored: true, .. } => Some(PumpEvent::TargetBack),
         TapEvent::Stalled { idle_ms } => Some(PumpEvent::Stalled { idle_ms }),
-        TapEvent::NoSignal { error } => Some(PumpEvent::NoSignal { detail: error.to_string() }),
+        TapEvent::NoSignal { error } => Some(PumpEvent::NoSignal {
+            detail: error.to_string(),
+        }),
         TapEvent::SignalRestored => Some(PumpEvent::SignalRestored),
         TapEvent::RestartFailed { error } => Some(match error {
-            TapError::PermissionDenied | TapError::NotInAppBundle | TapError::ConsentUndetermined => {
-                PumpEvent::CaptureDenied { detail: error.to_string() }
-            }
+            TapError::PermissionDenied
+            | TapError::NotInAppBundle
+            | TapError::ConsentUndetermined => PumpEvent::CaptureDenied {
+                detail: error.to_string(),
+            },
             TapError::ProcessNotFound { .. } => PumpEvent::TargetGone,
-            other => PumpEvent::CaptureFailed { detail: other.to_string() },
+            other => PumpEvent::CaptureFailed {
+                detail: other.to_string(),
+            },
         }),
         // The rebuild after silence is under way; `NoSignal` follows if it does not help.
         TapEvent::SilentWhilePlaying { silent_ms } => {
-            tracing::info!(silent_ms, "tap delivers silence while the application plays; rebuilding");
+            tracing::info!(
+                silent_ms,
+                "tap delivers silence while the application plays; rebuilding"
+            );
             None
         }
-        TapEvent::Started { restored: false, .. } => None,
+        TapEvent::Started {
+            restored: false, ..
+        } => None,
         TapEvent::FormatMismatch { dropped } => {
-            tracing::warn!(dropped, "tap buffers with an unexpected format were dropped");
+            tracing::warn!(
+                dropped,
+                "tap buffers with an unexpected format were dropped"
+            );
             None
         }
     }
@@ -53,7 +67,10 @@ pub struct TapPumpSource {
 impl TapPumpSource {
     /// A source that taps as `config` says (unmuted unless the caller opts in).
     pub fn new(config: TapConfig, events: EventQueue) -> Self {
-        Self { inner: CoreAudioTapSource::with_config(config), events }
+        Self {
+            inner: CoreAudioTapSource::with_config(config),
+            events,
+        }
     }
 
     fn relay_events(&self) {
@@ -91,27 +108,50 @@ mod tests {
 
     #[test]
     fn health_events_become_pump_events() {
-        assert_eq!(map_tap_event(TapEvent::TargetGone), Some(PumpEvent::TargetGone));
         assert_eq!(
-            map_tap_event(TapEvent::Started { restored: true, bundle_form: true }),
+            map_tap_event(TapEvent::TargetGone),
+            Some(PumpEvent::TargetGone)
+        );
+        assert_eq!(
+            map_tap_event(TapEvent::Started {
+                restored: true,
+                bundle_form: true
+            }),
             Some(PumpEvent::TargetBack)
         );
-        assert_eq!(map_tap_event(TapEvent::Started { restored: false, bundle_form: true }), None);
+        assert_eq!(
+            map_tap_event(TapEvent::Started {
+                restored: false,
+                bundle_form: true
+            }),
+            None
+        );
         assert_eq!(
             map_tap_event(TapEvent::Stalled { idle_ms: 2_000 }),
             Some(PumpEvent::Stalled { idle_ms: 2_000 })
         );
-        assert_eq!(map_tap_event(TapEvent::SignalRestored), Some(PumpEvent::SignalRestored));
+        assert_eq!(
+            map_tap_event(TapEvent::SignalRestored),
+            Some(PumpEvent::SignalRestored)
+        );
         assert_eq!(map_tap_event(TapEvent::FormatMismatch { dropped: 3 }), None);
-        assert_eq!(map_tap_event(TapEvent::SilentWhilePlaying { silent_ms: 3_000 }), None);
+        assert_eq!(
+            map_tap_event(TapEvent::SilentWhilePlaying { silent_ms: 3_000 }),
+            None
+        );
     }
 
     #[test]
     fn the_zero_watchdog_error_carries_the_consent_instructions() {
-        let error = TapError::NoSignal { target: "net.whatsapp.WhatsApp".into() };
+        let error = TapError::NoSignal {
+            target: "net.whatsapp.WhatsApp".into(),
+        };
         match map_tap_event(TapEvent::NoSignal { error }) {
             Some(PumpEvent::NoSignal { detail }) => {
-                assert!(detail.contains("net.whatsapp.WhatsApp") && detail.contains("System Audio Recording"));
+                assert!(
+                    detail.contains("net.whatsapp.WhatsApp")
+                        && detail.contains("System Audio Recording")
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -119,14 +159,19 @@ mod tests {
 
     #[test]
     fn failed_rebuilds_are_classified_by_their_cause() {
-        let denied = map_tap_event(TapEvent::RestartFailed { error: TapError::PermissionDenied });
+        let denied = map_tap_event(TapEvent::RestartFailed {
+            error: TapError::PermissionDenied,
+        });
         assert!(matches!(denied, Some(PumpEvent::CaptureDenied { .. })));
         let gone = map_tap_event(TapEvent::RestartFailed {
             error: TapError::ProcessNotFound { target: "x".into() },
         });
         assert_eq!(gone, Some(PumpEvent::TargetGone));
         let other = map_tap_event(TapEvent::RestartFailed {
-            error: TapError::CoreAudio { operation: "create".into(), status: -1 },
+            error: TapError::CoreAudio {
+                operation: "create".into(),
+                status: -1,
+            },
         });
         assert!(matches!(other, Some(PumpEvent::CaptureFailed { .. })));
     }
