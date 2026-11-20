@@ -75,7 +75,8 @@ pub struct AudioConfig {
     pub input_device: String,
     /// Output device name; empty is the system default.
     pub output_device: String,
-    /// Virtual microphone device name; empty is to detect.
+    /// Virtual microphone device UID; empty is this app's own driver (no
+    /// other virtual device is detected or suggested).
     pub virtual_mic_device: String,
 }
 
@@ -287,6 +288,25 @@ pub struct CallConfig {
     pub outgoing_capture: String,
     pub captions_show_source: bool,
     pub barge_in: bool,
+    /// `"manual"` or `"on_call"`: when call mode starts.
+    pub start_mode: String,
+    /// What the remote party hears while the outgoing direction is paused:
+    /// `"original"` or `"silence"`.
+    pub outgoing_when_paused: String,
+    /// What the local user hears while the incoming direction is paused:
+    /// `"original"` or `"silence"`.
+    pub incoming_when_paused: String,
+    /// What the remote party hears when the outgoing direction fails:
+    /// `"original"` or `"silence"`.
+    pub outgoing_on_failure: String,
+    /// What the local user hears when the incoming direction fails:
+    /// `"original"` or `"silence"`.
+    pub incoming_on_failure: String,
+    /// Gain of the original audio in `local_output_mode = "both"`, in dB.
+    pub original_gain_db: f32,
+    /// A queued clause whose source ended longer ago than this is dropped
+    /// when the same speaker starts a new segment and `barge_in` is on.
+    pub barge_in_max_lag_ms: u32,
 }
 
 impl Default for CallConfig {
@@ -299,6 +319,81 @@ impl Default for CallConfig {
             outgoing_capture: "hands_free".to_owned(),
             captions_show_source: true,
             barge_in: true,
+            start_mode: "manual".to_owned(),
+            outgoing_when_paused: "original".to_owned(),
+            incoming_when_paused: "original".to_owned(),
+            outgoing_on_failure: "original".to_owned(),
+            incoming_on_failure: "original".to_owned(),
+            original_gain_db: -12.0,
+            barge_in_max_lag_ms: 3_000,
+        }
+    }
+}
+
+/// `[pipeline]`: tuning of the call-translation pipeline (segmentation,
+/// commit rules, buffers). Shown under Advanced settings only. These keys are
+/// not written into an existing file by the migration, so a better default
+/// reaches existing installs in a later release.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PipelineConfig {
+    /// `"two_pass"` (streaming draft, refine decode per clause) or `"streaming"`.
+    pub recognition_mode: String,
+    /// Silence inside a segment that commits a clause, in milliseconds.
+    pub clause_pause_ms: u32,
+    /// Silence that ends a segment, in milliseconds.
+    pub segment_end_pause_ms: u32,
+    /// After a segment has run this many seconds the shorter
+    /// `long_segment_pause_ms` ends it.
+    pub long_segment_after_s: u32,
+    /// Segment-ending silence for a long segment, in milliseconds.
+    pub long_segment_pause_ms: u32,
+    /// Uncommitted audio is cut at this length, in seconds.
+    pub max_clause_s: u32,
+    /// A segment is cut at this length, in seconds.
+    pub max_segment_s: u32,
+    /// Speech probability above which a frame counts as speech.
+    pub vad_threshold: f32,
+    /// Speech shorter than this does not start a segment, in milliseconds.
+    pub min_speech_ms: u32,
+    /// Audio kept before and after speech, in milliseconds.
+    pub pad_ms: u32,
+    /// Commit a clause on a sentence-final mark that has stopped changing.
+    pub commit_on_stable_partial: bool,
+    /// How long a partial must stay unchanged to count as stable, in milliseconds.
+    pub stable_partial_ms: u32,
+    /// Send the first target sentence to synthesis before the clause is complete.
+    pub split_target_clauses: bool,
+    /// Translate a stable partial ahead of its commit.
+    pub speculative_mt: bool,
+    /// Previous clauses given to translation as context.
+    pub mt_context_clauses: u32,
+    /// Playout jitter buffer, in milliseconds.
+    pub jitter_buffer_ms: u32,
+    /// Unplayed audio per direction above which the oldest clause is skipped, in milliseconds.
+    pub max_backlog_ms: u32,
+}
+
+impl Default for PipelineConfig {
+    fn default() -> Self {
+        Self {
+            recognition_mode: "two_pass".to_owned(),
+            clause_pause_ms: 300,
+            segment_end_pause_ms: 600,
+            long_segment_after_s: 8,
+            long_segment_pause_ms: 300,
+            max_clause_s: 8,
+            max_segment_s: 25,
+            vad_threshold: 0.4,
+            min_speech_ms: 160,
+            pad_ms: 200,
+            commit_on_stable_partial: false,
+            stable_partial_ms: 400,
+            split_target_clauses: false,
+            speculative_mt: false,
+            mt_context_clauses: 2,
+            jitter_buffer_ms: 150,
+            max_backlog_ms: 6_000,
         }
     }
 }

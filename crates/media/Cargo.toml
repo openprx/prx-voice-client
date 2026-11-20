@@ -1,0 +1,17 @@
+[package]
+name = "prxvc-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared value types of the call-translation pipeline: audio frames, identifiers, clocks and envelopes."
+
+[dependencies]
+# Typed errors for the validating constructors.
+thiserror = { workspace = true }
+# `ManualClock` needs a condition variable that cannot be poisoned; already used across the workspace.
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,30 @@
+[package]
+name = "prxvc-ports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Stage and endpoint ports of the call-translation pipeline, with scriptable fakes behind the `fakes` feature."
+
+[features]
+# Deterministic, scriptable fake implementations of every port, for tests of
+# crates that consume the ports (CS-5).
+fakes = []
+
+[dependencies]
+prxvc-media = { workspace = true }
+# `CancellationToken`, the per-call cancellation handle (needs no runtime).
+tokio-util = { workspace = true }
+# Typed error enums.
+thiserror = { workspace = true }
+# Shared state inside the fakes.
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+# The crate's own tests exercise the fakes, so `cargo test` enables the
+# feature without a flag (a normal build of a dependent crate does not).
+prxvc-ports = { workspace = true, features = ["fakes"] }
+
+[lints]
+workspace = true

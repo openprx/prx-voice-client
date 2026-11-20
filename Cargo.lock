@@ -4163,6 +4163,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "prxvc-media"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "prxvc-models"
 version = "0.1.0"
 dependencies = [
@@ -4191,6 +4199,17 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "prxvc-ports"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "prxvc-media",
+ "prxvc-ports",
+ "thiserror 2.0.18",
+ "tokio-util",
 ]
 
 [[package]]

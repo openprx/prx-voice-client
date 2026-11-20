@@ -12,7 +12,8 @@ pub type RoleMap = BTreeMap<String, String>;
 
 /// `[providers.active]` and `[providers.fallback]`: role, then key, then
 /// provider id. The key is a language for `asr` and `tts`, a `"src>dst"` pair
-/// for `mt`, and the empty string for `vad`.
+/// for `mt`, and the empty string for `vad`. `asr_refine` is keyed by language
+/// like `asr`: the model of the refine pass of two-pass recognition.
 ///
 /// Empty by default: the design fills it at run time from the catalogue's
 /// recommendations and writes it when the user first chooses (design 2.5,
@@ -22,6 +23,7 @@ pub type RoleMap = BTreeMap<String, String>;
 pub struct RoleSelection {
     pub vad: RoleMap,
     pub asr: RoleMap,
+    pub asr_refine: RoleMap,
     pub mt: RoleMap,
     pub tts: RoleMap,
     pub tts_fallback: RoleMap,

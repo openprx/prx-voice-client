@@ -13,6 +13,8 @@
 
 mod app_config;
 mod atomic;
+#[cfg(test)]
+mod call_translation_tests;
 pub mod credentials;
 mod error;
 pub mod legacy;

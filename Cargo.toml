@@ -15,6 +15,8 @@ members = [
     "crates/i18n",
     "crates/adapters",
     "crates/models",
+    "crates/media",
+    "crates/ports",
     "apps/desktop",
 ]
 
@@ -41,6 +43,8 @@ prxvc-testkit = { path = "crates/testkit" }
 prxvc-i18n = { path = "crates/i18n" }
 prxvc-adapters = { path = "crates/adapters" }
 prxvc-models = { path = "crates/models" }
+prxvc-media = { path = "crates/media" }
+prxvc-ports = { path = "crates/ports" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
