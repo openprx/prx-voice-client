@@ -33,7 +33,8 @@ pub fn radio_list(
         .corner_radius(CornerRadius::same(radius::MD))
         .inner_margin(egui::Margin::symmetric(space::S12 as i8, space::S4 as i8));
     frame.show(ui, |ui| {
-        ui.set_width(outer - 2.0 * space::S12 - 2.0);
+        let row_width = outer - 2.0 * space::S12 - 2.0;
+        ui.set_width(row_width);
         ui.spacing_mut().item_spacing.y = 0.0;
         let last = options.len().saturating_sub(1);
         for (i, (label, description)) in options.iter().enumerate() {
@@ -71,7 +72,7 @@ pub fn radio_list(
                 let glyph_rect = inner.inner;
                 let row = Rect::from_min_max(
                     pos2(ui.min_rect().left(), row_top),
-                    pos2(ui.min_rect().left() + outer, ui.cursor().top()),
+                    pos2(ui.min_rect().left() + row_width, ui.cursor().top()),
                 );
                 let response = ui.interact(row, id.with("row"), sense);
                 let on = i == selected;

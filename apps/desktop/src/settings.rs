@@ -85,6 +85,11 @@ macro_rules! plain_fields {
         /// Names of the plain fields, for the test that every one has a case.
         #[cfg(test)]
         const PLAIN_FIELDS: &[&str] = &[ $( stringify!($field) ),+ ];
+
+        /// The config keys of the plain fields, for the test that every key of the schema has
+        /// a decision.
+        #[cfg(test)]
+        const PLAIN_KEYS: &[&str] = &[ $( concat!($( stringify!($seg), "." ),+) ),+ ];
     };
 }
 
@@ -622,5 +627,86 @@ mod tests {
             Some((geometry, None))
         );
         assert_eq!(back.ui.settings_window.page.as_deref(), Some("about"));
+    }
+
+    /// Keys the window shows without writing them (their value comes from elsewhere), or writes
+    /// through a converted field.
+    const CONVERTED_OR_READ_ONLY: &[&str] = &[
+        "ui.theme.",
+        "audio.echo_mode.",
+        "audio.echo_control.",
+        "audio.sample_rate.",
+        "audio.channels.",
+        "voice.self_profile_id.",
+        "providers.preset.",
+        "hotkeys.session_toggle.",
+        "hotkeys.push_to_talk.",
+        "hotkeys.interrupt.",
+    ];
+
+    /// Keys of the schema that the settings window does not offer, each with its reason. Anything
+    /// not named here and not mapped fails `every_config_key_has_a_decision`.
+    const NOT_IN_THE_WINDOW: &[(&str, &str)] = &[
+        ("schema_version.", "file format version"),
+        ("ui.sounds.", "no sounds exist; not in the design's rows"),
+        ("ui.settings_window", "the window's own memory (set by the window, not a row)"),
+        ("app.first_run_", "first-run flow state, a later package"),
+        ("audio.half_duplex_tail_ms.", "endpointing tuning; not in the design's rows"),
+        ("audio.end_silence_ms.", "endpointing tuning; not in the design's rows"),
+        ("audio.merge_window_ms.", "endpointing tuning; not in the design's rows"),
+        ("audio.min_speech_ms.", "endpointing tuning; not in the design's rows"),
+        ("call.start_mode.", "call behaviour beyond the design's rows"),
+        ("call.outgoing_when_paused.", "call behaviour beyond the design's rows"),
+        ("call.incoming_when_paused.", "call behaviour beyond the design's rows"),
+        ("call.outgoing_on_failure.", "call behaviour beyond the design's rows"),
+        ("call.incoming_on_failure.", "call behaviour beyond the design's rows"),
+        ("call.original_gain_db.", "call behaviour beyond the design's rows"),
+        ("call.barge_in_max_lag_ms.", "call behaviour beyond the design's rows"),
+        ("call.translate.", "set by the call start command"),
+        ("call.output_gain_db.", "call behaviour beyond the design's rows"),
+        ("pipeline.", "pipeline tuning, shown under Advanced in a later package"),
+        ("providers.egress_acknowledged", "set by the egress dialog (provider editor package)"),
+        ("providers.active", "role choices belong to the provider editor package"),
+        ("providers.fallback", "role choices belong to the provider editor package"),
+        ("providers.entries", "provider entries belong to the provider editor package"),
+        ("models.skipped_updates", "set by the model update dialog (model manager package)"),
+    ];
+
+    /// Every leaf of a JSON value as a dotted path with a trailing dot; objects with entries
+    /// are descended into, anything else (a scalar, an empty object, an array) is a leaf.
+    fn leaves(value: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) if !map.is_empty() => {
+                for (key, v) in map {
+                    leaves(v, &format!("{path}{key}."), out);
+                }
+            }
+            _ => out.push(path.to_owned()),
+        }
+    }
+
+    #[test]
+    fn every_config_key_has_a_decision() {
+        let json = serde_json::to_value(AppConfig::default()).expect("serialises");
+        let mut keys = Vec::new();
+        leaves(&json, "", &mut keys);
+        assert!(keys.len() > 80, "the schema was not walked: {keys:?}");
+        let mut undecided = Vec::new();
+        for key in &keys {
+            let mapped = PLAIN_KEYS.contains(&key.as_str());
+            let converted = CONVERTED_OR_READ_ONLY.contains(&key.as_str());
+            let excluded = NOT_IN_THE_WINDOW.iter().any(|(prefix, _)| key.starts_with(prefix));
+            if !(mapped || converted || excluded) {
+                undecided.push(key.clone());
+            }
+        }
+        assert!(
+            undecided.is_empty(),
+            "these config keys have no row and no reason to have none: {undecided:?}"
+        );
+        // And the lists name keys that exist.
+        for key in PLAIN_KEYS.iter().chain(CONVERTED_OR_READ_ONLY) {
+            assert!(keys.contains(&(*key).to_owned()), "{key} is not a key of the schema");
+        }
     }
 }

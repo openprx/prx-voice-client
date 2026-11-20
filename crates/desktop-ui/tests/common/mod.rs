@@ -78,23 +78,38 @@ pub fn window_harness(
     scheme: egui::Theme,
     state: WindowState,
 ) -> Harness<'static, WindowState> {
-    builder(egui::vec2(width, 2600.0), scheme).build_ui_state(
+    window_harness_in(builder(egui::vec2(width, 2600.0), scheme), state)
+}
+
+/// [`window_harness`] on a given builder (for an image snapshot: `.wgpu()` and a fixed size).
+#[allow(dead_code)]
+pub fn window_harness_in(
+    builder: HarnessBuilder<WindowState>,
+    state: WindowState,
+) -> Harness<'static, WindowState> {
+    builder.build_ui_state(
         |ui, st: &mut WindowState| {
             let tk = theme::tokens_for(ui.ctx());
-            tool_window::window_frame(&tk).show(ui, |ui| {
-                settings_window::body(
-                    ui,
-                    &tk,
-                    BodyArgs {
-                        settings: &mut st.settings,
-                        data: &st.data,
-                        commands: &mut st.commands,
-                        view: &mut st.view,
-                        current_theme: theme::RF_THEME_NAME,
-                        pending_theme: &mut st.pending_theme,
-                        network: &st.network,
-                    },
-                );
+            // Fill the whole window, as the settings window's panel does (the harness's own
+            // root ui is inset by a margin).
+            let window = ui.ctx().content_rect();
+            ui.painter().rect_filled(window, 0.0, tk.bg);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(window), |ui| {
+                tool_window::window_frame(&tk).show(ui, |ui| {
+                    settings_window::body(
+                        ui,
+                        &tk,
+                        BodyArgs {
+                            settings: &mut st.settings,
+                            data: &st.data,
+                            commands: &mut st.commands,
+                            view: &mut st.view,
+                            current_theme: theme::RF_THEME_NAME,
+                            pending_theme: &mut st.pending_theme,
+                            network: &st.network,
+                        },
+                    );
+                });
             });
         },
         state,
@@ -190,4 +205,28 @@ pub fn rich_data() -> SettingsData {
         },
         notices: vec![],
     }
+}
+
+/// The locale is global: take the lock and set English.
+#[allow(dead_code)]
+pub fn english() -> MutexGuard<'static, ()> {
+    let guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    guard
+}
+
+/// The window body at 1200 px (the wide layout), already run once.
+#[allow(dead_code)]
+pub fn wide(section: SettingsSection) -> Harness<'static, WindowState> {
+    let mut h = window_harness(1200.0, egui::Theme::Light, WindowState::new(section));
+    h.run();
+    h
+}
+
+/// The window body at 520 px (one column), already run once.
+#[allow(dead_code)]
+pub fn narrow(section: SettingsSection) -> Harness<'static, WindowState> {
+    let mut h = window_harness(520.0, egui::Theme::Light, WindowState::new(section));
+    h.run();
+    h
 }

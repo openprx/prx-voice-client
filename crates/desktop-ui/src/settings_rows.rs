@@ -16,7 +16,7 @@ use crate::theme::{Tokens, layout, radius, size, space};
 use crate::widgets::{self, ButtonKind, Tone, text, text_medium};
 
 /// Width reserved for a select in a row.
-pub(crate) const SELECT_WIDTH: f32 = 180.0;
+pub(crate) const SELECT_WIDTH: f32 = 200.0;
 
 /// What every page needs to draw and to report.
 pub(crate) struct PageCx<'a> {
@@ -281,7 +281,8 @@ pub(crate) fn text_row(
         Err(msg) => msg.clone(),
         Ok(()) => helper.to_owned(),
     };
-    let response = widgets::text_field(ui, tk, label, draft, Some(&shown_helper), verdict.is_err());
+    let helper = (!shown_helper.is_empty()).then_some(shown_helper.as_str());
+    let response = widgets::text_field(ui, tk, label, draft, helper, verdict.is_err());
     let mut committed = None;
     if response.lost_focus() {
         if verdict.is_ok() {

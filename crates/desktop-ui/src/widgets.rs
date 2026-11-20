@@ -485,11 +485,14 @@ pub fn select_named(
         ui.painter().rect_filled(rect, corner, fill);
         ui.painter()
             .rect_stroke(rect, corner, hairline(tk.input_border), StrokeKind::Inside);
-        let galley = ui.painter().layout_no_wrap(
+        // A value wider than the box ends in an ellipsis instead of running over the edge.
+        let mut job = egui::text::LayoutJob::simple_singleline(
             current.to_owned(),
             FontId::proportional(size::BODY),
             Color32::PLACEHOLDER,
         );
+        job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 12.0 - 32.0);
+        let galley = ui.painter().layout_job(job);
         let tpos = pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0);
         ui.painter().galley(tpos, galley, tk.text);
         paint_chevron_down(ui, pos2(rect.right() - 16.0, rect.center().y), tk.control);
