@@ -10,6 +10,7 @@
 //!   (a tone whose length tracks the text), used in place of a real TTS engine.
 
 pub mod echo_translator;
+pub mod mt;
 pub mod openai_translator;
 pub mod tone_synth;
 
