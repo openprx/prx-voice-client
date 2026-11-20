@@ -17,6 +17,10 @@ fn main() {
     println!("cargo:rerun-if-changed=native/prxvc_procs.h");
     println!("cargo:rerun-if-changed=native/prxvc_devices.m");
     println!("cargo:rerun-if-changed=native/prxvc_devices.h");
+    println!("cargo:rerun-if-changed=native/prxvc_defaults.m");
+    println!("cargo:rerun-if-changed=native/prxvc_defaults.h");
+    println!("cargo:rerun-if-changed=native/prxvc_power.m");
+    println!("cargo:rerun-if-changed=native/prxvc_power.h");
     println!("cargo:rerun-if-changed=native/prxvc_output.m");
     println!("cargo:rerun-if-changed=native/prxvc_output.h");
 
@@ -24,6 +28,8 @@ fn main() {
         .file("native/prxvc_tap.m")
         .file("native/prxvc_procs.m")
         .file("native/prxvc_devices.m")
+        .file("native/prxvc_defaults.m")
+        .file("native/prxvc_power.m")
         .file("native/prxvc_output.m")
         .flag("-fobjc-arc")
         .flag("-fmodules")
@@ -33,4 +39,5 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=CoreAudio");
     println!("cargo:rustc-link-lib=framework=AudioToolbox");
     println!("cargo:rustc-link-lib=framework=Foundation");
+    println!("cargo:rustc-link-lib=framework=IOKit");
 }
