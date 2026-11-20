@@ -16,5 +16,8 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 
+[dev-dependencies]
+parking_lot = { workspace = true }
+
 [lints]
 workspace = true

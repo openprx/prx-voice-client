@@ -4254,6 +4254,7 @@ name = "prxvc-session"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "parking_lot",
  "prxvc-media",
  "prxvc-ports",
  "prxvc-protocol",

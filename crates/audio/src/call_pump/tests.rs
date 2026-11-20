@@ -50,16 +50,18 @@ fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
     }
 }
 
+type Collected = Arc<Mutex<Vec<(Instant, f32)>>>;
+
 /// A sink that keeps every sample and drains in real time, like a device.
 struct CollectSink {
     started: Instant,
     written: Duration,
-    out: Arc<Mutex<Vec<(Instant, f32)>>>,
+    out: Collected,
     stopped: Arc<AtomicBool>,
 }
 
 impl CollectSink {
-    fn new() -> (Self, Arc<Mutex<Vec<(Instant, f32)>>>, Arc<AtomicBool>) {
+    fn new() -> (Self, Collected, Arc<AtomicBool>) {
         let out = Arc::new(Mutex::new(Vec::new()));
         let stopped = Arc::new(AtomicBool::new(false));
         (
