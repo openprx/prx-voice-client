@@ -1,0 +1,4 @@
+"CFBundleName" = "PRX Voice";
+"CFBundleDisplayName" = "PRX Voice";
+"NSMicrophoneUsageDescription" = "PRX Voice 使用麦克风聆听您的讲话，用于语音识别和翻译。";
+"NSAudioCaptureUsageDescription" = "PRX Voice 仅在您开始翻译期间，采集您所选通话应用的声音，以听到对方的讲话。";

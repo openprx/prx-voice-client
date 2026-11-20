@@ -40,3 +40,6 @@ CLAUDE.md
 # egui_kittest snapshot diffs
 **/tests/snapshots/**/*.diff.png
 **/tests/snapshots/**/*.new.png
+
+# Packaging output
+/dist/

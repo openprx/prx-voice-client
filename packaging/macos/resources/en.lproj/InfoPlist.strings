@@ -1,0 +1,4 @@
+"CFBundleName" = "PRX Voice";
+"CFBundleDisplayName" = "PRX Voice";
+"NSMicrophoneUsageDescription" = "PRX Voice uses the microphone to hear your speech for recognition and translation.";
+"NSAudioCaptureUsageDescription" = "PRX Voice captures the audio of the call application you select to hear the other party, only while you have started translation.";
