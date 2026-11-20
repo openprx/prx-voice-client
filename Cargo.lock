@@ -4234,6 +4234,8 @@ name = "prxvc-session"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "prxvc-media",
+ "prxvc-ports",
  "prxvc-protocol",
  "serde",
  "thiserror 2.0.18",
