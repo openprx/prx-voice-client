@@ -61,8 +61,10 @@ fn read_wav(path: &Path) -> Vec<f32> {
     let bytes = std::fs::read(path).expect("read the wav file");
     assert_eq!(&bytes[..4], b"RIFF");
     bytes[44..]
-        .chunks_exact(2)
-        .map(|c| f32::from(i16::from_le_bytes([c[0], c[1]])) / f32::from(i16::MAX))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| f32::from(i16::from_le_bytes(*c)) / f32::from(i16::MAX))
         .collect()
 }
 
