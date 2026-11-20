@@ -128,6 +128,8 @@ pub fn rich_data() -> SettingsData {
                 name: "MacBook Pro Microphone".into(),
                 reason: InputReason::SystemDefault,
             }),
+            default_input: Some("MacBook Pro Microphone".into()),
+            default_output: Some("MacBook Pro Speakers".into()),
             list_error: None,
         },
         permissions: PermissionsData {

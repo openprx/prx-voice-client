@@ -54,15 +54,9 @@ pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
     let audio = &cx.data.audio;
 
     // Microphone.
-    let chosen_name = match &audio.input_choice {
-        Some(InputChoiceView::Chosen { name, .. }) => Some(name.clone()),
-        _ => None,
-    };
-    let default_label = match &chosen_name {
-        Some(name) if cx.settings.input_device.is_empty() => {
-            prxvc_i18n::t_with("settings.audio.default_named", &[name])
-        }
-        _ => t("settings.audio.default"),
+    let default_label = match &audio.default_input {
+        Some(name) => prxvc_i18n::t_with("settings.audio.default_named", &[name]),
+        None => t("settings.audio.default"),
     };
     let (options, uids, selected) =
         device_options(default_label, &audio.inputs, &cx.settings.input_device);

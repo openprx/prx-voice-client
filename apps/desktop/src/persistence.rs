@@ -1,33 +1,6 @@
-//! Persistence helpers: history load, session save after stop, and debounced settings write to config.toml.
+//! Persistence helpers: history load and session save after stop.
 
 use prxvc_desktop_ui::{HistoryEntry, SharedAppState};
-
-use crate::settings;
-
-/// Persist UI settings to config.toml (debounced: only writes when a persisted
-/// value differs from the last write).
-///
-/// Starts from the configuration in effect and changes only the fields the
-/// popup edits, so provider names and other hidden fields are preserved.
-pub(crate) fn save_settings_to_config(
-    config: &mut prxvc_config::AppConfig,
-    last_saved: &mut settings::SettingsSnapshot,
-    ui: &prxvc_desktop_ui::UiSettings,
-) {
-    let current = settings::snapshot(ui);
-    if *last_saved == current {
-        return;
-    }
-    settings::apply_ui_settings(config, ui);
-    if let Ok(mgr) = prxvc_config::AppConfigManager::with_default_dir() {
-        if let Err(e) = mgr.save(config) {
-            tracing::warn!("Failed to save config: {}", e);
-        } else {
-            tracing::debug!("Config saved to disk");
-        }
-    }
-    *last_saved = current;
-}
 
 /// Populate the UI history list from persisted session records.
 pub(crate) fn load_history_from_storage(storage: &prxvc_storage::StorageManager, shared: &SharedAppState) {

@@ -77,10 +77,9 @@ pub(crate) fn problem_text(p: &PipelineProblem) -> String {
     if text == key {
         text = prxvc_i18n::t_with("settings.pipeline.problem.other", &[&p.code]);
     }
-    if p.subject.is_empty() {
-        text
-    } else {
-        format!("{}: {}", p.subject, text)
+    match &p.subject {
+        None => text,
+        Some((role, key)) => format!("{}: {}", row_label(*role, key), text),
     }
 }
 
@@ -457,7 +456,7 @@ mod tests {
     #[test]
     fn an_unknown_problem_code_is_still_shown() {
         let p = PipelineProblem {
-            subject: String::new(),
+            subject: None,
             fallback: false,
             code: "zzz".into(),
             args: vec![],

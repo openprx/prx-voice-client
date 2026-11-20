@@ -12,7 +12,7 @@
 //! - `commands`: UI command dispatch
 //! - `event_map`: engine events to shared UI state
 //! - `asr_session`: ASR and audio capture loop start-up
-//! - `persistence`: history, session save and settings write
+//! - `persistence`: history and session save
 //! - `call_compose`: call mode: the coordinator thread, its commands and snapshots, exclusion with the assistant
 //! - `call_panel`: the coordinator's snapshot as the debug control's view model
 //! - `call_host` (macOS): the real host and audio paths behind the coordinator's seams
@@ -23,7 +23,10 @@
 //! - `cli`: `--version` and `--check`, which run without a window
 //! - `logging`: stderr or size-capped log file
 //! - `native_libs`: which native runtime libraries are linked, for `--check`
-//! - `hotkey`, `tray`, `playback`, `settings`: platform and device helpers
+//! - `settings`: mapping between the configuration and the settings window (pure)
+//! - `settings_data`: what the settings window shows that only the app can probe
+//! - `settings_host`: applies the window's edits, commands and memory; runs the probes
+//! - `hotkey`, `tray`, `playback`: platform and device helpers
 
 mod app;
 mod asr_session;
@@ -48,6 +51,8 @@ mod persistence;
 mod playback;
 mod routing_recovery;
 mod settings;
+mod settings_data;
+mod settings_host;
 mod tray;
 
 use eframe::egui;

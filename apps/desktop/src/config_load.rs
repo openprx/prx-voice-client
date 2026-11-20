@@ -3,6 +3,14 @@
 /// Directories resolved once at start-up by [`initialize_config`].
 static APP_PATHS: std::sync::OnceLock<prxvc_config::paths::AppPaths> = std::sync::OnceLock::new();
 
+/// What the settings file load reported (unreadable file kept aside, migration, secrets).
+static LOAD_NOTICES: std::sync::OnceLock<Vec<prxvc_config::LoadNotice>> = std::sync::OnceLock::new();
+
+/// The notices of the start-up load, for the settings window to show.
+pub(crate) fn load_notices() -> &'static [prxvc_config::LoadNotice] {
+    LOAD_NOTICES.get().map_or(&[], Vec::as_slice)
+}
+
 /// The resolved application directories (`None` before [`initialize_config`]
 /// ran or when the platform has no home directory).
 pub(crate) fn app_paths() -> Option<&'static prxvc_config::paths::AppPaths> {
@@ -25,6 +33,29 @@ fn log_migration(what: &str, report: &prxvc_config::legacy::MigrationReport) {
     }
 }
 
+/// Log what the load reported (the settings window shows the unreadable-file notice).
+fn log_notices(notices: &[prxvc_config::LoadNotice]) {
+    use prxvc_config::LoadNotice;
+    for notice in notices {
+        match notice {
+            LoadNotice::UnreadableFileKept { kept_as, reason } => tracing::warn!(
+                "settings file could not be read ({reason}); kept as {}, defaults in use",
+                kept_as.display()
+            ),
+            LoadNotice::Migrated { from, to } => {
+                tracing::info!("settings file migrated in memory from schema {from} to {to}");
+            }
+            LoadNotice::SecretsMoved { entry_ids } => {
+                tracing::info!("moved API keys of {} provider(s) out of the settings file", entry_ids.len());
+            }
+            LoadNotice::SecretsNotMoved { locations } => tracing::warn!(
+                "API keys found in the settings file could not be moved to a credential store: {}",
+                locations.join(", ")
+            ),
+        }
+    }
+}
+
 /// Migrate the legacy directories, load [`AppConfig`] and resolve the
 /// application directories.
 ///
@@ -43,10 +74,17 @@ pub(crate) fn initialize_config() -> prxvc_config::AppConfig {
         );
     }
     let config = match prxvc_config::AppConfigManager::with_default_dir() {
-        Ok(mgr) => mgr.load().unwrap_or_else(|e| {
-            tracing::error!("Failed to load config: {e}");
-            prxvc_config::AppConfig::default()
-        }),
+        Ok(mgr) => match mgr.load_report() {
+            Ok(report) => {
+                log_notices(&report.notices);
+                let _ = LOAD_NOTICES.set(report.notices);
+                report.config
+            }
+            Err(e) => {
+                tracing::error!("Failed to load config: {e}");
+                prxvc_config::AppConfig::default()
+            }
+        },
         Err(_) => prxvc_config::AppConfig::default(),
     };
     if let Ok(paths) = AppPaths::resolve(&config) {

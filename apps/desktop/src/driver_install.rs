@@ -21,5 +21,7 @@ mod model;
 mod ops;
 mod service;
 mod system;
+mod view;
 
 pub(crate) use service::handle_command;
+pub(crate) use view::driver_view;

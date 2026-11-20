@@ -224,7 +224,7 @@ fn a_select_chooses_an_option_from_its_menu() {
     h.get_by_role_and_label(Role::ComboBox, "Microphone")
         .click();
     h.run();
-    h.get_by_role_and_label(Role::MenuItem, "System default")
+    h.get_by_role_and_label(Role::MenuItem, "System default · MacBook Pro Microphone")
         .click();
     h.run();
     assert_eq!(h.state().settings.input_device, "");
@@ -631,13 +631,13 @@ fn problems_and_the_missing_runtime_explanation_are_shown_with_their_instruction
     let mut st = WindowState::new(SettingsSection::SpeechPipeline);
     st.data.pipeline = PipelineData::Problems(vec![
         PipelineProblem {
-            subject: "Speech recognition · Chinese".into(),
+            subject: Some((PipelineRole::Recognition, "zh".into())),
             fallback: false,
             code: "runtime_not_built_in".into(),
             args: vec!["qwen3-asr".into(), "transcribe".into()],
         },
         PipelineProblem {
-            subject: "Translation · Chinese → English".into(),
+            subject: Some((PipelineRole::Translation, "zh>en".into())),
             fallback: false,
             code: "model_not_installed".into(),
             args: vec!["gemma-4-e4b".into(), "4.6 GB".into()],

@@ -75,6 +75,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 egui = { version = "0.37", features = ["default_fonts", "monochrome_emoji_fonts"] }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "persistence", "clipboard", "links", "system_fonts", "accesskit"] }
 
+# Operating-system interface language (already part of the dependency tree through eframe)
+sys-locale = { version = "0.3" }
+
 # Audio
 cpal = { version = "0.15" }
 whisper-cpp-plus = { version = "0.1.4" }

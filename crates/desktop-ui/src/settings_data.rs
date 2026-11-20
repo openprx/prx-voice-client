@@ -76,6 +76,10 @@ pub struct AudioData {
     pub outputs: Vec<DeviceView>,
     /// What the policy picks for the configured input.
     pub input_choice: Option<InputChoiceView>,
+    /// The microphone "System default" would use, by the same policy.
+    pub default_input: Option<String>,
+    /// The name of the system's default output device.
+    pub default_output: Option<String>,
     /// The device list could not be read.
     pub list_error: Option<String>,
 }
@@ -258,8 +262,8 @@ pub struct PipelineRow {
 /// One reason the pipeline cannot run, as plain data for a translated sentence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PipelineProblem {
-    /// The role and key it concerns, for example `translation zh>en`; empty for the call as a whole.
-    pub subject: String,
+    /// The role and language key it concerns (`""`, `"zh"` or `"zh>en"`); `None` for the call as a whole.
+    pub subject: Option<(PipelineRole, String)>,
     /// A fallback problem (non-fatal) rather than a primary one.
     pub fallback: bool,
     /// Stable code: the suffix of the `settings.pipeline.problem.*` strings.

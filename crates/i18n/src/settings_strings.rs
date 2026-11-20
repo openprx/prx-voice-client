@@ -7,6 +7,12 @@
 //! `settings.pipeline.problem.<code>` the sentence for a provider problem.
 /// English strings.
 pub(crate) const EN: &[(&str, &str)] = &[
+    ("tray.state.idle", "Idle"),
+    ("tray.state.listening", "Listening"),
+    ("tray.state.speaking", "Speaking"),
+    ("tray.state.translating", "Translating"),
+    ("tray.state.paused", "Paused"),
+    ("tray.state.attention", "Needs attention: {0}"),
     ("settings.nav.general", "General"),
     ("settings.nav.call", "Call translation"),
     ("settings.nav.assistant", "Assistant"),
@@ -370,6 +376,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
     (
         "settings.pipeline.problem.other",
         "A provider problem ({0}). See the log for details.",
+    ),
+    (
+        "settings.pipeline.problem.store_unreadable",
+        "The model store cannot be read: {0}",
     ),
     (
         "settings.pipeline.problem.invalid_language",
@@ -894,6 +904,12 @@ pub(crate) const EN: &[(&str, &str)] = &[
 
 /// Simplified Chinese strings.
 pub(crate) const ZH_CN: &[(&str, &str)] = &[
+    ("tray.state.idle", "空闲"),
+    ("tray.state.listening", "正在聆听"),
+    ("tray.state.speaking", "正在说话"),
+    ("tray.state.translating", "正在翻译"),
+    ("tray.state.paused", "已暂停"),
+    ("tray.state.attention", "需要处理：{0}"),
     ("settings.nav.general", "通用"),
     ("settings.nav.call", "通话翻译"),
     ("settings.nav.assistant", "语音助手"),
@@ -1197,6 +1213,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "settings.pipeline.problem.other",
         "提供方出现问题（{0}），详情见日志。",
+    ),
+    (
+        "settings.pipeline.problem.store_unreadable",
+        "无法读取模型存储位置：{0}",
     ),
     (
         "settings.pipeline.problem.invalid_language",
