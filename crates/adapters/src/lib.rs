@@ -12,6 +12,7 @@
 pub mod echo_translator;
 pub mod openai_translator;
 pub mod tone_synth;
+pub mod tts;
 
 pub use echo_translator::EchoTranslator;
 pub use openai_translator::OpenAiTranslator;

@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a channel send.
 
 ### Added
+- `QwenTts` in `prxvc-adapters` (`tts::qwentts`): the in-process `qwentts.cpp` speech synthesiser behind the
+  `prxvc-ports` synthesis port. A worker pool serves two requests at once through the runtime's batching, each
+  request has its own bounded chunk queue and cancellation, every call carries a generation cap derived from the
+  text and a runaway is aborted and reported as `Runaway`, a warm-up synthesis runs at load, prepared voices are
+  cached on disk per talker model, and presets are prepared voices built from a stored reference. The raw FFI
+  wrapper is behind the cargo feature `qwentts`.
+- Catalogue: the TTS entry is pinned to the files `qwentts.cpp` was measured with and the 0.6B model is added as
+  the speed fallback.
 - macOS application bundle `PRX Voice.app` (`scripts/package-macos.sh`,
   `scripts/run-app.sh`, `packaging/macos/`): bundle identifier
   `org.openprx.prx-voice-client`, microphone and audio-capture usage strings

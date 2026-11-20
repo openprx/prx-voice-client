@@ -15,16 +15,24 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }
 
-# Pulled in only by the `integration` feature (end-to-end example).
-# Path (not workspace-inherited) so we can disable default features here.
-prxvc-audio = { path = "../audio", default-features = false, optional = true }
-prxvc-media = { workspace = true, optional = true }
-prxvc-ports = { workspace = true, optional = true }
+# The TTS adapter needs only the workspace resampler. Default features stay on because
+# `prxvc-audio --no-default-features` does not build at present (`audio_loop.rs` names
+# `EchoGateHandle` outside its `whisper` gate); once it does, this line drops the recogniser.
+prxvc-audio = { workspace = true }
+prxvc-media = { workspace = true }
+prxvc-ports = { workspace = true }
+# Prepared-voice cache keys and the model fingerprint.
+sha2 = { workspace = true }
+# Lock and condition variable of the job queue.
+parking_lot = { workspace = true }
 
 [features]
 default = []
 # Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
-integration = ["dep:prxvc-audio", "dep:prxvc-media", "dep:prxvc-ports", "prxvc-audio/whisper"]
+integration = ["prxvc-audio/whisper"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
