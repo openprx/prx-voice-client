@@ -4180,6 +4180,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "prxvc-native-link"
+version = "0.1.0"
+dependencies = [
+ "prxvc-qwentts-sys",
+ "prxvc-transcribe-sys",
+]
+
+[[package]]
 name = "prxvc-observe"
 version = "0.1.0"
 dependencies = [
@@ -4219,6 +4227,10 @@ dependencies = [
  "url",
  "uuid",
 ]
+
+[[package]]
+name = "prxvc-qwentts-sys"
+version = "0.1.0"
 
 [[package]]
 name = "prxvc-security"
@@ -4267,6 +4279,10 @@ dependencies = [
  "serde_json",
  "uuid",
 ]
+
+[[package]]
+name = "prxvc-transcribe-sys"
+version = "0.1.0"
 
 [[package]]
 name = "pxfm"

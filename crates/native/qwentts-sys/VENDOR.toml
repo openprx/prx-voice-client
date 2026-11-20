@@ -1,0 +1,18 @@
+# Vendored upstream source for prxvc-qwentts-sys. Refresh with
+# crates/native/scripts/vendor.sh qwentts <checkout>; never edit vendor/ by hand.
+name = "qwentts.cpp"
+url = "https://github.com/ServeurpersoCom/qwentts.cpp"
+commit = "2edb35f87b709a070b2d5379f77e5c52a1daa585"
+commit_date = "2026-11-17"
+licence = "MIT"
+licence_file = "vendor/qwentts.cpp/LICENSE"
+
+[ggml]
+url = "https://github.com/ServeurpersoCom/ggml.git"
+commit = "ef4555b7aede4467a5de803b103615e0a5f30dd8"
+licence = "MIT"
+licence_file = "vendor/qwentts.cpp/ggml/LICENSE"
+
+# What is left out of the copy: tools/, tests/, vendor/ (cpp-httplib, yyjson) and
+# docs of qwentts.cpp; ggml examples, tests, docs and every backend other than
+# CPU, Metal and BLAS. Our own native/CMakeLists.txt replaces upstream's.

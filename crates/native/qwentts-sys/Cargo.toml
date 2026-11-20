@@ -1,0 +1,19 @@
+[package]
+name = "prxvc-qwentts-sys"
+description = "Raw bindings and build of the vendored qwentts.cpp text-to-speech runtime (symbol-isolated dynamic library)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+links = "prxvc_qwentts"
+build = "build.rs"
+# The vendored sources keep their own licences (MIT); see VENDOR.toml and vendor/qwentts.cpp/LICENSE.
+
+[features]
+# Builds and links the native library. Off by default so `cargo check` and `cargo test`
+# on the workspace never compile C++.
+qwentts = []
+
+[lints]
+workspace = true
