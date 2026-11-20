@@ -105,7 +105,8 @@ pub enum ClauseEventKind {
     TranslationStarted,
     /// Translation completed.
     Translated,
-    /// Synthesis was requested.
+    /// Synthesis was requested. Legal while the translation still streams
+    /// (early synthesis of the first target clause).
     SynthesisStarted,
     /// The first synthesised audio is ready.
     AudioReady,
@@ -196,7 +197,11 @@ impl ClauseState {
             (S::Committed, K::Recognized) => Outcome::Next(S::Recognized),
             (S::Recognized, K::TranslationStarted) => Outcome::Next(S::Translating),
             (S::Translating, K::Translated) => Outcome::Next(S::Translated),
-            (S::Translated, K::SynthesisStarted) => Outcome::Next(S::Synthesizing),
+            (S::Translated | S::Translating, K::SynthesisStarted) => Outcome::Next(S::Synthesizing),
+            // With `split_target_clauses` the first target clause is
+            // synthesised while the translation still streams, so the
+            // completion of the translation can arrive in `Synthesizing`.
+            (S::Synthesizing, K::Translated) => Outcome::Stay,
             (S::Synthesizing, K::AudioReady) => Outcome::Stay,
             (S::Synthesizing, K::PlaybackStarted) => Outcome::Next(S::Playing),
             (S::Playing, K::PlaybackFinished) => Outcome::Next(S::Played),

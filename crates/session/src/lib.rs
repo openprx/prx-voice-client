@@ -20,12 +20,14 @@
 //!   late results.
 //! * `commit_policy`: when text commits to a clause and to synthesis.
 //! * `interrupt`: what an interruption cancels (D-P5).
+//! * `backlog`: which queued clauses are skipped when a direction lags (3.4.3).
 //! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
 
 pub mod adapter;
 pub mod driver;
 pub mod interpret;
 
+mod backlog;
 mod call_state;
 mod commit_policy;
 mod config;
@@ -45,6 +47,7 @@ mod session;
 mod state;
 mod turn;
 
+pub use backlog::{BacklogClause, BacklogDecision, SkippingChange, decide_backlog};
 pub use call_state::{
     CallAction, CallEvent, CallReason, CallReasons, CallRejection, CallState, ProviderProgress,
 };

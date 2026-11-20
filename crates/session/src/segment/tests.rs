@@ -118,6 +118,8 @@ fn clause_expected(state: ClauseState, kind: ClauseEventKind) -> Outcome<ClauseS
         K::Skip => Next(C::Skipped),
         K::Failed(stage) => Next(C::Failed(stage)),
         K::AudioReady if state == C::Synthesizing => Stay,
+        K::Translated if state == C::Synthesizing => Stay,
+        K::SynthesisStarted if state == C::Translating => Next(C::Synthesizing),
         k => match forward(state) {
             Some((expected, to)) if expected == k => Next(to),
             _ => Illegal,
@@ -186,4 +188,20 @@ fn a_failure_is_terminal_and_names_its_stage() {
         Outcome::Next(C::Failed(Stage::Mt))
     );
     assert!(C::Failed(Stage::Mt).is_terminal());
+}
+
+#[test]
+fn early_synthesis_may_start_before_the_translation_completes() {
+    let started = C::Translating.apply(K::SynthesisStarted);
+    assert_eq!(started, Outcome::Next(C::Synthesizing));
+    assert_eq!(
+        C::Synthesizing.apply(K::Translated),
+        Outcome::Stay,
+        "the translation completing later changes nothing"
+    );
+    assert_eq!(
+        C::Recognized.apply(K::SynthesisStarted),
+        Outcome::Illegal,
+        "synthesis never starts before translation does"
+    );
 }
