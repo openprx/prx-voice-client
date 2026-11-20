@@ -4031,6 +4031,7 @@ dependencies = [
  "prxvc-audio",
  "prxvc-media",
  "prxvc-ports",
+ "prxvc-qwentts-sys",
  "prxvc-session",
  "reqwest",
  "serde",

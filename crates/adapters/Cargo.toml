@@ -25,11 +25,16 @@ prxvc-ports = { workspace = true }
 sha2 = { workspace = true }
 # Lock and condition variable of the job queue.
 parking_lot = { workspace = true }
+# Raw bindings of the `qwentts` feature.
+prxvc-qwentts-sys = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
 integration = ["prxvc-audio/whisper"]
+# The in-process `qwentts.cpp` engine behind `tts::qwentts::QwenTts`: builds the vendored C++ runtime
+# (cmake, clang) and links it as a dynamic library. Off by default, additive (CS-7.5).
+qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

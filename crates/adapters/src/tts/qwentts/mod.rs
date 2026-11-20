@@ -9,12 +9,16 @@
 //! * [`cap`]: the generation cap and the runaway decision, with their constants.
 //! * [`voice`]: preparing voices from reference recordings and the on-disk cache.
 //! * [`seam`]: the engine interface the adapter is written against.
+//! * `engine` (feature `qwentts`): the safe wrapper over `prxvc-qwentts-sys`, the only module of the
+//!   crate that uses `unsafe` (CS-2.10.1, pipeline-design PD-2.7.1).
 //!
 //! Everything but `engine` builds and is tested without the native library. The native tests are
 //! `#[ignore]`d live tests in `tests/qwentts_live.rs`.
 
 pub mod adapter;
 pub mod cap;
+#[cfg(feature = "qwentts")]
+pub mod engine;
 pub mod model_hash;
 pub mod request;
 pub mod seam;
