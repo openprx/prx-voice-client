@@ -57,6 +57,8 @@ pub mod call_activity;
 pub mod capture_reader;
 pub mod capture_source;
 #[cfg(target_os = "macos")]
+pub mod core_audio_defaults;
+#[cfg(target_os = "macos")]
 pub mod core_audio_devices;
 #[cfg(target_os = "macos")]
 pub(crate) mod core_audio_output;
@@ -87,6 +89,7 @@ pub mod playback_buffer;
 mod playback_buffer_rt;
 pub mod playback_sink;
 pub mod resample;
+pub mod process_filter;
 pub mod routing;
 pub mod stream_sink;
 pub mod tap_format;

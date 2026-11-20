@@ -12,6 +12,8 @@ prxvc-ports = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+libc = { workspace = true }
 uuid = { workspace = true }
 cpal = { workspace = true }
 parking_lot = { workspace = true }
@@ -24,6 +26,10 @@ cc = { workspace = true }
 [features]
 default = ["whisper"]
 whisper = ["dep:whisper-cpp-plus"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+prxvc-ports = { workspace = true, features = ["fakes"] }
 
 [lints]
 workspace = true
