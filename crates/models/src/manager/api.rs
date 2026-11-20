@@ -66,6 +66,7 @@ impl ManagerConfig {
             app_version,
             runtimes: [
                 "whisper.cpp",
+                "transcribe.cpp",
                 "llama.cpp",
                 "llama-server",
                 "qwentts.cpp",

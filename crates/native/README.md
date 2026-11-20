@@ -219,8 +219,9 @@ accuracy one, not a linking one.
   `@executable_path/../Frameworks`. Development builds get an absolute rpath into
   `target/<profile>/build/prxvc-*-sys-*/out` from the build script of the crate that links the `-sys` crate
   (`link/build.rs` is the pattern: `cargo:rustc-link-arg=-Wl,-rpath,$DEP_PRXVC_QWENTTS_LIB_DIR`).
-- **Implemented (2026-11-20).** `apps/desktop` has the feature `qwentts` (forwarding to `prxvc-adapters/qwentts`; no
-  `transcribe` feature exists in the adapters yet) and a `build.rs` that emits the development rpath
+- **Implemented (2026-11-20).** `apps/desktop` has the feature `qwentts` (forwarding to `prxvc-adapters/qwentts`; the
+  adapters now also have the feature `transcribe` for the second library, `libprxvc_transcribe.dylib`, which the
+  desktop app has to forward and give the same development rpath and bundle step as the first, see "Second library" below) and a `build.rs` that emits the development rpath
   (`target/<profile>/native-libs`, derived from `OUT_DIR`, because `DEP_*` variables reach direct dependents only)
   only with the feature on. `scripts/package-macos.sh --native` (or `PRXVC_NATIVE=1`; `scripts/run-app.sh --native`)
   copies the libraries the executable links through `@rpath`, rewrites the rpath, signs them before the bundle and
@@ -238,6 +239,19 @@ accuracy one, not a linking one.
   and `MACOSX_DEPLOYMENT_TARGET` (14.4 from the script) to CMake and the link. Only arm64 was built and run here;
   an `x86_64` build (and a universal one, which would need `lipo`) is untested.
 - **Size.** 7.0 MB and 8.6 MB added to the bundle.
+
+## Second library in the adapters (CT-11)
+
+`prxvc-adapters` has the cargo feature `transcribe = ["dep:prxvc-transcribe-sys", "prxvc-transcribe-sys/transcribe"]`
+(additive, off by default). With it on, `vad::SileroVad` and `asr::QwenAsr` exist, `build.rs` of the adapters crate adds the
+development rpath of `libprxvc_transcribe.dylib` next to the one of `libprxvc_qwentts.dylib`, and the only `unsafe` for this
+runtime is in `crates/adapters/src/transcribe/`. For the bundle: an executable that links `prxvc-adapters` with `transcribe`
+needs the same two things the TTS library needed, in `apps/desktop`: a feature forwarding to `prxvc-adapters/transcribe` and a
+`build.rs` rpath line for `target/<profile>/native-libs`; `scripts/package-macos.sh --native` already copies every library the
+executable links through `@rpath`, so `libprxvc_transcribe.dylib` (8.6 MB) is signed and copied with the first one. Loading both
+models at start: the Qwen3-ASR load takes about 0.15 s once the Metal pipelines are cached and the Silero load (CPU) a few ms;
+the first launch after a rebuild compiles the embedded shaders (about 2.7 s). Two direction pipelines share one `QwenAsr` (one
+model, one worker thread) and open one VAD session each on one Silero model.
 
 ## Keeping ordinary builds fast
 

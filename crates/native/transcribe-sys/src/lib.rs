@@ -1,8 +1,9 @@
 //! Raw bindings to the C API of the vendored transcribe.cpp (`transcribe.h`).
 //!
-//! Only what offline (segment) and streaming recognition need is declared: backend selection by
-//! the load parameters, model load, session init, a one-shot run with its results, the streaming
-//! begin/feed/finalize cycle, an abort callback, a log callback and the ABI self-check. Every
+//! Only what offline (segment) and streaming recognition and voice activity detection need is
+//! declared: backend selection by the load parameters, model load, session init, a one-shot run
+//! with its results, the streaming begin/feed/finalize cycle, an abort callback, a log callback,
+//! the VAD session (info, streaming feed, probabilities, reset) and the ABI self-check. Every
 //! function is `unsafe` to call; the safe wrapper lives in the adapters crate (CS-2.10.1). The
 //! library is the dynamic library `libprxvc_transcribe.dylib`, built by `build.rs` with ggml
 //! linked statically inside; it exports only the `transcribe_*` symbols.
@@ -73,6 +74,20 @@ pub const TRANSCRIBE_ABI_STREAM_UPDATE: c_int = 9;
 /// `transcribe_abi_struct` id of the stream text record.
 pub const TRANSCRIBE_ABI_STREAM_TEXT: c_int = 10;
 
+/// `transcribe_abi_struct` id of the VAD info record.
+pub const TRANSCRIBE_ABI_VAD_INFO: c_int = 24;
+/// `transcribe_abi_struct` id of the VAD session parameters.
+pub const TRANSCRIBE_ABI_VAD_SESSION_PARAMS: c_int = 25;
+/// `transcribe_abi_struct` id of the VAD run parameters.
+pub const TRANSCRIBE_ABI_VAD_PARAMS: c_int = 26;
+/// `transcribe_abi_struct` id of the VAD result record.
+pub const TRANSCRIBE_ABI_VAD_RESULT: c_int = 27;
+
+/// `transcribe_role` bit: the model can recognise speech.
+pub const TRANSCRIBE_ROLE_ASR: u32 = 1 << 0;
+/// `transcribe_role` bit: the model can detect speech activity.
+pub const TRANSCRIBE_ROLE_VAD: u32 = 1 << 3;
+
 /// `transcribe_stream_state`: no stream.
 pub const TRANSCRIBE_STREAM_IDLE: c_int = 0;
 /// `transcribe_stream_state`: a stream is running.
@@ -95,6 +110,11 @@ pub struct transcribe_session {
 /// Opaque compute device.
 #[repr(C)]
 pub struct transcribe_device {
+    _private: [u8; 0],
+}
+/// Opaque VAD session.
+#[repr(C)]
+pub struct transcribe_vad_session {
     _private: [u8; 0],
 }
 /// Opaque family extension block (not used here; always null).
@@ -251,6 +271,42 @@ pub struct transcribe_stream_text {
     pub raw_tentative_start_bytes: u64,
 }
 
+/// `struct transcribe_vad_info`.
+#[repr(C)]
+#[derive(Debug)]
+pub struct transcribe_vad_info {
+    /// Stamped by `transcribe_vad_info_init`.
+    pub struct_size: u64,
+    /// Required sample rate (16000).
+    pub sample_rate: i32,
+    /// Samples per frame (512).
+    pub frame_samples: i32,
+}
+
+/// `struct transcribe_vad_session_params`.
+#[repr(C)]
+#[derive(Debug)]
+pub struct transcribe_vad_session_params {
+    /// Stamped by `transcribe_vad_session_params_init`.
+    pub struct_size: u64,
+    /// Processing threads; 0 picks a default.
+    pub n_threads: i32,
+}
+
+/// `struct transcribe_vad_result`.
+#[repr(C)]
+#[derive(Debug)]
+pub struct transcribe_vad_result {
+    /// Stamped by `transcribe_vad_result_init`.
+    pub struct_size: u64,
+    /// Probabilities returned by the last call.
+    pub n_probs: i32,
+    /// Index of the first returned frame, counted from stream start.
+    pub first_frame: i64,
+    /// Speech segments (always 0 after feed or flush).
+    pub n_segments: i32,
+}
+
 /// Abort poll; true stops the run.
 pub type transcribe_abort_callback = Option<unsafe extern "C" fn(user_data: *mut c_void) -> bool>;
 /// Log callback; `level` is a `transcribe_log_level` (1 info, 2 warn, 3 error, 4 debug, 5 continuation).
@@ -359,4 +415,42 @@ unsafe extern "C" {
     ) -> transcribe_status;
     /// `TRANSCRIBE_STREAM_*` state of the session.
     pub fn transcribe_stream_get_state(session: *const transcribe_session) -> c_int;
+
+    /// Bit set of `TRANSCRIBE_ROLE_*` the model serves.
+    pub fn transcribe_model_roles(model: *const transcribe_model) -> u32;
+
+    /// Fill a VAD info record with defaults.
+    pub fn transcribe_vad_info_init(out: *mut transcribe_vad_info);
+    /// Fill VAD session parameters with defaults.
+    pub fn transcribe_vad_session_params_init(params: *mut transcribe_vad_session_params);
+    /// Fill a VAD result record with defaults.
+    pub fn transcribe_vad_result_init(out: *mut transcribe_vad_result);
+    /// Audio requirements of a VAD model.
+    pub fn transcribe_vad_get_info(
+        model: *const transcribe_model,
+        out: *mut transcribe_vad_info,
+    ) -> transcribe_status;
+    /// Create a VAD session on `model`.
+    pub fn transcribe_vad_session_init(
+        model: *mut transcribe_model,
+        params: *const transcribe_vad_session_params,
+        out_session: *mut *mut transcribe_vad_session,
+    ) -> transcribe_status;
+    /// Free a VAD session; null is a no-op.
+    pub fn transcribe_vad_session_free(session: *mut transcribe_vad_session);
+    /// Process incoming audio; incomplete frames are kept for the next call.
+    pub fn transcribe_vad_stream_feed(
+        session: *mut transcribe_vad_session,
+        pcm: *const c_float,
+        n_samples: c_int,
+    ) -> transcribe_status;
+    /// Discard the stream and its state; null is a no-op.
+    pub fn transcribe_vad_stream_reset(session: *mut transcribe_vad_session);
+    /// Summary of the last feed.
+    pub fn transcribe_vad_get_result(
+        session: *const transcribe_vad_session,
+        out: *mut transcribe_vad_result,
+    ) -> transcribe_status;
+    /// Probabilities of the last feed, session-owned, null when there are none.
+    pub fn transcribe_vad_probs(session: *const transcribe_vad_session) -> *const c_float;
 }

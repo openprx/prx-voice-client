@@ -114,7 +114,7 @@ fn both_runtimes_load_in_one_process_and_answer() {
 fn transcribe_struct_layouts_match_the_library() {
     use prxvc_transcribe_sys as s;
     use std::mem::{align_of, size_of};
-    let cases: [(&str, i32, usize, usize); 7] = [
+    let cases: [(&str, i32, usize, usize); 10] = [
         (
             "model_load_params",
             s::TRANSCRIBE_ABI_MODEL_LOAD_PARAMS,
@@ -156,6 +156,24 @@ fn transcribe_struct_layouts_match_the_library() {
             s::TRANSCRIBE_ABI_STREAM_TEXT,
             size_of::<s::transcribe_stream_text>(),
             align_of::<s::transcribe_stream_text>(),
+        ),
+        (
+            "vad_info",
+            s::TRANSCRIBE_ABI_VAD_INFO,
+            size_of::<s::transcribe_vad_info>(),
+            align_of::<s::transcribe_vad_info>(),
+        ),
+        (
+            "vad_session_params",
+            s::TRANSCRIBE_ABI_VAD_SESSION_PARAMS,
+            size_of::<s::transcribe_vad_session_params>(),
+            align_of::<s::transcribe_vad_session_params>(),
+        ),
+        (
+            "vad_result",
+            s::TRANSCRIBE_ABI_VAD_RESULT,
+            size_of::<s::transcribe_vad_result>(),
+            align_of::<s::transcribe_vad_result>(),
         ),
     ];
     for (name, id, size, align) in cases {
