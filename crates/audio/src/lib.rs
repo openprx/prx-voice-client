@@ -54,6 +54,7 @@ use uuid::Uuid;
 pub mod audio_loop;
 pub mod buffer;
 pub mod call_activity;
+pub mod call_pump;
 pub mod capture_reader;
 pub mod capture_source;
 #[cfg(target_os = "macos")]
@@ -80,6 +81,8 @@ pub mod endpoint;
 pub mod input_devices;
 pub mod input_policy;
 pub mod input_supervisor;
+#[cfg(target_os = "macos")]
+pub mod mic_consent;
 pub mod mix;
 pub mod mock;
 pub mod output;
@@ -92,6 +95,7 @@ pub mod resample;
 pub mod process_filter;
 pub mod routing;
 pub mod stream_sink;
+pub mod supervised_mic;
 pub mod tap_format;
 pub(crate) mod tap_format_rt;
 pub mod tap_host_time;
