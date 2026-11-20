@@ -142,7 +142,7 @@ fn real_world_file_keeps_every_value_and_migrates() {
     let dir = TempDir::new("real");
     write_config(&dir, REAL_WORLD);
     let report = mgr(&dir).load_report().unwrap();
-    assert_eq!(report.notices, vec![LoadNotice::Migrated { from: 0, to: 1 }]);
+    assert_eq!(report.notices, vec![LoadNotice::Migrated { from: 0, to: CURRENT_SCHEMA_VERSION }]);
     let c = report.config;
 
     assert_eq!(c.audio.sample_rate, 16_000);
@@ -176,7 +176,7 @@ fn real_world_file_keeps_every_value_and_migrates() {
     assert_eq!(c.debug.log_level, "info");
     assert!(!c.debug.show_debug_panel);
 
-    assert_eq!(c.schema_version, 1);
+    assert_eq!(c.schema_version, CURRENT_SCHEMA_VERSION);
     // New sections are defaults.
     assert_eq!(c.hotkeys, HotkeysConfig::default());
     assert_eq!(c.models, ModelsConfig::default());
@@ -390,7 +390,7 @@ fn a_newer_schema_is_loaded_and_backed_up_before_a_write() {
     let copies = aside_files(&dir, ".v7-");
     assert_eq!(copies.len(), 1);
     assert_eq!(fs::read_to_string(&copies[0]).unwrap(), text);
-    assert!(read_config(&dir).contains("schema_version = 1"));
+    assert!(read_config(&dir).contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")));
 }
 
 // --- atomic writes ---------------------------------------------------------
