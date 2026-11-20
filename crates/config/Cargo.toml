@@ -12,6 +12,7 @@ toml = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 directories = { workspace = true }
+url = { workspace = true }
 
 [lints]
 workspace = true

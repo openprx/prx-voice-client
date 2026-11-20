@@ -17,6 +17,7 @@ pub mod credentials;
 mod error;
 pub mod legacy;
 mod manager;
+pub mod net_policy;
 pub mod migrate;
 pub mod paths;
 mod providers;
@@ -31,6 +32,7 @@ pub use credentials::{CredentialError, CredentialStore, PendingSecret, Unavailab
 pub use error::ConfigError;
 pub use manager::{AppConfigManager, ConfigManager, LoadNotice, LoadReport, CONFIG_FILE_NAME};
 pub use migrate::CURRENT_SCHEMA_VERSION;
+pub use net_policy::{Blocked, NetworkPolicy};
 pub use providers::*;
 pub use sections::*;
 
