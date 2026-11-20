@@ -133,6 +133,13 @@ impl TapPolicy {
         }
     }
 
+    /// Tear down and re-create the running tap now (the digital-zero watchdog's
+    /// one rebuild). Like a stall, creation is retried while it fails.
+    pub fn rebuild(&mut self) -> Step {
+        self.phase = Phase::Waiting;
+        Step { emit: None, teardown: true, create: true }
+    }
+
     /// A native tap was created and started.
     pub fn created(&mut self) {
         self.phase = Phase::Running;
@@ -249,6 +256,18 @@ mod tests {
         let s = p.step(obs(true, false, true));
         assert_eq!(s.emit, Some(TapEvent::Stalled { idle_ms: 2_000 }));
         assert!(s.teardown && s.create);
+    }
+
+    #[test]
+    fn forced_rebuild_tears_down_and_creates_without_an_event() {
+        let mut p = TapPolicy::running();
+        let s = p.rebuild();
+        assert_eq!(s, Step { emit: None, teardown: true, create: true });
+        assert_eq!(p.phase(), Phase::Waiting);
+        // A failed creation is retried at the next poll while the target runs.
+        assert!(p.step(obs(true, false, false)).create);
+        p.created();
+        assert_eq!(p.phase(), Phase::Running);
     }
 
     #[test]

@@ -1,9 +1,10 @@
-//! Bounded lock-free single-producer single-consumer ring of fixed-size audio slots, written from the real-time tap callback.
+//! Bounded lock-free single-producer single-consumer ring of fixed-size audio slots: construction, shared state and the consumer side.
 //!
 //! All memory is allocated in [`tap_ring`]. The producer side
-//! ([`RingProducer::push_with`]) never allocates, locks or blocks: when the ring
-//! is full the new slot is dropped and `false` is returned, and the caller
-//! counts the overrun. The consumer side runs on a normal thread.
+//! ([`RingProducer::push_with`], in [`crate::tap_ring_rt`]) never allocates,
+//! locks or blocks: when the ring is full the new slot is dropped and `false`
+//! is returned, and the caller counts the overrun. The consumer side runs on a
+//! normal thread.
 
 use std::cell::UnsafeCell;
 use std::sync::Arc;
@@ -19,23 +20,25 @@ pub struct SlotMeta {
     pub channels: u32,
     /// Sample rate of the samples.
     pub sample_rate: u32,
-    /// Core Audio host time of the callback, 0 if unknown.
+    /// Capture time of the slot's first frame in nanoseconds of the producer's
+    /// clock (the Core Audio host clock for the tap, an `Instant` origin for the
+    /// microphone path), 0 if unknown.
     pub host_time: u64,
     /// Number of valid samples.
     pub len: usize,
 }
 
-struct Slot {
-    meta: SlotMeta,
-    data: Box<[f32]>,
+pub(crate) struct Slot {
+    pub(crate) meta: SlotMeta,
+    pub(crate) data: Box<[f32]>,
 }
 
-struct Inner {
-    slots: Box<[UnsafeCell<Slot>]>,
+pub(crate) struct Inner {
+    pub(crate) slots: Box<[UnsafeCell<Slot>]>,
     /// Next slot index to write (monotonic); written by the producer only.
-    head: AtomicUsize,
+    pub(crate) head: AtomicUsize,
     /// Next slot index to read (monotonic); written by the consumer only.
-    tail: AtomicUsize,
+    pub(crate) tail: AtomicUsize,
 }
 
 // SAFETY: a slot is accessed by at most one side at a time. The producer only
@@ -48,7 +51,7 @@ unsafe impl Send for Inner {}
 
 /// Write side; owned by the real-time callback's context.
 pub struct RingProducer {
-    inner: Arc<Inner>,
+    pub(crate) inner: Arc<Inner>,
 }
 
 /// Read side; owned by a normal thread.
@@ -69,34 +72,6 @@ pub fn tap_ring(capacity: usize) -> (RingProducer, RingConsumer) {
         .collect();
     let inner = Arc::new(Inner { slots, head: AtomicUsize::new(0), tail: AtomicUsize::new(0) });
     (RingProducer { inner: Arc::clone(&inner) }, RingConsumer { inner })
-}
-
-impl RingProducer {
-    /// Fill the next free slot. `fill` receives the slot's sample buffer
-    /// ([`SLOT_SAMPLES`] long) and returns how many samples it wrote.
-    ///
-    /// Returns `false` without calling `fill` when the ring is full.
-    pub fn push_with(
-        &mut self,
-        channels: u32,
-        sample_rate: u32,
-        host_time: u64,
-        fill: impl FnOnce(&mut [f32]) -> usize,
-    ) -> bool {
-        let inner = &*self.inner;
-        let head = inner.head.load(Ordering::Relaxed);
-        let tail = inner.tail.load(Ordering::Acquire);
-        if head - tail >= inner.slots.len() {
-            return false;
-        }
-        // SAFETY: slot `head % cap` is free (head - tail < cap) and unpublished,
-        // so the consumer does not touch it; `&mut self` makes this the only producer.
-        let slot = unsafe { &mut *inner.slots[head % inner.slots.len()].get() };
-        let len = fill(&mut slot.data).min(SLOT_SAMPLES);
-        slot.meta = SlotMeta { channels, sample_rate, host_time, len };
-        inner.head.store(head + 1, Ordering::Release);
-        true
-    }
 }
 
 impl RingConsumer {

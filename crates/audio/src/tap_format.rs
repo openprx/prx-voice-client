@@ -1,4 +1,7 @@
-//! Tap stream-format validation and sample layout conversion: checks the format once at start and turns each callback's buffers into interleaved f32.
+//! Tap stream-format validation: checks the format once at start and packs the validated layout for the real-time callback.
+//!
+//! The per-callback handling of the layout (unpack, frame count, interleave,
+//! silence detection) is in [`crate::tap_format_rt`].
 
 use crate::tap_types::TapError;
 
@@ -85,52 +88,6 @@ impl StreamLayout {
     /// atomic load while the supervisor installs the layout of a new tap.
     pub fn pack(&self) -> u64 {
         (u64::from(self.sample_rate) << 32) | (u64::from(self.channels) << 1) | u64::from(self.non_interleaved)
-    }
-
-    /// Inverse of [`pack`](Self::pack); `0` (nothing installed) gives `None`.
-    pub fn unpack(word: u64) -> Option<Self> {
-        let channels = ((word >> 1) & 0xff) as u32;
-        (channels != 0).then_some(Self {
-            sample_rate: (word >> 32) as u32,
-            channels,
-            non_interleaved: word & 1 == 1,
-        })
-    }
-
-    /// Frames available in a callback's buffers, or `None` when the buffers do
-    /// not have the validated shape (so nothing is read from them).
-    pub fn frames_in(&self, buffers: &[InputBuffer<'_>]) -> Option<usize> {
-        let ch = self.channels as usize;
-        if self.non_interleaved {
-            if buffers.len() < ch {
-                return None;
-            }
-            let frames = buffers[0].samples.len();
-            let ok = buffers[..ch].iter().all(|b| b.channels == 1 && b.samples.len() == frames);
-            ok.then_some(frames)
-        } else {
-            let b = buffers.first()?;
-            let ok = b.channels as usize == ch && b.samples.len() % ch == 0;
-            ok.then_some(b.samples.len() / ch)
-        }
-    }
-
-    /// Write `frames` frames starting at frame `start` into `out` as
-    /// interleaved samples. `out` must hold `frames * channels` samples and the
-    /// range must lie inside what [`frames_in`](Self::frames_in) returned.
-    /// Performs no allocation.
-    pub fn interleave_into(&self, buffers: &[InputBuffer<'_>], start: usize, frames: usize, out: &mut [f32]) {
-        let ch = self.channels as usize;
-        if self.non_interleaved {
-            for c in 0..ch {
-                let src = &buffers[c].samples[start..start + frames];
-                for (f, &s) in src.iter().enumerate() {
-                    out[f * ch + c] = s;
-                }
-            }
-        } else {
-            out[..frames * ch].copy_from_slice(&buffers[0].samples[start * ch..(start + frames) * ch]);
-        }
     }
 }
 

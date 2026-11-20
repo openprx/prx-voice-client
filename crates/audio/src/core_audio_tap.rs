@@ -1,26 +1,30 @@
 //! Core Audio process-tap capture (macOS 14.4+): safe wrapper over `native/prxvc_tap.m` that delivers one application's audio as frames.
 //!
-//! The IO callback ([`on_buffers`]) runs on the Core Audio HAL thread, a
-//! real-time thread: it only validates the buffer shape, copies samples into a
-//! preallocated lock-free ring ([`crate::tap_ring`]) and bumps atomic counters.
-//! No allocation, lock or logging happens there; a full ring drops the new data
-//! and counts the overrun. Everything else (frame building, health checks,
-//! re-creation) runs on normal threads; see [`crate::tap_supervisor`].
+//! The IO callback ([`crate::tap_rt::on_buffers`]) runs on the Core Audio HAL
+//! thread, a real-time thread: it only validates the buffer shape, copies
+//! samples into a preallocated lock-free ring ([`crate::tap_ring`]) and bumps
+//! atomic counters. It lives in a `*_rt.rs` file and is covered by the
+//! real-time check (`tests/realtime_files.rs`). This file holds the FFI
+//! declarations, the callback context and everything that runs on normal
+//! threads (frame building, health checks, re-creation; see
+//! [`crate::tap_supervisor`]).
 //!
 //! Frames are emitted as raw interleaved **float32 at the tap's native rate**
 //! (typically 48 kHz stereo); downmix-to-mono and resampling to 16 kHz for ASR
 //! happen downstream.
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::tap_format::{InputBuffer, MAX_BUFFERS, RawFormat, StreamLayout};
+use crate::tap_consent::start_gate;
+pub use crate::tap_consent::{ConsentOutcome, PermissionStatus, permission_status, request_capture_consent};
+use crate::tap_format::{RawFormat, StreamLayout};
 use crate::tap_ring::{RingConsumer, RingProducer, SLOT_SAMPLES, tap_ring};
+use crate::tap_rt::on_buffers;
 use crate::tap_supervisor::{Supervisor, spawn_supervisor};
 use crate::tap_types::{TapConfig, TapCounters, TapError, TapEvent, TapStats, TapTarget};
 use crate::{AudioFormat, AudioFrame};
@@ -67,18 +71,19 @@ struct RawTapResult {
 }
 
 #[repr(C)]
-struct RawTapBuffer {
-    channels: u32,
-    byte_size: u32,
-    data: *const c_void,
+pub(crate) struct RawTapBuffer {
+    pub(crate) channels: u32,
+    pub(crate) byte_size: u32,
+    pub(crate) data: *const c_void,
 }
 
-type TapAudioCb = extern "C" fn(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time: u64);
+/// `host_time_ns` is the capture time of the cycle's first frame on the Core
+/// Audio host clock in nanoseconds, 0 if the system gave none.
+type TapAudioCb = extern "C" fn(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time_ns: u64);
 
 const ERR_UNSUPPORTED_OS: i32 = 1;
 const ERR_PROCESS_NOT_FOUND: i32 = 2;
 const ERR_CORE_AUDIO: i32 = 3;
-const PERMISSION_DENIED: i32 = 1;
 
 unsafe extern "C" {
     fn prxvc_tap_create(
@@ -93,7 +98,7 @@ unsafe extern "C" {
     fn prxvc_tap_destroy(tap: *mut PrxvcTap);
     fn prxvc_tap_target_running(bundle_id: *const c_char, pid: c_int, pid_out: *mut c_int) -> i32;
     fn prxvc_tap_bundle_form_available() -> i32;
-    fn prxvc_tap_permission_status() -> i32;
+    fn prxvc_tap_host_time_now_ns() -> u64;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,10 +109,10 @@ unsafe extern "C" {
 /// the whole supervision, so it outlives every native tap that uses it.
 pub(crate) struct TapCtx {
     /// Packed [`StreamLayout`] of the current native tap; `0` while none is installed.
-    layout: AtomicU64,
+    pub(crate) layout: AtomicU64,
     /// Written only by the IO callback, which the HAL calls serially, and only
-    /// while a native tap is running; see [`on_buffers`].
-    producer: std::cell::UnsafeCell<RingProducer>,
+    /// while a native tap is running; see [`crate::tap_rt::on_buffers`].
+    pub(crate) producer: std::cell::UnsafeCell<RingProducer>,
     pub(crate) counters: Arc<TapCounters>,
 }
 
@@ -124,70 +129,6 @@ impl TapCtx {
             producer: std::cell::UnsafeCell::new(producer),
             counters: Arc::new(TapCounters::default()),
         }
-    }
-}
-
-/// IO callback. Runs on the Core Audio HAL thread: nothing here may allocate,
-/// lock, log or block (CS-4.1.1).
-extern "C" fn on_buffers(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time: u64) {
-    if ctx.is_null() || buffers.is_null() || count == 0 {
-        return;
-    }
-    // A panic must never unwind into C; `catch_unwind` does not allocate unless
-    // a panic occurs.
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        // SAFETY: `ctx` is `Arc::as_ptr` of a `TapCtx` that outlives the native
-        // tap (the supervisor drops the tap before the last `Arc`).
-        let ctx = unsafe { &*(ctx as *const TapCtx) };
-        // SAFETY: the shim passes `count` valid `RawTapBuffer`s for the call's duration.
-        let raw = unsafe { std::slice::from_raw_parts(buffers, (count as usize).min(MAX_BUFFERS)) };
-        // SAFETY: serial callbacks, see `TapCtx::producer`.
-        let producer = unsafe { &mut *ctx.producer.get() };
-        deliver(ctx, producer, raw, host_time);
-    }));
-}
-
-/// Validate one callback's buffers against the installed layout and queue them.
-fn deliver(ctx: &TapCtx, producer: &mut RingProducer, raw: &[RawTapBuffer], host_time: u64) {
-    let counters = &ctx.counters;
-    // Counted first so a stream of unreadable buffers is not mistaken for a stall.
-    counters.callbacks.fetch_add(1, Ordering::Relaxed);
-    let Some(layout) = StreamLayout::unpack(ctx.layout.load(Ordering::Acquire)) else {
-        return;
-    };
-    let mut views = [InputBuffer::EMPTY; MAX_BUFFERS];
-    for (view, b) in views.iter_mut().zip(raw) {
-        if b.data.is_null() || !(b.data as usize).is_multiple_of(std::mem::align_of::<f32>()) || !b.byte_size.is_multiple_of(4) {
-            counters.bad_buffers.fetch_add(1, Ordering::Relaxed);
-            return;
-        }
-        // SAFETY: non-null, 4-byte aligned, `byte_size` bytes valid for this call.
-        let samples = unsafe { std::slice::from_raw_parts(b.data as *const f32, (b.byte_size / 4) as usize) };
-        *view = InputBuffer { channels: b.channels, samples };
-    }
-    let views = &views[..raw.len()];
-    let Some(frames) = layout.frames_in(views) else {
-        counters.bad_buffers.fetch_add(1, Ordering::Relaxed);
-        return;
-    };
-    counters.frames.fetch_add(frames as u64, Ordering::Relaxed);
-
-    let channels = layout.channels as usize;
-    let per_slot = SLOT_SAMPLES / channels;
-    let mut start = 0;
-    while start < frames {
-        let take = per_slot.min(frames - start);
-        let queued = producer.push_with(layout.channels, layout.sample_rate, host_time, |out| {
-            layout.interleave_into(views, start, take, out);
-            take * channels
-        });
-        if !queued {
-            // Ring full: the consumer fell behind. Drop the rest and count it.
-            counters.overrun_slots.fetch_add(1, Ordering::Relaxed);
-            counters.overrun_frames.fetch_add((frames - start) as u64, Ordering::Relaxed);
-            return;
-        }
-        start += take;
     }
 }
 
@@ -209,9 +150,10 @@ unsafe impl Send for NativeTap {}
 
 impl NativeTap {
     /// Create and start a native tap for `config`, delivering into `ctx`.
-    pub(crate) fn open(config: &TapConfig, ctx: &Arc<TapCtx>) -> Result<Self, TapError> {
-        if permission_status() == PermissionStatus::Denied {
-            return Err(TapError::PermissionDenied);
+    /// `check_consent` runs the consent gate first (see [`crate::tap_consent`]).
+    pub(crate) fn open(config: &TapConfig, ctx: &Arc<TapCtx>, check_consent: bool) -> Result<Self, TapError> {
+        if check_consent {
+            start_gate(permission_status(), crate::tap_consent::bundle_declares_capture_usage())?;
         }
         let (bundle, pid) = match &config.target {
             TapTarget::Pid(pid) => (None, *pid),
@@ -297,28 +239,11 @@ fn map_os_failure(operation: &str, status: i32) -> TapError {
     TapError::CoreAudio { operation: operation.into(), status }
 }
 
-/// The user's answer for system audio recording.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PermissionStatus {
-    /// Allowed.
-    Granted,
-    /// Refused; the tap would deliver silence.
-    Denied,
-    /// Not asked yet; creating the tap shows the system prompt.
-    Undetermined,
-    /// The system gives no answer.
-    Unknown,
-}
-
-/// Ask the system whether system audio recording is allowed. Never prompts.
-pub fn permission_status() -> PermissionStatus {
-    // SAFETY: no arguments; the shim only reads the permission database.
-    match unsafe { prxvc_tap_permission_status() } {
-        0 => PermissionStatus::Granted,
-        PERMISSION_DENIED => PermissionStatus::Denied,
-        2 => PermissionStatus::Undetermined,
-        _ => PermissionStatus::Unknown,
-    }
+/// The Core Audio host clock now, in nanoseconds: the clock of the capture
+/// times returned by [`TapReceiver::try_recv_stamped`].
+pub fn host_time_now_ns() -> u64 {
+    // SAFETY: no arguments; reads the host clock.
+    unsafe { prxvc_tap_host_time_now_ns() }
 }
 
 /// Whether the OS provides the bundle-ID tap form with process restore (macOS 26+).
@@ -363,19 +288,39 @@ impl CoreAudioTap {
     /// is re-created when the target runs again. Keep the [`CoreAudioTap`]
     /// alive for as long as you want frames; dropping it stops capture.
     ///
+    /// Consent is checked first and never requested here: use
+    /// [`request_capture_consent`] separately.
+    ///
     /// # Errors
     /// A [`TapError`]: unsupported OS, permission denied (with the text a user
-    /// needs), target not running, unsupported stream format, or a Core Audio failure.
+    /// needs), consent not yet requested, not running from an application bundle
+    /// that can ask, target not running, unsupported stream format, or a Core
+    /// Audio failure.
     pub fn start(config: TapConfig) -> Result<(Self, TapReceiver), TapError> {
+        Self::start_checked(config, true)
+    }
+
+    /// Like [`start`](Self::start) but without the consent gate: the tap is
+    /// created even when consent is known to be missing, so that the digital-zero
+    /// watchdog can be exercised (`live_tap_zero_detect`). Not for production.
+    ///
+    /// # Errors
+    /// As [`start`](Self::start), except for the consent errors.
+    pub fn start_without_consent_check(config: TapConfig) -> Result<(Self, TapReceiver), TapError> {
+        Self::start_checked(config, false)
+    }
+
+    fn start_checked(config: TapConfig, check_consent: bool) -> Result<(Self, TapReceiver), TapError> {
         let (producer, consumer) = tap_ring(RING_SLOTS);
         let ctx = Arc::new(TapCtx::new(producer));
-        let native = NativeTap::open(&config, &ctx)?;
+        let native = NativeTap::open(&config, &ctx, check_consent)?;
         let counters = Arc::clone(&ctx.counters);
         let (events_tx, events) = std::sync::mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let thread = spawn_supervisor(Supervisor {
             config,
             ctx,
+            check_consent,
             native: Some(native),
             events: events_tx,
             stop: Arc::clone(&stop),
@@ -418,6 +363,13 @@ impl TapReceiver {
 
     /// The next captured frame, if one is ready.
     pub fn try_recv(&mut self) -> Option<AudioFrame> {
+        self.try_recv_stamped().map(|(frame, _)| frame)
+    }
+
+    /// The next captured frame with its capture time: nanoseconds on the Core
+    /// Audio host clock (see [`host_time_now_ns`]) of the frame's first sample,
+    /// 0 if the system gave none.
+    pub fn try_recv_stamped(&mut self) -> Option<(AudioFrame, u64)> {
         let meta = self.consumer.pop_into(&mut self.scratch)?;
         let mut data = Vec::with_capacity(self.scratch.len() * std::mem::size_of::<f32>());
         for sample in &self.scratch {
@@ -432,7 +384,7 @@ impl TapReceiver {
             data,
         };
         self.sequence += 1;
-        Some(frame)
+        Some((frame, meta.host_time))
     }
 
     /// Wait up to `timeout` for the next frame.
@@ -463,10 +415,8 @@ pub fn frame_peak_amplitude(frame: &AudioFrame) -> f32 {
         return 0.0;
     }
     let mut peak = 0.0f32;
-    for chunk in frame.data.chunks_exact(std::mem::size_of::<f32>()) {
-        // chunks_exact yields exactly 4 bytes; build a fixed array for from_le_bytes.
-        let bytes = [chunk[0], chunk[1], chunk[2], chunk[3]];
-        let sample = f32::from_le_bytes(bytes).abs();
+    for bytes in frame.data.as_chunks::<4>().0 {
+        let sample = f32::from_le_bytes(*bytes).abs();
         if sample > peak {
             peak = sample;
         }
@@ -488,6 +438,7 @@ use prxvc_ports::{AudioSource, EndpointError, EndpointHealth, SourceInfo};
 
 use crate::resample::downmix_to_mono;
 use crate::routing::ProcessFilter;
+use crate::tap_host_time::{FrameStamper, HostTimeMap};
 
 /// The rate reported by [`AudioSource::start`] before the first frame: the
 /// tap's native rate is 48 kHz on current hardware. Each frame carries the
@@ -499,12 +450,15 @@ const NOMINAL_RATE: SampleRate = SampleRate::HZ_48000;
 /// Lazily starts the tap on [`start`](AudioSource::start) using the configured
 /// [`TapConfig`], delivers frames downmixed to mono at the tap's native rate via
 /// [`read`](AudioSource::read), and tears the tap down on
-/// [`stop`](AudioSource::stop) or drop. Frames are stamped when they are read
-/// from the ring (the tap does not yet pass the host time through).
+/// [`stop`](AudioSource::stop) or drop. Each frame is stamped with its capture
+/// time: the host time of its IO cycle, converted to the pipeline clock by
+/// [`FrameStamper`] (a frame whose capture time is missing or implausible gets
+/// the read time instead and is counted).
 pub struct CoreAudioTapSource {
     config: TapConfig,
     inner: Option<(CoreAudioTap, TapReceiver)>,
     clock: SystemClock,
+    stamper: Option<FrameStamper>,
     sequence: u64,
     overruns_seen: u64,
     frames: u64,
@@ -527,6 +481,7 @@ impl CoreAudioTapSource {
             config,
             inner: None,
             clock: SystemClock::new(),
+            stamper: None,
             sequence: 0,
             overruns_seen: 0,
             frames: 0,
@@ -544,12 +499,19 @@ impl CoreAudioTapSource {
         self.inner.as_ref().map(|(tap, _)| tap.stats())
     }
 
-    /// Downmix a tap frame to a mono media frame stamped now.
-    fn frame_to_media(&mut self, frame: &AudioFrame, gap: bool) -> Result<MediaFrame, EndpointError> {
+    /// Frames stamped with the read time because their capture time was
+    /// missing or implausible.
+    pub fn stamp_fallbacks(&self) -> u64 {
+        self.stamper.as_ref().map_or(0, FrameStamper::fallbacks)
+    }
+
+    /// Downmix a tap frame to a mono media frame stamped with its capture time.
+    fn frame_to_media(&mut self, frame: &AudioFrame, host_ns: u64, gap: bool) -> Result<MediaFrame, EndpointError> {
         let mono = downmix_to_mono(frame).map_err(|e| EndpointError::Internal(e.to_string()))?;
         let rate = SampleRate::new(frame.sample_rate)
             .map_err(|e| EndpointError::Internal(e.to_string()))?;
-        let ts: MonoTime = prxvc_media::Clock::now(&self.clock);
+        let now: MonoTime = prxvc_media::Clock::now(&self.clock);
+        let ts = self.stamper.as_mut().map_or(now, |s| s.stamp(host_ns, now));
         let media = MediaFrame::new(mono, rate, ts, self.sequence)
             .map_err(|e| EndpointError::Internal(e.to_string()))?;
         self.sequence += 1;
@@ -565,6 +527,10 @@ impl AudioSource for CoreAudioTapSource {
         match CoreAudioTap::start(self.config.clone()) {
             Ok(inner) => {
                 self.inner = Some(inner);
+                // One calibration pair of the host clock and the pipeline clock.
+                let host_now = host_time_now_ns();
+                let mono_now = prxvc_media::Clock::now(&self.clock);
+                self.stamper = Some(FrameStamper::new(HostTimeMap::new(host_now, mono_now)));
                 self.sequence = 0;
                 self.overruns_seen = 0;
                 self.last_error = None;
@@ -589,11 +555,11 @@ impl AudioSource for CoreAudioTapSource {
             self.overruns_seen = overruns;
             let mut taken = 0;
             let mut raw = Vec::new();
-            while let Some(frame) = rx.try_recv() {
-                raw.push(frame);
+            while let Some(stamped) = rx.try_recv_stamped() {
+                raw.push(stamped);
             }
-            for frame in &raw {
-                let media = self.frame_to_media(frame, std::mem::take(&mut gap))?;
+            for (frame, host_ns) in &raw {
+                let media = self.frame_to_media(frame, *host_ns, std::mem::take(&mut gap))?;
                 out.push(media);
                 taken += 1;
             }

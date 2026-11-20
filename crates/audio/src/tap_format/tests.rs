@@ -122,3 +122,18 @@ fn layout_packs_and_unpacks() {
     }
     assert_eq!(StreamLayout::unpack(0), None);
 }
+
+#[test]
+fn any_nonzero_sees_one_nonzero_sample_and_treats_negative_zero_as_zero() {
+    use crate::tap_format_rt::any_nonzero;
+    let zeros = [0.0f32, -0.0, 0.0];
+    let buf = |s: &'static [f32]| InputBuffer { channels: 1, samples: s };
+    assert!(!any_nonzero(&[]));
+    assert!(!any_nonzero(&[InputBuffer { channels: 1, samples: &zeros }]));
+    let mut mostly = vec![0.0f32; 1024];
+    mostly[1000] = 1.0e-9;
+    assert!(any_nonzero(&[InputBuffer { channels: 1, samples: &mostly }]));
+    // Only the second of two planar buffers carries signal.
+    let second = [0.0f32, 0.5];
+    assert!(any_nonzero(&[buf(&[0.0, 0.0]), InputBuffer { channels: 1, samples: &second }]));
+}

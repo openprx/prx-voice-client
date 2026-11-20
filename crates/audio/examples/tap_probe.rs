@@ -5,14 +5,18 @@
 //! the meeting app while audio is playing.
 //!
 //! Usage:
-//!   cargo run -p prxvc-audio --example tap_probe -- <PID | bundle.id> [SECONDS] [--mute MODE]
+//!   cargo run -p prxvc-audio --example tap_probe -- <PID | bundle.id> [SECONDS] [--mute MODE] [--ask-consent]
 //!
 //! `MODE` is `unmuted` (default), `muted` or `muted-when-tapped`. The muted
 //! modes silence the target application on this computer while the probe runs;
 //! do not use them on an application someone is listening to.
 //!
-//! A first run may trigger the macOS system-audio-recording permission prompt.
-//! If denied or on macOS < 14.4, start fails with a message saying what to do.
+//! The tap needs System Audio Recording consent. Start never asks: with the
+//! status undetermined it fails with a message saying so. `--ask-consent` calls
+//! `request_capture_consent` first, which shows the macOS prompt, and only from
+//! an application bundle that declares `NSAudioCaptureUsageDescription`
+//! (otherwise it fails saying so, without a prompt). If denied or on macOS <
+//! 14.4, start fails with a message saying what to do.
 
 #[cfg(target_os = "macos")]
 fn main() {
@@ -23,6 +27,7 @@ fn main() {
 
     let mut positional = Vec::new();
     let mut mute = TapMuteMode::Unmuted;
+    let mut ask_consent = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--mute" {
@@ -31,12 +36,14 @@ fn main() {
                 std::process::exit(2);
             };
             mute = mode;
+        } else if arg == "--ask-consent" {
+            ask_consent = true;
         } else {
             positional.push(arg);
         }
     }
     let Some(target_arg) = positional.first() else {
-        eprintln!("usage: tap_probe <PID | bundle.id> [SECONDS] [--mute MODE]");
+        eprintln!("usage: tap_probe <PID | bundle.id> [SECONDS] [--mute MODE] [--ask-consent]");
         eprintln!("  find a PID with e.g.  pgrep -x zoom.us");
         std::process::exit(2);
     };
@@ -52,6 +59,15 @@ fn main() {
         prxvc_audio::core_audio_tap::bundle_form_available(),
         prxvc_audio::core_audio_tap::permission_status(),
     );
+    if ask_consent {
+        match prxvc_audio::core_audio_tap::request_capture_consent(Duration::from_secs(60)) {
+            Ok(outcome) => println!("[tap_probe] consent request: {outcome:?}"),
+            Err(e) => {
+                eprintln!("[tap_probe] consent request failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
     let (tap, mut rx) = match CoreAudioTap::start(TapConfig { target, mute }) {
         Ok(pair) => pair,
         Err(e) => {
