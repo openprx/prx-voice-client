@@ -1,8 +1,10 @@
 //! Application-level runtime metrics collected via atomic counters.
 //!
 //! All metric operations are lock-free and safe to call from any thread.
-//! Use [`snapshot`] to capture a point-in-time view of all counters and
-//! [`reset`] to zero them out (e.g. after exporting).
+//! [`Metrics`] is an owned registry; the process-wide instance returned by
+//! [`global`] backs the free functions ([`inc_sessions_created`],
+//! [`snapshot`], [`reset`], ...). Tests create their own [`Metrics`] so they
+//! do not share state.
 
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -46,10 +48,14 @@ pub struct AppMetrics {
 }
 
 // ---------------------------------------------------------------------------
-// Internal atomic counters
+// Metrics registry
 // ---------------------------------------------------------------------------
 
-struct MetricsCounters {
+/// A set of atomic metric counters.
+///
+/// Create one with [`Metrics::new`] to own isolated state, or use [`global`]
+/// for the process-wide instance.
+pub struct Metrics {
     sessions_created: AtomicU64,
     sessions_completed: AtomicU64,
     sessions_failed: AtomicU64,
@@ -65,129 +71,209 @@ struct MetricsCounters {
     start_time: Instant,
 }
 
-static COUNTERS: LazyLock<MetricsCounters> = LazyLock::new(|| MetricsCounters {
-    sessions_created: AtomicU64::new(0),
-    sessions_completed: AtomicU64::new(0),
-    sessions_failed: AtomicU64::new(0),
-    total_turns: AtomicU64::new(0),
-    total_interrupts: AtomicU64::new(0),
-    reconnect_attempts: AtomicU64::new(0),
-    reconnect_successes: AtomicU64::new(0),
-    errors_total: AtomicU64::new(0),
-    errors_recoverable: AtomicU64::new(0),
-    errors_fatal: AtomicU64::new(0),
-    audio_frames_in: AtomicU64::new(0),
-    audio_frames_out: AtomicU64::new(0),
-    start_time: Instant::now(),
-});
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Metrics {
+    /// Create a registry with all counters at zero.
+    pub fn new() -> Self {
+        Self {
+            sessions_created: AtomicU64::new(0),
+            sessions_completed: AtomicU64::new(0),
+            sessions_failed: AtomicU64::new(0),
+            total_turns: AtomicU64::new(0),
+            total_interrupts: AtomicU64::new(0),
+            reconnect_attempts: AtomicU64::new(0),
+            reconnect_successes: AtomicU64::new(0),
+            errors_total: AtomicU64::new(0),
+            errors_recoverable: AtomicU64::new(0),
+            errors_fatal: AtomicU64::new(0),
+            audio_frames_in: AtomicU64::new(0),
+            audio_frames_out: AtomicU64::new(0),
+            start_time: Instant::now(),
+        }
+    }
+
+    /// Record that a new session was created.
+    pub fn inc_sessions_created(&self) {
+        self.sessions_created.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a session completed normally.
+    pub fn inc_sessions_completed(&self) {
+        self.sessions_completed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a session failed.
+    pub fn inc_sessions_failed(&self) {
+        self.sessions_failed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a conversation turn was processed.
+    pub fn inc_total_turns(&self) {
+        self.total_turns.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a playback interruption occurred.
+    pub fn inc_total_interrupts(&self) {
+        self.total_interrupts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a reconnect attempt was made.
+    pub fn inc_reconnect_attempts(&self) {
+        self.reconnect_attempts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that a reconnect attempt succeeded.
+    pub fn inc_reconnect_successes(&self) {
+        self.reconnect_successes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that an inbound audio frame was received.
+    pub fn inc_audio_frames_in(&self) {
+        self.audio_frames_in.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record that an outbound audio frame was sent.
+    pub fn inc_audio_frames_out(&self) {
+        self.audio_frames_out.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record an error occurrence.
+    ///
+    /// When `recoverable` is `true` the error is counted as recoverable;
+    /// otherwise it is counted as fatal. Both kinds increment `errors_total`.
+    pub fn inc_errors(&self, recoverable: bool) {
+        self.errors_total.fetch_add(1, Ordering::Relaxed);
+        if recoverable {
+            self.errors_recoverable.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.errors_fatal.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Capture a point-in-time snapshot of all metric counters.
+    ///
+    /// The `uptime_seconds` field reflects wall-clock time since this
+    /// registry was created.
+    pub fn snapshot(&self) -> AppMetrics {
+        AppMetrics {
+            sessions_created: self.sessions_created.load(Ordering::Relaxed),
+            sessions_completed: self.sessions_completed.load(Ordering::Relaxed),
+            sessions_failed: self.sessions_failed.load(Ordering::Relaxed),
+            total_turns: self.total_turns.load(Ordering::Relaxed),
+            total_interrupts: self.total_interrupts.load(Ordering::Relaxed),
+            reconnect_attempts: self.reconnect_attempts.load(Ordering::Relaxed),
+            reconnect_successes: self.reconnect_successes.load(Ordering::Relaxed),
+            errors_total: self.errors_total.load(Ordering::Relaxed),
+            errors_recoverable: self.errors_recoverable.load(Ordering::Relaxed),
+            errors_fatal: self.errors_fatal.load(Ordering::Relaxed),
+            audio_frames_in: self.audio_frames_in.load(Ordering::Relaxed),
+            audio_frames_out: self.audio_frames_out.load(Ordering::Relaxed),
+            uptime_seconds: self.start_time.elapsed().as_secs(),
+        }
+    }
+
+    /// Reset all counters to zero.
+    ///
+    /// Note: `uptime_seconds` is derived from wall-clock time and cannot be
+    /// reset; it always reflects elapsed time since the registry was created.
+    pub fn reset(&self) {
+        self.sessions_created.store(0, Ordering::Relaxed);
+        self.sessions_completed.store(0, Ordering::Relaxed);
+        self.sessions_failed.store(0, Ordering::Relaxed);
+        self.total_turns.store(0, Ordering::Relaxed);
+        self.total_interrupts.store(0, Ordering::Relaxed);
+        self.reconnect_attempts.store(0, Ordering::Relaxed);
+        self.reconnect_successes.store(0, Ordering::Relaxed);
+        self.errors_total.store(0, Ordering::Relaxed);
+        self.errors_recoverable.store(0, Ordering::Relaxed);
+        self.errors_fatal.store(0, Ordering::Relaxed);
+        self.audio_frames_in.store(0, Ordering::Relaxed);
+        self.audio_frames_out.store(0, Ordering::Relaxed);
+    }
+}
+
+static GLOBAL: LazyLock<Metrics> = LazyLock::new(Metrics::new);
+
+/// The process-wide metrics registry used by the free functions below.
+pub fn global() -> &'static Metrics {
+    &GLOBAL
+}
 
 // ---------------------------------------------------------------------------
-// Increment helpers
+// Process-wide helpers
 // ---------------------------------------------------------------------------
 
 /// Record that a new session was created.
 pub fn inc_sessions_created() {
-    COUNTERS.sessions_created.fetch_add(1, Ordering::Relaxed);
+    global().inc_sessions_created();
 }
 
 /// Record that a session completed normally.
 pub fn inc_sessions_completed() {
-    COUNTERS.sessions_completed.fetch_add(1, Ordering::Relaxed);
+    global().inc_sessions_completed();
 }
 
 /// Record that a session failed.
 pub fn inc_sessions_failed() {
-    COUNTERS.sessions_failed.fetch_add(1, Ordering::Relaxed);
+    global().inc_sessions_failed();
 }
 
 /// Record that a conversation turn was processed.
 pub fn inc_total_turns() {
-    COUNTERS.total_turns.fetch_add(1, Ordering::Relaxed);
+    global().inc_total_turns();
 }
 
 /// Record that a playback interruption occurred.
 pub fn inc_total_interrupts() {
-    COUNTERS.total_interrupts.fetch_add(1, Ordering::Relaxed);
+    global().inc_total_interrupts();
 }
 
 /// Record that a reconnect attempt was made.
 pub fn inc_reconnect_attempts() {
-    COUNTERS.reconnect_attempts.fetch_add(1, Ordering::Relaxed);
+    global().inc_reconnect_attempts();
 }
 
 /// Record that a reconnect attempt succeeded.
 pub fn inc_reconnect_successes() {
-    COUNTERS.reconnect_successes.fetch_add(1, Ordering::Relaxed);
+    global().inc_reconnect_successes();
 }
 
-/// Record an error occurrence.
+/// Record an error occurrence on the process-wide registry.
 ///
 /// When `recoverable` is `true` the error is counted as recoverable;
 /// otherwise it is counted as fatal. Both kinds increment `errors_total`.
 pub fn inc_errors(recoverable: bool) {
-    COUNTERS.errors_total.fetch_add(1, Ordering::Relaxed);
-    if recoverable {
-        COUNTERS.errors_recoverable.fetch_add(1, Ordering::Relaxed);
-    } else {
-        COUNTERS.errors_fatal.fetch_add(1, Ordering::Relaxed);
-    }
+    global().inc_errors(recoverable);
 }
 
 /// Record that an inbound audio frame was received.
 pub fn inc_audio_frames_in() {
-    COUNTERS.audio_frames_in.fetch_add(1, Ordering::Relaxed);
+    global().inc_audio_frames_in();
 }
 
 /// Record that an outbound audio frame was sent.
 pub fn inc_audio_frames_out() {
-    COUNTERS.audio_frames_out.fetch_add(1, Ordering::Relaxed);
+    global().inc_audio_frames_out();
 }
 
-// ---------------------------------------------------------------------------
-// Snapshot & reset
-// ---------------------------------------------------------------------------
-
-/// Capture a point-in-time snapshot of all metric counters.
+/// Capture a point-in-time snapshot of the process-wide counters.
 ///
-/// The `uptime_seconds` field reflects wall-clock time since the metrics
-/// subsystem was first accessed (typically process start).
+/// The `uptime_seconds` field reflects wall-clock time since the registry
+/// was first accessed (typically process start).
 pub fn snapshot() -> AppMetrics {
-    let c = &*COUNTERS;
-    AppMetrics {
-        sessions_created: c.sessions_created.load(Ordering::Relaxed),
-        sessions_completed: c.sessions_completed.load(Ordering::Relaxed),
-        sessions_failed: c.sessions_failed.load(Ordering::Relaxed),
-        total_turns: c.total_turns.load(Ordering::Relaxed),
-        total_interrupts: c.total_interrupts.load(Ordering::Relaxed),
-        reconnect_attempts: c.reconnect_attempts.load(Ordering::Relaxed),
-        reconnect_successes: c.reconnect_successes.load(Ordering::Relaxed),
-        errors_total: c.errors_total.load(Ordering::Relaxed),
-        errors_recoverable: c.errors_recoverable.load(Ordering::Relaxed),
-        errors_fatal: c.errors_fatal.load(Ordering::Relaxed),
-        audio_frames_in: c.audio_frames_in.load(Ordering::Relaxed),
-        audio_frames_out: c.audio_frames_out.load(Ordering::Relaxed),
-        uptime_seconds: c.start_time.elapsed().as_secs(),
-    }
+    global().snapshot()
 }
 
-/// Reset all counters to zero.
+/// Reset all process-wide counters to zero.
 ///
-/// Note: `uptime_seconds` is derived from wall-clock time and cannot be
-/// reset; it always reflects elapsed time since first initialization.
+/// Note: `uptime_seconds` cannot be reset.
 pub fn reset() {
-    let c = &*COUNTERS;
-    c.sessions_created.store(0, Ordering::Relaxed);
-    c.sessions_completed.store(0, Ordering::Relaxed);
-    c.sessions_failed.store(0, Ordering::Relaxed);
-    c.total_turns.store(0, Ordering::Relaxed);
-    c.total_interrupts.store(0, Ordering::Relaxed);
-    c.reconnect_attempts.store(0, Ordering::Relaxed);
-    c.reconnect_successes.store(0, Ordering::Relaxed);
-    c.errors_total.store(0, Ordering::Relaxed);
-    c.errors_recoverable.store(0, Ordering::Relaxed);
-    c.errors_fatal.store(0, Ordering::Relaxed);
-    c.audio_frames_in.store(0, Ordering::Relaxed);
-    c.audio_frames_out.store(0, Ordering::Relaxed);
+    global().reset();
 }
 
 // ---------------------------------------------------------------------------
@@ -198,34 +284,29 @@ pub fn reset() {
 mod tests {
     use super::*;
 
-    /// Reset counters before each test to avoid cross-test contamination.
-    fn setup() {
-        reset();
-    }
-
     #[test]
     fn test_metrics_increment_and_snapshot() {
-        setup();
+        let m = Metrics::new();
 
-        inc_sessions_created();
-        inc_sessions_created();
-        inc_sessions_completed();
-        inc_sessions_failed();
-        inc_total_turns();
-        inc_total_turns();
-        inc_total_turns();
-        inc_total_interrupts();
-        inc_reconnect_attempts();
-        inc_reconnect_attempts();
-        inc_reconnect_successes();
-        inc_errors(true);
-        inc_errors(false);
-        inc_audio_frames_in();
-        inc_audio_frames_in();
-        inc_audio_frames_in();
-        inc_audio_frames_out();
+        m.inc_sessions_created();
+        m.inc_sessions_created();
+        m.inc_sessions_completed();
+        m.inc_sessions_failed();
+        m.inc_total_turns();
+        m.inc_total_turns();
+        m.inc_total_turns();
+        m.inc_total_interrupts();
+        m.inc_reconnect_attempts();
+        m.inc_reconnect_attempts();
+        m.inc_reconnect_successes();
+        m.inc_errors(true);
+        m.inc_errors(false);
+        m.inc_audio_frames_in();
+        m.inc_audio_frames_in();
+        m.inc_audio_frames_in();
+        m.inc_audio_frames_out();
 
-        let snap = snapshot();
+        let snap = m.snapshot();
         assert_eq!(snap.sessions_created, 2);
         assert_eq!(snap.sessions_completed, 1);
         assert_eq!(snap.sessions_failed, 1);
@@ -242,14 +323,14 @@ mod tests {
 
     #[test]
     fn test_metrics_reset() {
-        setup();
+        let m = Metrics::new();
 
-        inc_sessions_created();
-        inc_errors(true);
-        inc_audio_frames_in();
+        m.inc_sessions_created();
+        m.inc_errors(true);
+        m.inc_audio_frames_in();
 
-        reset();
-        let snap = snapshot();
+        m.reset();
+        let snap = m.snapshot();
         assert_eq!(snap.sessions_created, 0);
         assert_eq!(snap.errors_total, 0);
         assert_eq!(snap.errors_recoverable, 0);
@@ -258,43 +339,42 @@ mod tests {
 
     #[test]
     fn test_metrics_concurrent_increments() {
-        // Use a dedicated local AtomicU64 to verify thread-safety of the
-        // global increment functions without being affected by concurrent
-        // test resets on the shared global counters.
         use std::sync::Arc;
-        use std::sync::atomic::AtomicU64;
 
-        let local_counter = Arc::new(AtomicU64::new(0));
+        let m = Arc::new(Metrics::new());
 
         let threads: Vec<_> = (0..8)
             .map(|i| {
-                let counter = Arc::clone(&local_counter);
+                let m = Arc::clone(&m);
                 std::thread::spawn(move || {
                     for _ in 0..1000 {
-                        // Exercise the global metric functions to prove they
-                        // don't panic under contention.
                         if i % 2 == 0 {
-                            inc_sessions_created();
+                            m.inc_sessions_created();
                         } else {
-                            inc_audio_frames_in();
+                            m.inc_audio_frames_in();
                         }
-                        counter.fetch_add(1, Ordering::Relaxed);
                     }
                 })
             })
             .collect();
 
         for t in threads {
-            t.join().unwrap_or(());
+            t.join().expect("worker thread panicked");
         }
 
-        // The local counter proves all 8000 iterations completed without
-        // panics, confirming the global atomics are safe under contention.
-        assert_eq!(local_counter.load(Ordering::Relaxed), 8000);
+        let snap = m.snapshot();
+        assert_eq!(snap.sessions_created, 4000);
+        assert_eq!(snap.audio_frames_in, 4000);
+    }
 
-        // Also verify that a snapshot can be taken without error.
-        let snap = snapshot();
-        assert!(snap.sessions_created > 0 || snap.audio_frames_in > 0);
+    #[test]
+    fn test_global_free_functions_delegate_to_global_registry() {
+        // Other tests never touch the global registry, so a delta check is
+        // exact for counters nobody else increments here.
+        let before = snapshot().total_interrupts;
+        inc_total_interrupts();
+        assert!(snapshot().total_interrupts > before);
+        assert!(std::ptr::eq(global(), global()));
     }
 
     #[test]

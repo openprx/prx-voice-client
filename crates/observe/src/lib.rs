@@ -162,8 +162,13 @@ impl DiagnosticsBundleBuilder {
     }
 
     /// Attach a point-in-time metrics snapshot.
-    pub fn with_metrics(mut self) -> Self {
-        self.bundle.metrics = Some(metrics::snapshot());
+    pub fn with_metrics(self) -> Self {
+        self.with_metrics_from(metrics::global())
+    }
+
+    /// Attach a point-in-time snapshot taken from the given registry.
+    pub fn with_metrics_from(mut self, registry: &metrics::Metrics) -> Self {
+        self.bundle.metrics = Some(registry.snapshot());
         self
     }
 
@@ -278,7 +283,7 @@ pub fn export_diagnostics(
 /// Convenience re-exports for downstream crates.
 pub mod prelude {
     pub use crate::metrics::{
-        self, AppMetrics, inc_audio_frames_in, inc_audio_frames_out, inc_errors,
+        self, AppMetrics, Metrics, inc_audio_frames_in, inc_audio_frames_out, inc_errors,
         inc_reconnect_attempts, inc_reconnect_successes, inc_sessions_completed,
         inc_sessions_created, inc_sessions_failed, inc_total_interrupts, inc_total_turns, reset,
         snapshot,
@@ -436,18 +441,17 @@ mod tests {
 
     #[test]
     fn test_diagnostics_builder_with_metrics() {
-        metrics::reset();
-        metrics::inc_sessions_created();
-        metrics::inc_errors(true);
+        let registry = metrics::Metrics::new();
+        registry.inc_sessions_created();
+        registry.inc_errors(true);
 
         let bundle = DiagnosticsBundleBuilder::new("0.0.1")
-            .with_metrics()
+            .with_metrics_from(&registry)
             .build();
 
-        assert!(bundle.metrics.is_some());
         let m = bundle.metrics.as_ref().expect("metrics missing");
-        assert!(m.sessions_created >= 1);
-        assert!(m.errors_recoverable >= 1);
+        assert_eq!(m.sessions_created, 1);
+        assert_eq!(m.errors_recoverable, 1);
     }
 
     #[test]
