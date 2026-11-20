@@ -5,10 +5,13 @@
 //! (pipeline-design 4.3): this file forwards each one to the path (a mixer
 //! crossfade) and records it in the snapshot, so a change is never silent.
 //!
-//! There are no stage workers in this package, so `SpawnStages`,
-//! `OpenAsrStream`, `CancelDirection` and `ResetAsrStream` have nothing to do
-//! and the coordinator reports `StagesReady` and `Joined` itself. CT-13 replaces
-//! that with real workers.
+//! A direction that translates runs a pipeline with its own direction machine
+//! (`translation`); this file then only forwards commands to it. A direction
+//! without a pipeline (providers missing, audio only) uses the coordinator's own
+//! machine, which has no stage workers: `SpawnStages`, `OpenAsrStream`,
+//! `CancelDirection` and `ResetAsrStream` have nothing to do and the machine is
+//! told `Joined` at once. That machine alone carries the failure policy
+//! (`call.*_on_failure`) when providers could not be prepared.
 
 use prxvc_media::Direction;
 
@@ -16,6 +19,7 @@ use super::actions::{POLICY_FAULT, stage_of};
 use super::coordinator::{Coordinator, slot};
 use super::error::CallErrorCode;
 use super::snapshot::OutputChange;
+use super::translation::Running;
 use crate::direction_state::{DirectionAction, DirectionEvent, DirectionState};
 use crate::fault::Stage;
 use crate::output::{OutputCause, OutputSource};
@@ -24,6 +28,9 @@ impl Coordinator {
     /// Offer `event` to a direction machine and execute its actions. A
     /// rejection is logged and the state kept.
     pub(super) fn feed_dir(&mut self, d: Direction, event: DirectionEvent) {
+        if self.lanes[slot(d)].running.is_some() && self.command_pipeline(d, &event) {
+            return;
+        }
         let lane = &mut self.lanes[slot(d)];
         let machine = std::mem::replace(&mut lane.machine, DirectionState::Off);
         match machine.on(&lane.cfg, event) {
@@ -37,6 +44,25 @@ impl Coordinator {
                 tracing::warn!(direction = ?d, %rejection, "direction event rejected");
                 lane.machine = rejection.from;
             }
+        }
+    }
+
+    /// A lane that runs a pipeline is driven by commands to it; its machine mirrors the
+    /// pipeline's (see `translation`). Returns whether `event` was such a command.
+    fn command_pipeline(&mut self, d: Direction, event: &DirectionEvent) -> bool {
+        match event {
+            DirectionEvent::Pause => self.with_running(d, Running::pause),
+            DirectionEvent::Resume => self.with_running(d, Running::resume),
+            DirectionEvent::Suspend => self.with_running(d, Running::suspend),
+            DirectionEvent::Stop => self.stop_translation(d),
+            _ => return false,
+        }
+        true
+    }
+
+    fn with_running(&self, d: Direction, f: impl FnOnce(&Running)) {
+        if let Some(running) = self.lanes[slot(d)].running.as_ref() {
+            f(running);
         }
     }
 
@@ -65,7 +91,7 @@ impl Coordinator {
     }
 
     /// Record and execute a change of what a listener hears.
-    fn announce_output(
+    pub(super) fn announce_output(
         &mut self,
         direction: Direction,
         from: OutputSource,
@@ -94,15 +120,11 @@ impl Coordinator {
         });
     }
 
-    /// `StartDirections`: start the machine; with no stage workers it is ready at once.
-    pub(super) fn start_direction(&mut self, d: Direction) {
-        self.feed_dir(d, DirectionEvent::Start);
-        self.feed_dir(d, DirectionEvent::StagesReady);
-    }
-
-    /// `RestoreTranslatedOutput`: a failed direction tries again.
+    /// `RestoreTranslatedOutput`: a failed direction tries again (a pipeline recovers by itself).
     pub(super) fn restore_translated(&mut self, d: Direction) {
-        if matches!(self.lanes[slot(d)].machine, DirectionState::Failed { .. }) {
+        if self.lanes[slot(d)].running.is_none()
+            && matches!(self.lanes[slot(d)].machine, DirectionState::Failed { .. })
+        {
             self.feed_dir(d, DirectionEvent::Retry);
             self.feed_dir(d, DirectionEvent::StagesReady);
         }
@@ -111,6 +133,10 @@ impl Coordinator {
     /// `ApplyFailurePolicy`: make the direction's machine reflect the failure,
     /// so that its own output rule (`call.*_on_failure`) says what is heard.
     pub(super) fn apply_failure_policy(&mut self, d: Direction) {
+        if self.lanes[slot(d)].running.is_some() {
+            // The pipeline's own machine already decided what the listener hears.
+            return;
+        }
         let stage = self.provider_role.map_or(Stage::Asr, stage_of);
         let failed = DirectionEvent::StageFailed {
             stage,
@@ -133,10 +159,12 @@ impl Coordinator {
 
     /// `StopDirections`: stop every direction that exists.
     pub(super) fn stop_directions(&mut self) {
+        self.prepared = None;
         for d in super::coordinator::BOTH {
             if !matches!(self.lanes[slot(d)].machine, DirectionState::Off) {
                 self.feed_dir(d, DirectionEvent::Stop);
             }
         }
+        self.host.release_providers();
     }
 }

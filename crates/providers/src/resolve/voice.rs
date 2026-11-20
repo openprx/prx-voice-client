@@ -1,8 +1,16 @@
 //! The voice of a synthesis spec: the owner's recorded profile, or a catalogue preset.
 //!
 //! Profile layout (voice-cloning 5.3): `<profiles>/<id>/profile.json`, `reference.wav` and
-//! `derived/<engine>-<model fingerprint>/...`. A preset's reference recording sits at
-//! `<presets>/<preset id>/<file name from the catalogue>`.
+//! `derived/<engine>-<model fingerprint>/...`. A profile holds one reference recording, so the
+//! owner's voice in two languages is two profiles: for the language `en` the profile
+//! `<voice.self_profile_id>-en` is used when its directory exists, else the configured profile
+//! itself (the speaker embedding carries across languages).
+//!
+//! A catalogue preset's reference recording sits at `<presets>/<preset id>/<file name from the
+//! catalogue>`. The catalogue ships no presets yet, so a preset can also be installed by hand as
+//! `<presets>/<preset id>/reference.wav` with an optional `preset.json` (`{"language": "zh"}`,
+//! checked against the language asked for); it is referenced by its directory name in
+//! `voice.incoming_preset`. A catalogue preset of the same id wins.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -49,6 +57,12 @@ pub enum VoiceChoice {
 }
 
 #[derive(Deserialize)]
+struct PresetFile {
+    #[serde(default)]
+    language: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ProfileFile {
     #[serde(default)]
     language: Option<String>,
@@ -92,10 +106,17 @@ impl Resolver<'_> {
         fingerprint: &str,
         lang: Lang,
     ) -> Result<VoicePlan, Vec<ProblemKind>> {
-        let profile_id = self.cfg.voice.self_profile_id.trim().to_owned();
-        if profile_id.is_empty() {
+        let configured = self.cfg.voice.self_profile_id.trim().to_owned();
+        if configured.is_empty() {
             return Err(vec![ProblemKind::VoiceProfileNotSet]);
         }
+        let for_language = format!("{configured}-{}", lang.code());
+        let profile_id = if plain_id(&for_language) && self.dirs.profiles.join(&for_language).is_dir()
+        {
+            for_language
+        } else {
+            configured
+        };
         let dir = self.dirs.profiles.join(&profile_id);
         let missing = || {
             vec![ProblemKind::VoiceProfileMissing {
@@ -200,9 +221,14 @@ impl Resolver<'_> {
             candidates.find(|p| p.id == name)
         };
         let Some(preset) = preset else {
-            return Err(vec![ProblemKind::VoicePresetUnknown {
-                name: name.to_owned(),
-            }]);
+            // A catalogue preset of that id that does not fit this model or language is not
+            // overridden by a hand-installed directory.
+            if self.catalogue.presets.iter().any(|p| p.id == name) {
+                return Err(vec![ProblemKind::VoicePresetUnknown {
+                    name: name.to_owned(),
+                }]);
+            }
+            return self.local_preset(name, lang);
         };
         let dir = self.dirs.presets.join(&preset.id);
         let reference = dir.join(&preset.file.name);
@@ -216,6 +242,59 @@ impl Resolver<'_> {
         }
         Ok(VoicePlan::Preset {
             name: preset.id.clone(),
+            dir,
+            reference,
+            lang,
+        })
+    }
+
+    /// A preset installed by hand under the presets directory (see the module docs).
+    fn local_preset(&self, name: &str, lang: Lang) -> Result<VoicePlan, Vec<ProblemKind>> {
+        if !plain_id(name) {
+            return Err(vec![ProblemKind::VoicePresetUnknown {
+                name: name.to_owned(),
+            }]);
+        }
+        let dir = self.dirs.presets.join(name);
+        if !dir.is_dir() {
+            return Err(vec![ProblemKind::VoicePresetUnknown {
+                name: name.to_owned(),
+            }]);
+        }
+        let reference = dir.join("reference.wav");
+        if !reference.is_file() {
+            return Err(vec![ProblemKind::VoicePresetFileMissing {
+                preset: name.to_owned(),
+                path: reference,
+            }]);
+        }
+        match fs::read_to_string(dir.join("preset.json")) {
+            Ok(text) => {
+                let file: PresetFile = serde_json::from_str(&text).map_err(|e| {
+                    vec![ProblemKind::VoicePresetUnreadable {
+                        preset: name.to_owned(),
+                        detail: format!("preset.json: {e}"),
+                    }]
+                })?;
+                let declared = file.language.as_deref().map(str::trim).filter(|l| !l.is_empty());
+                if declared.is_some_and(|l| Lang::from_str(l).ok() != Some(lang)) {
+                    return Err(vec![ProblemKind::VoicePresetLanguage {
+                        preset: name.to_owned(),
+                        wanted: lang,
+                        found: declared.unwrap_or_default().to_owned(),
+                    }]);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(vec![ProblemKind::VoicePresetUnreadable {
+                    preset: name.to_owned(),
+                    detail: e.to_string(),
+                }]);
+            }
+        }
+        Ok(VoicePlan::Preset {
+            name: name.to_owned(),
             dir,
             reference,
             lang,

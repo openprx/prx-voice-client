@@ -12,8 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 prxvc-audio = { workspace = true }
-prxvc-adapters = { workspace = true, optional = true }
-prxvc-providers = { workspace = true, optional = true }
+prxvc-adapters = { workspace = true }
+prxvc-providers = { workspace = true }
+prxvc-models = { workspace = true }
 prxvc-media = { workspace = true }
 prxvc-ports = { workspace = true }
 prxvc-core = { workspace = true }
@@ -28,6 +29,8 @@ directories = { workspace = true }
 eframe = { workspace = true }
 egui = { workspace = true }
 tracing = { workspace = true }
+url = { workspace = true }
+serde_json = { workspace = true }
 tracing-subscriber = { workspace = true }
 parking_lot = { workspace = true }
 tokio = { workspace = true }
@@ -42,9 +45,10 @@ default = []
 # `qwentts`: the in-process text-to-speech engine of `prxvc-adapters`. Off by default, additive.
 # `transcribe`: the in-process recognition runtime (Silero VAD and Qwen3-ASR). Off by default, additive.
 # Each also turns on the provider registry's feature of the same name, so that the registry can build
-# the provider (`prxvc-providers`).
-qwentts = ["dep:prxvc-adapters", "prxvc-adapters/qwentts", "dep:prxvc-providers", "prxvc-providers/qwentts"]
-transcribe = ["dep:prxvc-adapters", "prxvc-adapters/transcribe", "dep:prxvc-providers", "prxvc-providers/transcribe"]
+# the provider (`prxvc-providers`). The registry itself is always built in: without a feature, the call
+# reports the runtime as a typed problem ("not built in") instead of failing silently.
+qwentts = ["prxvc-adapters/qwentts", "prxvc-providers/qwentts"]
+transcribe = ["prxvc-adapters/transcribe", "prxvc-providers/transcribe"]
 
 [lints]
 workspace = true

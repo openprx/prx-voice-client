@@ -14,12 +14,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use prxvc_media::{Clock, Direction, MonoTime};
-use prxvc_ports::BundleId;
+use prxvc_ports::{BundleId, CancellationToken};
 
 use super::error::{CallErrorCode, CallIssue, HostFault};
 use super::events::Recovery;
-use super::host::{ActivityJudgement, AudioPath, CallHost, PathStats};
+use super::host::{ActivityJudgement, AudioPath, CallHost, PathStats, PreparedProviders};
 use super::ownership::{MicClaim, MicOwnership};
+use super::translation::Running;
 use super::snapshot::{
     CallCommand, CallSnapshot, DeviceNames, DirectionSnapshot, LocalOutputMode, OutputChange,
     RoutingSnapshot,
@@ -87,6 +88,8 @@ pub(super) struct Lane {
     pub hears: OutputSource,
     pub path: Option<Box<dyn AudioPath>>,
     pub stats: Option<PathStats>,
+    /// The translation pipeline of this direction, when it runs one.
+    pub running: Option<Running>,
 }
 
 impl Lane {
@@ -97,6 +100,7 @@ impl Lane {
             hears: OutputSource::Original,
             path: None,
             stats: None,
+            running: None,
         }
     }
 }
@@ -135,6 +139,10 @@ pub struct Coordinator {
     pub(super) activity_probe_on: bool,
     pub(super) last_poll: MonoTime,
     pub(super) provider_role: Option<ProviderRole>,
+    /// Providers prepared and not yet handed to the pipelines.
+    pub(super) prepared: Option<PreparedProviders>,
+    /// The token of the call: cancelling it cancels every pipeline.
+    pub(super) call_cancel: CancellationToken,
     /// A path failed to stop in time during the current stop.
     pub(super) leaked: bool,
     published: Option<CallSnapshot>,
@@ -177,6 +185,8 @@ impl Coordinator {
             activity_probe_on: false,
             last_poll: now,
             provider_role: None,
+            prepared: None,
+            call_cancel: CancellationToken::new(),
             leaked: false,
             published: None,
             revision: 0,
@@ -204,7 +214,8 @@ impl Coordinator {
             CallCommand::Stop => self.stop(),
             CallCommand::Pause(dirs) => self.pause(dirs),
             CallCommand::Resume => self.resume(),
-            CallCommand::SetLocalOutputMode(mode) => self.local_output_mode = mode,
+            CallCommand::SetLocalOutputMode(mode) => self.set_local_output_mode(mode),
+            CallCommand::Skip(direction) => self.skip(direction),
             CallCommand::ReapplyVirtualMicrophone => self.reassert(),
         }
         self.publish();
@@ -214,6 +225,7 @@ impl Coordinator {
     pub fn tick(&mut self) {
         let now = self.now();
         self.collect_paths();
+        self.collect_translation();
         self.advance_recovery(now, false);
         if now.saturating_since(self.last_poll) >= self.settings.routing_poll {
             self.last_poll = now;
@@ -275,6 +287,21 @@ impl Coordinator {
         }
     }
 
+    fn set_local_output_mode(&mut self, mode: LocalOutputMode) {
+        self.local_output_mode = mode;
+        if let Some(path) = self.lanes[slot(Direction::Incoming)].path.as_mut() {
+            path.set_local_output_mode(mode);
+        }
+    }
+
+    /// Skip: cancel what the direction has in flight and queued (design 3.4).
+    fn skip(&mut self, direction: Direction) {
+        match self.lanes[slot(direction)].running.as_ref() {
+            Some(running) => running.skip(),
+            None => self.reject(format!("skip {direction:?}: the direction does not translate")),
+        }
+    }
+
     fn reassert(&mut self) {
         if !self.routing.in_call_mode {
             self.reject("reapply microphone while call mode is off".to_owned());
@@ -327,6 +354,8 @@ impl Coordinator {
         self.last_change = None;
         self.translate = translate;
         self.provider_role = None;
+        self.prepared = None;
+        self.new_call_token();
         self.leaked = false;
         self.recovery = None;
         self.routing.restored_to = None;
@@ -364,6 +393,26 @@ impl Coordinator {
         }
     }
 
+    /// Show a condition that may occur several times with different subjects (one issue per
+    /// code and detail), as provider problems do: three models missing are three issues.
+    pub(super) fn raise_distinct(&mut self, code: CallErrorCode, detail: impl Into<String>) {
+        let detail = detail.into();
+        if self
+            .issues
+            .iter()
+            .any(|i| i.code == code && i.detail == detail)
+        {
+            return;
+        }
+        tracing::warn!(?code, %detail, "call issue");
+        self.issues.push(CallIssue {
+            code,
+            severity: code.severity(),
+            detail,
+            since: self.now(),
+        });
+    }
+
     pub(super) fn raise_fault(&mut self, fault: &HostFault) {
         self.raise(fault.code, fault.detail.clone());
     }
@@ -387,6 +436,7 @@ impl Coordinator {
                 state: l.machine.clone(),
                 hears: l.hears,
                 path: l.path.as_ref().and(l.stats.clone()),
+                pipeline: l.running.as_ref().and_then(Running::snapshot),
             }
         };
         CallSnapshot {

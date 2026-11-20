@@ -417,3 +417,103 @@ fn the_event_queue_is_bounded_and_keeps_the_newest() {
     assert_eq!(events.len(), EVENT_CAPACITY);
     assert_eq!(events[0], PumpEvent::Stalled { idle_ms: 5 });
 }
+
+#[test]
+fn a_connected_pump_taps_its_frames_plays_translated_speech_and_reports_the_playback() {
+    use prxvc_media::{ClauseId, Direction, PcmChunk, SegmentId, SystemClock};
+
+    let (sink, out, _stopped) = CollectSink::new();
+    // The source keeps delivering 10 ms frames for the whole test.
+    let source = FakeAudioSource::new(RATE, ramp_frames(200)).with_frames_per_read(1);
+    let pump = Pump::start(spec(
+        "outgoing",
+        Box::new(source),
+        PumpRoute::Mix {
+            mixer: Box::new(Mixer::new(MixerConfig {
+                mode: MixMode::Translation,
+                jitter_buffer: Duration::from_millis(20),
+                ..MixerConfig::default()
+            })),
+            sink: Box::new(sink),
+        },
+    ))
+    .expect("start");
+
+    let tapped: Arc<Mutex<Vec<AudioFrame>>> = Arc::default();
+    let signals: Arc<Mutex<Vec<PlaybackSignal>>> = Arc::default();
+    let feed = pump
+        .connect(PumpLink {
+            tap: FrameTap {
+                rate: SampleRate::HZ_16000,
+                sink: {
+                    let tapped = Arc::clone(&tapped);
+                    Box::new(move |f| tapped.lock().push(f))
+                },
+            },
+            on_playback: {
+                let signals = Arc::clone(&signals);
+                Box::new(move |s| signals.lock().push(s))
+            },
+            clock: Arc::new(SystemClock::new()),
+        })
+        .expect("a pump with a mixer connects");
+
+    wait_until("frames at the pipeline's rate", || tapped.lock().len() >= 3);
+    assert!(
+        tapped
+            .lock()
+            .iter()
+            .all(|f| f.rate() == SampleRate::HZ_16000)
+    );
+
+    // 100 ms of translated speech at 24 kHz, a clause.
+    let clause = ClauseId::new(SegmentId::first(Direction::Outgoing), 0);
+    feed.push(
+        clause,
+        &PcmChunk {
+            samples: vec![0.4; 2400],
+            rate: SampleRate::HZ_24000,
+        },
+    );
+    feed.end_clause(clause);
+    wait_until("the clause to finish playing", || {
+        signals
+            .lock()
+            .iter()
+            .any(|s| matches!(s, PlaybackSignal::Finished { .. }))
+    });
+    let signals = signals.lock().clone();
+    assert!(matches!(signals[0], PlaybackSignal::Started { clause: c, .. } if c == clause));
+    assert!(matches!(signals[1], PlaybackSignal::Finished { clause: c, .. } if c == clause));
+    assert!(
+        out.lock().iter().any(|(_, s)| (*s - 0.4).abs() < 0.05),
+        "the translated speech reached the sink"
+    );
+    assert_eq!(pump.stats().translated_underruns, 0);
+
+    pump.disconnect();
+    feed.push(
+        clause,
+        &PcmChunk {
+            samples: vec![0.4; 2400],
+            rate: SampleRate::HZ_24000,
+        },
+    );
+    let mut pump = pump;
+    pump.stop(Duration::from_secs(1)).expect("stop");
+}
+
+#[test]
+fn a_pump_without_a_mixer_cannot_connect() {
+    let source = FakeAudioSource::new(RATE, ramp_frames(5));
+    let pump = Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
+    let linked = pump.connect(PumpLink {
+        tap: FrameTap {
+            rate: SampleRate::HZ_16000,
+            sink: Box::new(|_| {}),
+        },
+        on_playback: Box::new(|_| {}),
+        clock: Arc::new(prxvc_media::SystemClock::new()),
+    });
+    assert!(linked.is_none());
+}

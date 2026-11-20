@@ -28,6 +28,7 @@
 mod app;
 mod asr_session;
 mod bundle;
+mod call_kit;
 #[cfg(target_os = "macos")]
 mod call_host;
 mod call_compose;

@@ -4,6 +4,7 @@
 //! with a global locale store, fallback logic, and parameter substitution.
 
 mod call_strings;
+mod translation_strings;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -331,6 +332,7 @@ fn build_en_translations() -> HashMap<String, String> {
     pairs
         .iter()
         .chain(call_strings::EN)
+        .chain(translation_strings::EN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }
@@ -568,6 +570,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
     pairs
         .iter()
         .chain(call_strings::ZH_CN)
+        .chain(translation_strings::ZH_CN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }

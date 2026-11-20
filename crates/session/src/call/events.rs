@@ -328,8 +328,17 @@ impl Coordinator {
             Ok(mut path) => {
                 let lane = &mut self.lanes[slot(d)];
                 path.set_listener_hears(lane.hears);
+                if d == Direction::Incoming {
+                    path.set_local_output_mode(self.local_output_mode);
+                }
                 lane.stats = Some(path.stats());
                 lane.path = Some(path);
+                if self.lanes[slot(d)].running.is_some()
+                    && let Err(fault) = self.link_path(d)
+                {
+                    self.raise_fault(&fault);
+                    return false;
+                }
                 self.clear(CallErrorCode::EndpointLost(match d {
                     Direction::Outgoing => Endpoint::LocalInput,
                     Direction::Incoming => Endpoint::RemoteInput,

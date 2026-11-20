@@ -32,6 +32,7 @@
 //! (code `PD-4.2.4`).
 
 mod level;
+mod link;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -44,6 +45,8 @@ use prxvc_media::MonoTime;
 use prxvc_ports::{AudioSink, AudioSource, EndpointError};
 
 pub use level::{Level, LevelMeter, SharedLevel};
+pub use link::{FrameTap, PlaybackFn, PlaybackSignal, PumpLink, TranslatedFeed};
+use link::LinkState;
 
 use crate::mix::{MixMode, Mixer};
 
@@ -237,6 +240,12 @@ pub struct PumpStats {
     pub sink_queued: Duration,
     /// The mixer's mode; `None` without a mixer.
     pub mode: Option<MixMode>,
+    /// Times the translated lane ran dry in the middle of a clause.
+    pub translated_underruns: u64,
+    /// Samples the translated lane dropped because it was full.
+    pub translated_dropped_samples: u64,
+    /// Level of the translated speech as played, after its gain, last full window.
+    pub translated_level: Level,
 }
 
 const NO_TS: u64 = u64::MAX;
@@ -256,6 +265,9 @@ struct Shared {
     lane_underruns: AtomicU64,
     lane_dropped: AtomicU64,
     sink_queued_us: AtomicU64,
+    translated_underruns: AtomicU64,
+    translated_dropped: AtomicU64,
+    translated_level: SharedLevel,
     level: SharedLevel,
 }
 
@@ -284,6 +296,7 @@ pub struct Pump {
     sink_device: Option<String>,
     has_mixer: bool,
     name: String,
+    link: Arc<Mutex<Option<LinkState>>>,
 }
 
 impl Pump {
@@ -328,12 +341,14 @@ impl Pump {
                 .store(mode_code(mixer.mode()), Ordering::Relaxed);
         }
         let name = config.name.clone();
+        let link: Arc<Mutex<Option<LinkState>>> = Arc::default();
         let worker = Worker {
             source,
             route,
             shared: Arc::clone(&shared),
             events: events.clone(),
             config,
+            link: Arc::clone(&link),
         };
         let spawned = std::thread::Builder::new()
             .name(format!("prxvc-pump-{name}"))
@@ -357,7 +372,26 @@ impl Pump {
             sink_device,
             has_mixer,
             name,
+            link,
         })
+    }
+
+    /// Connect a translation pipeline: from now on every frame the source delivers also goes to
+    /// `link.tap` (resampled, restamped), and the returned feed takes translated speech into the
+    /// mixer's translated lane. Returns `None` for a pump without a mixer. Connecting again
+    /// replaces the earlier link.
+    pub fn connect(&self, link: PumpLink) -> Option<TranslatedFeed> {
+        if !self.has_mixer {
+            return None;
+        }
+        let feed = TranslatedFeed::default();
+        *self.link.lock() = Some(LinkState::new(link, feed.clone()));
+        Some(feed)
+    }
+
+    /// Drop the link made by [`Pump::connect`] (and with it the closures it holds).
+    pub fn disconnect(&self) {
+        *self.link.lock() = None;
     }
 
     /// The path's name.
@@ -394,6 +428,9 @@ impl Pump {
             mode: self
                 .has_mixer
                 .then(|| mode_of(s.mode.load(Ordering::Relaxed))),
+            translated_underruns: s.translated_underruns.load(Ordering::Relaxed),
+            translated_dropped_samples: s.translated_dropped.load(Ordering::Relaxed),
+            translated_level: s.translated_level.load(),
         }
     }
 
@@ -441,6 +478,7 @@ struct Worker {
     shared: Arc<Shared>,
     events: EventQueue,
     config: PumpConfig,
+    link: Arc<Mutex<Option<LinkState>>>,
 }
 
 impl Worker {
@@ -460,6 +498,9 @@ impl Worker {
             }
             for frame in &frames {
                 self.account(frame, &mut meter);
+                if let Some(link) = self.link.lock().as_mut() {
+                    link.tap_frame(frame);
+                }
                 if let PumpRoute::Mix { mixer, .. } = &mut self.route
                     && let Err(e) = mixer.push_original(frame)
                 {
@@ -505,9 +546,18 @@ impl Worker {
         if mixer.mode() != wanted {
             mixer.set_mode(wanted);
         }
+        let mut link = self.link.lock();
+        if let Some(link) = link.as_mut() {
+            link.apply_feed(mixer);
+        }
         if let Err(e) = mixer.feed(sink.as_mut(), self.config.ahead) {
             tracing::warn!(pump = %self.config.name, error = %e, "the mixer could not render");
         }
+        let mixer_stats = mixer.stats();
+        if let Some(link) = link.as_mut() {
+            link.poll_playback(&mixer_stats, sink.queued());
+        }
+        drop(link);
         let health = sink.health();
         s.sink_dropped
             .store(health.dropped_samples, Ordering::Relaxed);
@@ -516,10 +566,15 @@ impl Worker {
             u64::try_from(sink.queued().as_micros()).unwrap_or(u64::MAX),
             Ordering::Relaxed,
         );
-        let lane = mixer.stats().original;
+        let lane = mixer_stats.original;
         s.lane_underruns.store(lane.underruns, Ordering::Relaxed);
         s.lane_dropped
             .store(lane.dropped_samples, Ordering::Relaxed);
+        s.translated_underruns
+            .store(mixer_stats.translated.underruns, Ordering::Relaxed);
+        s.translated_dropped
+            .store(mixer_stats.translated.dropped_samples, Ordering::Relaxed);
+        s.translated_level.store(mixer_stats.translated_level);
     }
 
     /// Release the endpoints; the sink first, so that nothing plays after the source is gone.

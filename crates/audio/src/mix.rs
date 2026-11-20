@@ -51,6 +51,7 @@ use prxvc_media::{AudioFrame, MonoTime, SampleRate};
 use prxvc_ports::AudioSink;
 
 use crate::AudioError;
+use crate::call_pump::{Level, LevelMeter};
 pub use lane::LaneStats;
 use lane::{Lane, LaneConfig};
 use ramp::GainRamp;
@@ -111,7 +112,7 @@ impl Default for MixerConfig {
 }
 
 /// Counters of both inputs.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct MixerStats {
     /// The translated input.
     pub translated: LaneStats,
@@ -119,6 +120,8 @@ pub struct MixerStats {
     pub original: LaneStats,
     /// Output samples produced so far.
     pub rendered_samples: u64,
+    /// Level of the translated speech as it leaves the mixer (after its gain), last full window.
+    pub translated_level: Level,
 }
 
 /// Length of the blocks [`Mixer::feed`] writes to a sink.
@@ -135,6 +138,8 @@ pub struct Mixer {
     crossfade_samples: usize,
     rendered: u64,
     seq: u64,
+    translated_meter: LevelMeter,
+    translated_level: Level,
     scratch_translated: Vec<f32>,
     scratch_original: Vec<f32>,
 }
@@ -163,6 +168,8 @@ impl Mixer {
             crossfade_samples: rate.samples_in(cfg.crossfade),
             rendered: 0,
             seq: 0,
+            translated_meter: LevelMeter::new(),
+            translated_level: Level::default(),
             scratch_translated: Vec::new(),
             scratch_original: Vec::new(),
         }
@@ -231,7 +238,14 @@ impl Mixer {
         for (i, slot) in out.iter_mut().enumerate() {
             let t = self.gain_translated.next_gain() * self.scratch_translated[i];
             let o = self.gain_original.next_gain() * self.scratch_original[i];
+            self.scratch_translated[i] = t;
             *slot = (t + o).clamp(-1.0, 1.0);
+        }
+        if let Some(level) = self
+            .translated_meter
+            .feed(&self.scratch_translated, self.cfg.output_rate.hz())
+        {
+            self.translated_level = level;
         }
         self.rendered += n as u64;
     }
@@ -276,6 +290,7 @@ impl Mixer {
             translated: self.translated.stats(),
             original: self.original.stats(),
             rendered_samples: self.rendered,
+            translated_level: self.translated_level,
         }
     }
 }

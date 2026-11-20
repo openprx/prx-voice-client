@@ -4,7 +4,8 @@ use prxvc_desktop_ui::{
     ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
 };
 use prxvc_session::call::{
-    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot, Severity,
+    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot, ProviderIssue,
+    Severity,
 };
 use prxvc_session::{CallState, OutputSource};
 
@@ -45,7 +46,27 @@ pub(crate) fn issue_key(code: CallErrorCode) -> &'static str {
         CallErrorCode::CommandRejected => "call.issue.command_rejected",
         CallErrorCode::AssistantActive => "call.issue.assistant_active",
         CallErrorCode::TranslationUnavailable => "call.issue.translation_unavailable",
+        CallErrorCode::Provider(issue) => provider_key(issue),
+        CallErrorCode::SpeakerOutput => "call.issue.speaker_output",
         _ => "call.issue.internal",
+    }
+}
+
+/// The i18n key of what the user must do about a provider problem.
+fn provider_key(issue: ProviderIssue) -> &'static str {
+    match issue {
+        ProviderIssue::ModelNotInstalled => "call.issue.provider.model_not_installed",
+        ProviderIssue::ModelInstalling => "call.issue.provider.model_installing",
+        ProviderIssue::ModelDamaged => "call.issue.provider.model_damaged",
+        ProviderIssue::RuntimeNotBuiltIn => "call.issue.provider.runtime_not_built_in",
+        ProviderIssue::VoiceProfileMissing => "call.issue.provider.voice_profile_missing",
+        ProviderIssue::VoiceNotPrepared => "call.issue.provider.voice_not_prepared",
+        ProviderIssue::VoicePresetMissing => "call.issue.provider.voice_preset_missing",
+        ProviderIssue::ServerUnreachable => "call.issue.provider.server_unreachable",
+        ProviderIssue::Unsupported => "call.issue.provider.unsupported",
+        ProviderIssue::Offline => "call.issue.provider.offline",
+        ProviderIssue::Setting => "call.issue.provider.setting",
+        _ => "call.issue.provider.start_failed",
     }
 }
 
@@ -149,6 +170,7 @@ mod tests {
             state: DirectionState::Off,
             hears: OutputSource::Original,
             path,
+            pipeline: None,
         };
         CallSnapshot {
             revision: 3,
@@ -257,6 +279,19 @@ mod tests {
             CallErrorCode::CommandRejected,
             CallErrorCode::AssistantActive,
             CallErrorCode::TranslationUnavailable,
+            CallErrorCode::SpeakerOutput,
+            CallErrorCode::Provider(ProviderIssue::ModelNotInstalled),
+            CallErrorCode::Provider(ProviderIssue::ModelInstalling),
+            CallErrorCode::Provider(ProviderIssue::ModelDamaged),
+            CallErrorCode::Provider(ProviderIssue::RuntimeNotBuiltIn),
+            CallErrorCode::Provider(ProviderIssue::VoiceProfileMissing),
+            CallErrorCode::Provider(ProviderIssue::VoiceNotPrepared),
+            CallErrorCode::Provider(ProviderIssue::VoicePresetMissing),
+            CallErrorCode::Provider(ProviderIssue::ServerUnreachable),
+            CallErrorCode::Provider(ProviderIssue::Unsupported),
+            CallErrorCode::Provider(ProviderIssue::Offline),
+            CallErrorCode::Provider(ProviderIssue::Setting),
+            CallErrorCode::Provider(ProviderIssue::StartFailed),
             CallErrorCode::Internal,
         ];
         for locale in [prxvc_i18n::Locale::En, prxvc_i18n::Locale::ZhCn] {

@@ -179,8 +179,12 @@ impl CallPanel {
 
 /// The commands the control pushes, in the string form of the engine's command queue.
 pub mod command {
-    /// Start call mode (audio only).
+    /// Start call mode as `call.translate` says (audio only unless the setting is on).
     pub const START: &str = "CallStart";
+    /// Start call mode with translation.
+    pub const START_TRANSLATED: &str = "CallStartTranslated";
+    /// Start call mode with the audio only (passthrough), whatever `call.translate` says.
+    pub const START_AUDIO_ONLY: &str = "CallStartAudioOnly";
     /// Stop call mode.
     pub const STOP: &str = "CallStop";
     /// Pause both directions.

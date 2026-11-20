@@ -87,8 +87,44 @@ pub enum CallErrorCode {
     AssistantActive,
     /// Translation is not available in this build.
     TranslationUnavailable,
+    /// A translation provider cannot be used; the call runs without translation.
+    Provider(ProviderIssue),
+    /// The local output is the built-in loudspeaker: the incoming translation would be heard by
+    /// the microphone and translated back. Headphones are required (design section 6).
+    SpeakerOutput,
     /// A failure with no better code.
     Internal,
+}
+
+/// Why a translation provider cannot be used, as the user must act on it. The English `detail` of
+/// the issue names the model, file or address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum ProviderIssue {
+    /// A model is not in the model store: install it.
+    ModelNotInstalled,
+    /// A model is still being downloaded or verified: wait.
+    ModelInstalling,
+    /// A model is installed but damaged or unusable: reinstall it.
+    ModelDamaged,
+    /// The runtime of a provider is not built into this application: use a build that has it.
+    RuntimeNotBuiltIn,
+    /// The owner's voice profile does not exist or cannot be read: enrol the voice.
+    VoiceProfileMissing,
+    /// The owner's voice has not been prepared for the synthesis model: prepare it.
+    VoiceNotPrepared,
+    /// The preset voice of the incoming direction is missing: install a preset.
+    VoicePresetMissing,
+    /// The translation server does not answer: start it.
+    ServerUnreachable,
+    /// A provider does not support a language, a pair or live use: choose another.
+    Unsupported,
+    /// Offline mode blocks a provider: allow it or choose a local one.
+    Offline,
+    /// A setting is wrong: correct it.
+    Setting,
+    /// A provider failed to start for another reason.
+    StartFailed,
 }
 
 /// How serious an issue is.

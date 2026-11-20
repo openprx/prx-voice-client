@@ -48,15 +48,17 @@ mod ownership;
 mod runner;
 mod snapshot;
 mod start;
+mod translation;
 
 #[cfg(test)]
 mod tests;
 
 pub use coordinator::{CallSettings, Coordinator, CoordinatorDeps, SnapshotSink};
-pub use error::{CallErrorCode, CallIssue, HostFault, Severity};
+pub use error::{CallErrorCode, CallIssue, HostFault, ProviderIssue, Severity};
 pub use host::{
-    ActivityJudgement, AudioPath, CallHost, EnteredRouting, LeftRouting, PathEvent, PathStats,
-    RoutingNotice,
+    ActivityJudgement, AudioPath, CallHost, DirectionBuild, EnteredRouting, LeftRouting,
+    OutputRoute, PathEvent, PathLink, PathStats, PlaybackReport, Playout, PreparedProviders,
+    ProvidersFailure, RoutingNotice,
 };
 pub use ownership::{MicBusy, MicClaim, MicOwner, MicOwnership};
 pub use runner::{CallHandle, SendError, ShutdownTimeout, TICK_INTERVAL};

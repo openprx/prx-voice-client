@@ -16,8 +16,8 @@ use super::snapshot::CallCommand;
 /// Commands that can wait in the channel; a sender that finds it full is told so.
 const COMMAND_CAPACITY: usize = 64;
 
-/// Time between ticks while no command arrives.
-pub const TICK_INTERVAL: Duration = Duration::from_millis(250);
+/// Time between ticks while no command arrives: how soon a change of what a listener hears (reported by a pipeline) is executed.
+pub const TICK_INTERVAL: Duration = Duration::from_millis(50);
 
 enum Input {
     Command(CallCommand),

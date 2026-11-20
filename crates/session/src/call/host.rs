@@ -10,14 +10,17 @@
 //! system prompt (the adapter bounds the wait). Everything else returns
 //! within milliseconds.
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use prxvc_media::MonoTime;
-use prxvc_ports::BundleId;
+use prxvc_media::{AudioFrame, ClauseId, Clock, MonoTime, PcmChunk, SampleRate};
+use prxvc_ports::{BundleId, TraceSink};
 
 use super::error::HostFault;
+use super::snapshot::LocalOutputMode;
 use crate::fault::ProviderRole;
 use crate::output::OutputSource;
+use crate::pipeline::{PipelineParams, PipelineProviders};
 
 /// A reading of one path's counters.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -46,6 +49,69 @@ pub struct PathStats {
     pub underruns: u64,
     /// Audio queued in the sink.
     pub queued: Duration,
+    /// Times the translated lane ran dry in the middle of a clause.
+    pub translated_underruns: u64,
+    /// Translated samples dropped because the lane or the feed was full.
+    pub translated_dropped: u64,
+    /// Peak of the translated speech as played (after the output gain), last full window, linear.
+    pub translated_peak: f32,
+    /// RMS of the translated speech as played, last full window, linear.
+    pub translated_rms: f32,
+    /// What the device played to is, as far as the host can tell.
+    pub sink_route: OutputRoute,
+}
+
+/// What the local output device is (pipeline-design 6: headphones are the baseline).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OutputRoute {
+    /// Not known or not applicable.
+    #[default]
+    Unknown,
+    /// A device whose sound does not reach the microphone (headphones, a headset).
+    Headphones,
+    /// The built-in loudspeakers: the incoming translation would reach the microphone.
+    Speakers,
+}
+
+/// A report about the playback of one clause of translated speech.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaybackReport {
+    /// The first sample of the clause reaches the speaker at `at`.
+    Started {
+        /// The clause.
+        clause: ClauseId,
+        /// When, on the pipeline clock.
+        at: MonoTime,
+    },
+    /// The last sample of the clause reaches the speaker at `at`.
+    Finished {
+        /// The clause.
+        clause: ClauseId,
+        /// When, on the pipeline clock.
+        at: MonoTime,
+    },
+}
+
+/// How a path hands its audio to a pipeline and gets translated speech back.
+pub struct PathLink {
+    /// The sample rate the pipeline wants its frames at (the VAD's).
+    pub tap_rate: SampleRate,
+    /// Receives each frame the path captured, at `tap_rate`, on the path's thread. Never blocks.
+    pub on_frame: Box<dyn FnMut(AudioFrame) + Send>,
+    /// Receives playback reports on the path's thread.
+    pub on_playback: Box<dyn FnMut(PlaybackReport) + Send>,
+    /// The clock the frames and reports are stamped on (the pipeline's).
+    pub clock: Arc<dyn Clock>,
+}
+
+/// Where translated speech goes: the translated lane of the path's mixer. Cheap and thread-safe.
+pub trait Playout: Send + Sync {
+    /// Queue a chunk of `clause`.
+    fn push(&self, clause: ClauseId, chunk: &PcmChunk);
+    /// The audio of `clause` is complete.
+    fn end_clause(&self, clause: ClauseId);
+    /// Discard everything queued and playing (a short fade).
+    fn flush(&self);
 }
 
 /// Something a running path reports.
@@ -79,6 +145,29 @@ pub trait AudioPath: Send {
     /// What the listener of this path should hear now; the path executes it
     /// (a crossfade) or ignores it when it plays nothing.
     fn set_listener_hears(&mut self, hears: OutputSource);
+
+    /// Connect a translation pipeline: the path's frames go to `link.on_frame` and the returned
+    /// playout takes translated speech into the path's mixer. A path that cannot carry
+    /// translation (audio-only) refuses.
+    ///
+    /// # Errors
+    /// A [`HostFault`] when the path has no mixer to play translated speech with.
+    fn connect(&mut self, link: PathLink) -> Result<Arc<dyn Playout>, HostFault> {
+        let _ = link;
+        Err(HostFault::new(
+            super::error::CallErrorCode::TranslationUnavailable,
+            "this path cannot carry translation",
+        ))
+    }
+
+    /// Drop what [`AudioPath::connect`] connected. Idempotent.
+    fn disconnect(&mut self) {}
+
+    /// What the local user hears of the call application in translated modes (the mixer's mode
+    /// while the machine says "translation"). Paths that play nothing ignore it.
+    fn set_local_output_mode(&mut self, mode: LocalOutputMode) {
+        let _ = mode;
+    }
 
     /// Counters now.
     fn stats(&self) -> PathStats;
@@ -248,9 +337,49 @@ pub trait CallHost: Send {
     /// `RestoreFailed`; call mode and the journal then stay for the next start.
     fn leave_call_mode(&mut self) -> Result<LeftRouting, HostFault>;
 
-    /// Prepare the translation providers. Only called when translation was requested.
+    /// The pipelines ended and their providers were dropped: let go of whatever still owns
+    /// engines and check that none is left. Called on every stop. Idempotent.
+    fn release_providers(&mut self) {}
+
+    /// Prepare the translation providers. Only called when translation was requested. The
+    /// providers belong to the pipelines from then on: dropping them frees the engines.
     ///
     /// # Errors
-    /// The role that failed and why.
-    fn prepare_providers(&mut self) -> Result<(), (ProviderRole, HostFault)>;
+    /// Every problem found, each typed, and the role of the first.
+    fn prepare_providers(&mut self) -> Result<PreparedProviders, ProvidersFailure>;
+}
+
+/// What one translated direction is built from.
+pub struct DirectionBuild {
+    /// The direction's parameters (languages, voice, recognition mode, commit and interrupt rules).
+    pub params: PipelineParams,
+    /// The providers.
+    pub providers: PipelineProviders,
+}
+
+/// The directions to translate with their providers, and where their trace goes.
+pub struct PreparedProviders {
+    /// One entry per direction to translate.
+    pub directions: Vec<DirectionBuild>,
+    /// Receives the stage timestamps of every clause.
+    pub trace: Arc<dyn TraceSink>,
+}
+
+/// Preparing the providers failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProvidersFailure {
+    /// The role of the first problem.
+    pub role: ProviderRole,
+    /// Every problem, each with its own typed code.
+    pub faults: Vec<HostFault>,
+}
+
+impl ProvidersFailure {
+    /// A failure with a single fault.
+    pub fn single(role: ProviderRole, fault: HostFault) -> Self {
+        Self {
+            role,
+            faults: vec![fault],
+        }
+    }
 }

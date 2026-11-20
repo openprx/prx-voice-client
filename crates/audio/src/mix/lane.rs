@@ -66,6 +66,12 @@ pub struct LaneStats {
     pub trimmed_samples: u64,
     /// Output samples queued now.
     pub queued_samples: usize,
+    /// Output samples accepted into the queue since the lane was made (a flush
+    /// counts what it threw away as never accepted).
+    pub enqueued_total: u64,
+    /// Output samples handed out for playing since the lane was made. A sample
+    /// is "played" when the mixer takes it from the queue; the sink adds its own delay.
+    pub played_total: u64,
 }
 
 /// One input of the mixer. See the module docs.
@@ -190,6 +196,7 @@ impl Lane {
     pub fn flush(&mut self) {
         self.resampler = None;
         self.queue.truncate(self.cfg.fade);
+        self.stats.enqueued_total = self.stats.played_total + self.queue.len() as u64;
         self.ended = true;
         self.next_ts = None;
     }
@@ -198,6 +205,7 @@ impl Lane {
         let room = self.cfg.capacity.saturating_sub(self.queue.len());
         let take = samples.len().min(room);
         self.queue.extend(&samples[..take]);
+        self.stats.enqueued_total += take as u64;
         self.stats.dropped_samples += (samples.len() - take) as u64;
     }
 
@@ -225,6 +233,7 @@ impl Lane {
             };
             self.gate += (target - self.gate).clamp(-step, step);
             let sample = if self.playing {
+                self.stats.played_total += 1;
                 self.queue.pop_front().unwrap_or(0.0)
             } else {
                 0.0

@@ -7,3 +7,4 @@ mod pause;
 mod start;
 mod stop;
 mod thread;
+mod translation;

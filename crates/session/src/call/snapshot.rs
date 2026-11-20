@@ -4,6 +4,8 @@
 //! UI's shared state. Commands are imperative and typed; the UI crate never
 //! sees these types (the composition root maps both ways).
 
+use std::sync::Arc;
+
 use prxvc_media::{Direction, MonoTime};
 use prxvc_ports::BundleId;
 
@@ -16,9 +18,12 @@ use crate::output::{OutputCause, OutputSource};
 
 /// What the local user hears of the call application (`call.local_output_mode`).
 ///
-/// In this package no translation exists, so the mode is stored and shown and
-/// changes nothing audible: with the unmuted tap the call application plays the
-/// original itself (see the crate docs of `call`).
+/// In translated calls the tap is muted while we are tapping, and this mode
+/// decides what the incoming mixer plays when the direction machine says
+/// "translation": the translation alone, the original lowered with the
+/// translation on top, or the original alone (design 4.5). In an audio-only call
+/// the mode is stored and shown and changes nothing audible: with the unmuted
+/// tap the call application plays the original itself (see the crate docs of `call`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LocalOutputMode {
     /// The translation only.
@@ -50,6 +55,8 @@ pub enum CallCommand {
     SetLocalOutputMode(LocalOutputMode),
     /// Make our microphone the default input again.
     ReapplyVirtualMicrophone,
+    /// Skip: cancel everything this direction has in flight and queued.
+    Skip(Direction),
 }
 
 /// One direction in the snapshot.
@@ -65,6 +72,8 @@ pub struct DirectionSnapshot {
     pub hears: OutputSource,
     /// Counters and levels of the path; `None` while the path is not running.
     pub path: Option<PathStats>,
+    /// The pipeline's own snapshot (captions, counters, backlog) while the direction translates.
+    pub pipeline: Option<Arc<crate::pipeline::DirectionSnapshot>>,
 }
 
 /// The last change of what a listener hears (PD-4.3.1: never unannounced).

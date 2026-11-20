@@ -21,14 +21,16 @@ fn silent_policy() -> OutputPolicy {
 fn translating_listeners_hear_the_translation() {
     let mut rig = Rig::new();
     rig.start_translating();
-    let s = rig.last();
+    let s = rig.until("both directions translate", |s| {
+        s.directions
+            .iter()
+            .all(|d| d.hears == OutputSource::Translation)
+    });
     assert_eq!(s.state, CallState::Translating);
     assert_eq!(
         s.direction(Direction::Outgoing).state,
         DirectionState::Running
     );
-    assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Translation);
-    assert_eq!(rig.hears(Direction::Incoming), OutputSource::Translation);
     assert!(rig.log().contains(&"outgoing.hears:Translation".to_owned()));
 }
 
@@ -36,9 +38,16 @@ fn translating_listeners_hear_the_translation() {
 fn pause_plays_the_original_by_default_and_resume_brings_the_translation_back() {
     let mut rig = Rig::new();
     rig.start_translating();
+    rig.until("both directions translate", |s| {
+        s.directions
+            .iter()
+            .all(|d| d.hears == OutputSource::Translation)
+    });
     rig.coord
         .handle(CallCommand::Pause(DirSet::one(Direction::Outgoing)));
-    let s = rig.last();
+    let s = rig.until("the paused listener hears the original", |s| {
+        s.direction(Direction::Outgoing).hears == OutputSource::Original
+    });
     assert!(matches!(s.state, CallState::Paused { .. }));
     assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Original);
     assert_eq!(
@@ -62,8 +71,10 @@ fn pause_plays_the_original_by_default_and_resume_brings_the_translation_back() 
     );
 
     rig.coord.handle(CallCommand::Resume);
+    rig.until("the translation is back", |s| {
+        s.direction(Direction::Outgoing).hears == OutputSource::Translation
+    });
     assert_eq!(rig.last().state, CallState::Translating);
-    assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Translation);
     assert_eq!(
         rig.last().last_output_change.map(|c| c.cause),
         Some(OutputCause::TranslationResumed)
@@ -78,12 +89,20 @@ fn the_configured_silence_policy_makes_a_paused_listener_hear_nothing() {
         ..CallSettings::default()
     });
     rig.start_translating();
+    rig.until("both directions translate", |s| {
+        s.directions
+            .iter()
+            .all(|d| d.hears == OutputSource::Translation)
+    });
     rig.coord.handle(CallCommand::Pause(DirSet::BOTH));
-    assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Nothing);
-    assert_eq!(rig.hears(Direction::Incoming), OutputSource::Nothing);
+    rig.until("both listeners hear nothing", |s| {
+        s.directions.iter().all(|d| d.hears == OutputSource::Nothing)
+    });
     assert!(rig.log().contains(&"outgoing.hears:Nothing".to_owned()));
     rig.coord.handle(CallCommand::Resume);
-    assert_eq!(rig.hears(Direction::Outgoing), OutputSource::Translation);
+    rig.until("the translation is back", |s| {
+        s.direction(Direction::Outgoing).hears == OutputSource::Translation
+    });
 }
 
 #[test]

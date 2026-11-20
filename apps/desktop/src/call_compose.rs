@@ -118,6 +118,14 @@ impl CallControl {
         let typed = match cmd {
             command::START => CallCommand::Start {
                 target_app: None,
+                translate: crate::call_kit::config::load_current().call.translate,
+            },
+            command::START_TRANSLATED => CallCommand::Start {
+                target_app: None,
+                translate: true,
+            },
+            command::START_AUDIO_ONLY => CallCommand::Start {
+                target_app: None,
                 translate: false,
             },
             command::STOP => CallCommand::Stop,
@@ -193,6 +201,10 @@ fn spawn(
         input_device: config.audio.input_device.clone(),
         virtual_mic_device: config.audio.virtual_mic_device.clone(),
         data_dir: paths.data_dir.clone(),
+        config_source: crate::call_kit::config::current_source(),
+        // The incoming direction joins when its mixer and preset voice are wired (part 2).
+        translate: vec![prxvc_media::Direction::Outgoing],
+        trace: Arc::new(crate::call_kit::trace::NullTrace),
     };
     let settings = settings_from(config);
     let (shared, ownership) = (shared.clone(), ownership.clone());

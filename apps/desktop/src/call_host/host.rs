@@ -18,12 +18,17 @@ use prxvc_audio::routing::{
     CoreAudioRouting, EnterRequest, FileJournalStore, LeaveOutcome, OsSystem, RoutingController,
 };
 use prxvc_audio::tap_consent::{ConsentOutcome, request_capture_consent};
-use prxvc_ports::BundleId;
-use prxvc_session::ProviderRole;
+use std::sync::Arc;
+
+use prxvc_media::Direction;
+use prxvc_ports::{BundleId, TraceSink};
 use prxvc_session::call::{
     ActivityJudgement, AudioPath, CallErrorCode, CallHost, EnteredRouting, HostFault, LeftRouting,
-    RoutingNotice,
+    PreparedProviders, ProvidersFailure, RoutingNotice,
 };
+
+use crate::call_kit::config::ConfigSource;
+use crate::call_kit::providers::ProviderHost;
 
 use super::map::{
     call_mode_fault, capture_consent_fault, driver_fault, judgement, mic_consent_fault,
@@ -35,7 +40,7 @@ use super::paths::{OutgoingPlan, start_incoming, start_outgoing};
 const CONSENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// What the host reads from the configuration and the application paths.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone)]
 pub(crate) struct HostConfig {
     /// `audio.input_device`.
     pub input_device: String,
@@ -43,6 +48,12 @@ pub(crate) struct HostConfig {
     pub virtual_mic_device: String,
     /// Where the routing journal lives.
     pub data_dir: PathBuf,
+    /// The configuration the providers are resolved from, read again at every translated start.
+    pub config_source: ConfigSource,
+    /// The directions that translate.
+    pub translate: Vec<Direction>,
+    /// Where the stage timestamps go.
+    pub trace: Arc<dyn TraceSink>,
 }
 
 type Controller = RoutingController<CoreAudioRouting, OsSystem, FileJournalStore>;
@@ -54,6 +65,7 @@ pub(crate) struct RealCallHost {
     /// The microphone the preflight chose, followed from then on (UID, else name).
     pinned_microphone: Option<String>,
     activity: Option<CallActivityWatcher>,
+    providers: ProviderHost,
 }
 
 impl RealCallHost {
@@ -71,11 +83,13 @@ impl RealCallHost {
         if let Err(reason) = &controller {
             tracing::error!(%reason, "call mode cannot read or change the system audio settings");
         }
+        let providers = ProviderHost::new(Arc::clone(&config.config_source), config.translate.clone());
         Self {
             config,
             controller,
             pinned_microphone: None,
             activity: None,
+            providers,
         }
     }
 
@@ -220,13 +234,11 @@ impl CallHost for RealCallHost {
         })
     }
 
-    fn prepare_providers(&mut self) -> Result<(), (ProviderRole, HostFault)> {
-        Err((
-            ProviderRole::Asr,
-            HostFault::new(
-                CallErrorCode::TranslationUnavailable,
-                "translation is not part of this build: call mode runs audio only",
-            ),
-        ))
+    fn prepare_providers(&mut self) -> Result<PreparedProviders, ProvidersFailure> {
+        self.providers.prepare(Arc::clone(&self.config.trace))
+    }
+
+    fn release_providers(&mut self) {
+        self.providers.release();
     }
 }

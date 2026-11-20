@@ -307,6 +307,13 @@ pub struct CallConfig {
     /// A queued clause whose source ended longer ago than this is dropped
     /// when the same speaker starts a new segment and `barge_in` is on.
     pub barge_in_max_lag_ms: u32,
+    /// Whether a start translates (`true`) or only passes the audio through
+    /// (`false`, the default). A start command may choose the other.
+    pub translate: bool,
+    /// Gain of the translated speech the local user hears, in dB. Compensates
+    /// the lowering of other applications' sound while the call application
+    /// runs its voice processing.
+    pub output_gain_db: f32,
 }
 
 impl Default for CallConfig {
@@ -326,6 +333,8 @@ impl Default for CallConfig {
             incoming_on_failure: "original".to_owned(),
             original_gain_db: -12.0,
             barge_in_max_lag_ms: 3_000,
+            translate: false,
+            output_gain_db: 0.0,
         }
     }
 }

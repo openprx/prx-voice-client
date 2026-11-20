@@ -5,8 +5,9 @@
 //! `CloseEndpoints`): the default input is restored first, whatever happens
 //! later, and the pumps (the virtual microphone feeder last) are closed after.
 
-use super::coordinator::{BOTH, Coordinator, slot};
+use super::coordinator::{Coordinator, slot};
 use super::error::{CallErrorCode, HostFault};
+use super::host::ProvidersFailure;
 use crate::call_state::{CallAction, CallEvent, CallReason, CallState};
 use crate::direction_state::DirectionEvent;
 use crate::fault::{FaultKind, ProviderRole, Stage};
@@ -32,11 +33,7 @@ impl Coordinator {
             CallAction::Publish => {}
             CallAction::RestoreRouting => self.restore_routing(),
             CallAction::CloseEndpoints => self.close_endpoints(),
-            CallAction::StartDirections => {
-                for d in BOTH {
-                    self.start_direction(d);
-                }
-            }
+            CallAction::StartDirections => self.start_translation(),
             CallAction::ApplyFailurePolicy(dirs) => {
                 for d in dirs.iter() {
                     self.apply_failure_policy(d);
@@ -64,7 +61,10 @@ impl Coordinator {
                 }
             }
             CallAction::ReopenEndpoints => self.reopen_after_wake(),
-            CallAction::CancelAll => self.recovery = None,
+            CallAction::CancelAll => {
+                self.recovery = None;
+                self.cancel_call();
+            }
             CallAction::StopDirections => self.stop_directions(),
             CallAction::ForceClose => self.force_close(),
             CallAction::ReportLeak => {
@@ -85,16 +85,19 @@ impl Coordinator {
             return;
         }
         match self.host.prepare_providers() {
-            Ok(()) => {
+            Ok(prepared) => {
+                self.prepared = Some(prepared);
                 self.feed(CallEvent::ProvidersReady);
             }
-            Err((role, fault)) => {
+            Err(ProvidersFailure { role, faults }) => {
                 self.provider_role = Some(role);
-                self.raise_fault(&fault);
-                self.feed(CallEvent::ProvidersFailed {
-                    role,
-                    fault: fault.code.fault_kind(),
-                });
+                let kind = faults
+                    .first()
+                    .map_or(FaultKind::Unavailable, |f| f.code.fault_kind());
+                for fault in &faults {
+                    self.raise_distinct(fault.code, fault.detail.clone());
+                }
+                self.feed(CallEvent::ProvidersFailed { role, fault: kind });
             }
         }
     }
@@ -158,7 +161,9 @@ impl Coordinator {
         for lane in &mut self.lanes {
             lane.path = None;
             lane.stats = None;
+            lane.running = None;
         }
+        self.prepared = None;
     }
 
     /// Show a call-level reason as an issue.

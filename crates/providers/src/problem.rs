@@ -263,6 +263,24 @@ pub enum ProblemKind {
         /// Where it should be.
         path: PathBuf,
     },
+    /// A hand-installed preset cannot be read.
+    #[error("the preset voice `{preset}` cannot be read: {detail}")]
+    VoicePresetUnreadable {
+        /// The preset id.
+        preset: String,
+        /// Why.
+        detail: String,
+    },
+    /// A hand-installed preset is for another language than the direction speaks.
+    #[error("the preset voice `{preset}` is for `{found}`, but `{wanted}` is needed")]
+    VoicePresetLanguage {
+        /// The preset id.
+        preset: String,
+        /// The language the direction needs.
+        wanted: Lang,
+        /// The language the preset declares.
+        found: String,
+    },
     /// The fallback is the primary provider.
     #[error("the fallback `{id}` is the same as the primary provider")]
     FallbackIsPrimary {

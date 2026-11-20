@@ -10,8 +10,11 @@
 use std::time::Duration;
 
 use prxvc_audio::call_activity::native::read_app_activity;
+use std::sync::Arc;
+
 use prxvc_audio::call_pump::{
-    EventQueue, Pump, PumpConfig, PumpRoute, PumpSpec, PumpStage, PumpStats,
+    EventQueue, FrameTap, PlaybackSignal, Pump, PumpConfig, PumpLink, PumpRoute, PumpSpec,
+    PumpStage, PumpStats, TranslatedFeed,
 };
 use prxvc_audio::input_supervisor::PlatformInputBackend;
 use prxvc_audio::mix::{MixMode, Mixer, MixerConfig};
@@ -22,7 +25,11 @@ use prxvc_audio::virtual_mic::{VirtualMicOptions, VirtualMicSink};
 use prxvc_ports::BundleId;
 use prxvc_session::Endpoint;
 use prxvc_session::OutputSource;
-use prxvc_session::call::{AudioPath, CallErrorCode, HostFault, PathEvent, PathStats};
+use prxvc_media::{ClauseId, PcmChunk};
+use prxvc_session::call::{
+    AudioPath, CallErrorCode, HostFault, LocalOutputMode, PathEvent, PathLink, PathStats,
+    PlaybackReport, Playout,
+};
 
 use super::map::{PathKind, path_event, virtual_mic_fault};
 
@@ -33,17 +40,111 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(1);
 pub(super) struct PumpPath {
     pump: Pump,
     kind: PathKind,
+    /// What the direction machine says the listener hears.
+    hears: OutputSource,
+    /// `call.local_output_mode`, which matters for the incoming path only.
+    local_mode: LocalOutputMode,
+}
+
+impl PumpPath {
+    fn new(pump: Pump, kind: PathKind) -> Self {
+        Self {
+            pump,
+            kind,
+            hears: OutputSource::Original,
+            local_mode: LocalOutputMode::default(),
+        }
+    }
+
+    fn apply(&self) {
+        self.pump.set_mode(mix_mode(self.kind, self.hears, self.local_mode));
+    }
+}
+
+/// The mixer's mode for what the machine says the listener hears.
+///
+/// "Nothing" is the translation mode without translated audio: silence (the pipeline flushes the
+/// lane when it announces it). For the incoming path "translation" follows `call.local_output_mode`
+/// (pipeline-design 4.5): the translation alone, the original lowered under it, or the original alone.
+pub(super) fn mix_mode(kind: PathKind, hears: OutputSource, local: LocalOutputMode) -> MixMode {
+    match (hears, kind) {
+        (OutputSource::Original, _) => MixMode::Original,
+        (OutputSource::Nothing, _) | (OutputSource::Translation, PathKind::Outgoing) => {
+            MixMode::Translation
+        }
+        (OutputSource::Translation, PathKind::Incoming) => match local {
+            LocalOutputMode::Translation => MixMode::Translation,
+            LocalOutputMode::Both => MixMode::Both,
+            LocalOutputMode::Original => MixMode::Original,
+        },
+    }
+}
+
+/// Translated speech into the translated lane of a pump's mixer.
+struct FeedPlayout(TranslatedFeed);
+
+impl Playout for FeedPlayout {
+    fn push(&self, clause: ClauseId, chunk: &PcmChunk) {
+        self.0.push(clause, chunk);
+    }
+
+    fn end_clause(&self, clause: ClauseId) {
+        self.0.end_clause(clause);
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 impl AudioPath for PumpPath {
+    fn connect(&mut self, link: PathLink) -> Result<Arc<dyn Playout>, HostFault> {
+        let PathLink {
+            tap_rate,
+            mut on_frame,
+            mut on_playback,
+            clock,
+        } = link;
+        let feed = self
+            .pump
+            .connect(PumpLink {
+                tap: FrameTap {
+                    rate: tap_rate,
+                    sink: Box::new(move |frame| on_frame(frame)),
+                },
+                on_playback: Box::new(move |signal| {
+                    on_playback(match signal {
+                        PlaybackSignal::Started { clause, at } => {
+                            PlaybackReport::Started { clause, at }
+                        }
+                        PlaybackSignal::Finished { clause, at } => {
+                            PlaybackReport::Finished { clause, at }
+                        }
+                    });
+                }),
+                clock,
+            })
+            .ok_or_else(|| {
+                HostFault::new(
+                    CallErrorCode::TranslationUnavailable,
+                    format!("the {} path plays nothing, so it cannot carry translation", self.pump.name()),
+                )
+            })?;
+        Ok(Arc::new(FeedPlayout(feed)))
+    }
+
+    fn disconnect(&mut self) {
+        self.pump.disconnect();
+    }
+
+    fn set_local_output_mode(&mut self, mode: LocalOutputMode) {
+        self.local_mode = mode;
+        self.apply();
+    }
+
     fn set_listener_hears(&mut self, hears: OutputSource) {
-        // No translated audio exists in this build, so "nothing" is the mixer without its
-        // original lane: the translation mode with no translated input plays silence.
-        let mode = match hears {
-            OutputSource::Original => MixMode::Original,
-            OutputSource::Translation | OutputSource::Nothing => MixMode::Translation,
-        };
-        self.pump.set_mode(mode);
+        self.hears = hears;
+        self.apply();
     }
 
     fn stats(&self) -> PathStats {
@@ -83,6 +184,11 @@ fn stats_of(s: &PumpStats) -> PathStats {
         drops: s.sink_dropped_samples + s.lane_dropped_samples,
         underruns: s.sink_underruns + s.lane_underruns,
         queued: s.sink_queued,
+        translated_underruns: s.translated_underruns,
+        translated_dropped: s.translated_dropped_samples,
+        translated_peak: s.translated_level.peak,
+        translated_rms: s.translated_level.rms,
+        sink_route: prxvc_session::call::OutputRoute::Unknown,
     }
 }
 
@@ -123,10 +229,7 @@ pub(super) fn start_outgoing(plan: &OutgoingPlan<'_>) -> Result<Box<dyn AudioPat
         };
         HostFault::new(CallErrorCode::EndpointOpenFailed(endpoint), e.to_string())
     })?;
-    Ok(Box::new(PumpPath {
-        pump,
-        kind: PathKind::Outgoing,
-    }))
+    Ok(Box::new(PumpPath::new(pump, PathKind::Outgoing)))
 }
 
 /// Tap the call application (unmuted) and start the metering pump.
@@ -153,10 +256,7 @@ pub(super) fn start_incoming(target: &BundleId) -> Result<Box<dyn AudioPath>, Ho
             e.to_string(),
         )
     })?;
-    Ok(Box::new(PumpPath {
-        pump,
-        kind: PathKind::Incoming,
-    }))
+    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming)))
 }
 
 #[cfg(test)]
@@ -187,11 +287,35 @@ mod tests {
             lane_dropped_samples: 4,
             sink_queued: Duration::from_millis(40),
             mode: Some(MixMode::Original),
+            translated_underruns: 5,
+            translated_dropped_samples: 6,
+            translated_level: Level {
+                peak: 0.75,
+                rms: 0.5,
+            },
         };
         let s = stats_of(&stats);
         assert_eq!((s.frames, s.overruns, s.drops, s.underruns), (9, 7, 7, 3));
         assert_eq!((s.peak, s.rms), (0.5, 0.25));
         assert_eq!(s.sink_device.as_deref(), Some("sink"));
         assert_eq!(s.queued, Duration::from_millis(40));
+        assert_eq!((s.translated_underruns, s.translated_dropped), (5, 6));
+        assert_eq!((s.translated_peak, s.translated_rms), (0.75, 0.5));
+    }
+
+    #[test]
+    fn the_mixer_mode_follows_what_the_machine_says_and_the_local_output_mode() {
+        use LocalOutputMode as L;
+        use OutputSource as S;
+        for local in [L::Translation, L::Both, L::Original] {
+            // The remote party never hears the original lowered under the translation.
+            assert_eq!(mix_mode(PathKind::Outgoing, S::Translation, local), MixMode::Translation);
+            assert_eq!(mix_mode(PathKind::Outgoing, S::Original, local), MixMode::Original);
+            assert_eq!(mix_mode(PathKind::Incoming, S::Original, local), MixMode::Original);
+            assert_eq!(mix_mode(PathKind::Incoming, S::Nothing, local), MixMode::Translation);
+        }
+        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Translation), MixMode::Translation);
+        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Both), MixMode::Both);
+        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Original), MixMode::Original);
     }
 }

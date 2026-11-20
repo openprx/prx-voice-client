@@ -67,6 +67,21 @@ pub struct CallPlan {
     pub warnings: Vec<Problem>,
 }
 
+/// The roles of the directions asked for, resolved at once.
+#[derive(Clone, Debug)]
+pub struct DirectionsPlan {
+    /// The two call languages.
+    pub languages: CallLanguages,
+    /// How recognition runs.
+    pub recognition: RecognitionMode,
+    /// The voice activity detector, shared by the directions.
+    pub vad: Resolved<LocalModelSpec>,
+    /// The directions asked for, in the order asked.
+    pub directions: Vec<DirectionPlan>,
+    /// Non-fatal findings (a fallback that cannot be used).
+    pub warnings: Vec<Problem>,
+}
+
 impl CallPlan {
     /// The plan of `direction`.
     pub fn direction(&self, direction: Direction) -> &DirectionPlan {
@@ -161,6 +176,34 @@ impl Resolver<'_> {
 
     /// Resolve everything, collecting every problem.
     pub(crate) fn call(&self, system: Option<Lang>) -> Result<CallPlan, Vec<Problem>> {
+        let plan = self.directions(system, &[Direction::Outgoing, Direction::Incoming])?;
+        let mut outgoing = None;
+        let mut incoming = None;
+        for d in plan.directions {
+            match d.direction {
+                Direction::Outgoing => outgoing = Some(d),
+                Direction::Incoming => incoming = Some(d),
+            }
+        }
+        match (outgoing, incoming) {
+            (Some(outgoing), Some(incoming)) => Ok(CallPlan {
+                languages: plan.languages,
+                recognition: plan.recognition,
+                vad: plan.vad,
+                outgoing,
+                incoming,
+                warnings: plan.warnings,
+            }),
+            _ => unreachable!("both directions were asked for"),
+        }
+    }
+
+    /// Resolve the voice activity detector and the roles of `wanted` directions only.
+    pub(crate) fn directions(
+        &self,
+        system: Option<Lang>,
+        wanted: &[Direction],
+    ) -> Result<DirectionsPlan, Vec<Problem>> {
         let mut c = Collect {
             problems: Vec::new(),
             warnings: Vec::new(),
@@ -204,17 +247,17 @@ impl Resolver<'_> {
                 tts: tts?,
             })
         };
-        let outgoing = direction(Direction::Outgoing);
-        let incoming = direction(Direction::Incoming);
-        match (vad, outgoing, incoming) {
-            (Some(vad), Some(outgoing), Some(incoming)) if c.problems.is_empty() => Ok(CallPlan {
-                languages,
-                recognition: mode,
-                vad,
-                outgoing,
-                incoming,
-                warnings: dedupe(c.warnings),
-            }),
+        let planned: Vec<Option<DirectionPlan>> = wanted.iter().map(|d| direction(*d)).collect();
+        match vad {
+            Some(vad) if c.problems.is_empty() && planned.iter().all(Option::is_some) => {
+                Ok(DirectionsPlan {
+                    languages,
+                    recognition: mode,
+                    vad,
+                    directions: planned.into_iter().flatten().collect(),
+                    warnings: dedupe(c.warnings),
+                })
+            }
             _ => {
                 let mut all = c.problems;
                 all.append(&mut c.warnings);

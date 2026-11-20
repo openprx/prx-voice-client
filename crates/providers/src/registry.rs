@@ -233,6 +233,15 @@ impl ProviderRegistry {
         self.with_resolver(|r| r.call(self.system_language))
     }
 
+    /// Resolve the roles of the given directions only (a call that translates one direction
+    /// needs nothing of the other): the full set, or every problem.
+    pub fn resolve_directions(
+        &self,
+        directions: &[prxvc_media::Direction],
+    ) -> Result<crate::plan::DirectionsPlan, Vec<Problem>> {
+        self.with_resolver(|r| r.directions(self.system_language, directions))
+    }
+
     /// What leaves the machine under `plan`.
     pub fn egress_summary(&self, plan: &CallPlan) -> EgressSummary {
         summarize(plan)
