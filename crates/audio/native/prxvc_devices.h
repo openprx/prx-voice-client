@@ -40,6 +40,29 @@ typedef struct {
 // OSStatus on failure. Not for use on an audio IO thread.
 int32_t prxvc_list_input_devices(PrxvcInputDevice *out, int32_t capacity);
 
+// One device of either direction, hidden devices included (a hidden device,
+// such as the virtual microphone's sink, is still listed by Core Audio).
+typedef struct {
+    uint32_t device_id;
+    char uid[PRXVC_DEVICE_STRING_LEN];
+    char name[PRXVC_DEVICE_STRING_LEN];
+    uint32_t transport;
+    int32_t has_input;  // at least one input channel
+    int32_t has_output; // at least one output channel
+    int32_t is_alive;   // kAudioDevicePropertyDeviceIsAlive
+    int32_t is_hidden;  // kAudioDevicePropertyIsHidden
+    int32_t is_default_input;
+} PrxvcDevice;
+
+// Fill `out` with up to `capacity` devices. Returns the number written, or a
+// negative Core Audio OSStatus on failure. Not for use on an audio IO thread.
+int32_t prxvc_list_devices(PrxvcDevice *out, int32_t capacity);
+
+// Look a device up by UID, hidden devices included (Core Audio omits hidden
+// devices from the device list but still resolves their UID). Returns 0 and
+// fills `out`, or -1 when no device has that UID.
+int32_t prxvc_device_by_uid(const char *uid, PrxvcDevice *out);
+
 #ifdef __cplusplus
 }
 #endif

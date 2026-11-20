@@ -15,8 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AudioInput`, `AudioOutput`, `AppAudioSource` and `VirtualMicSink` traits are gone.
   A test fails when real-time code (`*_rt.rs`) uses a lock, an allocation, logging or
   a channel send.
+- The sink that located one third-party virtual device by name is removed; the virtual microphone
+  endpoint replaces it.
 
 ### Added
+- `prxvc-audio` `virtual_mic::VirtualMicSink`: writes into the PRX Voice microphone
+  driver's hidden sink, opened by UID (`audio.virtual_mic_device`, empty means our
+  driver), and `driver_status::DriverStatus`: whether the driver bundle is installed,
+  its variant and version (read from `Info.plist`), whether the audio service has loaded
+  it and whether the version is the one the app expects. Any other output device can
+  be used by entering its UID.
 - macOS application bundle `PRX Voice.app` (`scripts/package-macos.sh`,
   `scripts/run-app.sh`, `packaging/macos/`): bundle identifier
   `org.openprx.prx-voice-client`, microphone and audio-capture usage strings
@@ -26,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (size-capped, rotated); the app warns at start when it runs outside a bundle.
 - Bilingual consecutive-interpreting state machine and turn driver (`prxvc-session`)
 - macOS per-application audio capture via Core Audio process taps, 16 kHz mono
-  resampling, and audio-routing traits (`AppAudioSource`, `VirtualMicSink`) with a
-  BlackHole virtual-mic backend (`prxvc-audio`)
+  resampling, and audio-routing traits (`AppAudioSource`, `VirtualMicSink`)
+  (`prxvc-audio`)
 - `prxvc-adapters` crate: machine-translation and speech-synthesis adapters,
   including an OpenAI-compatible translator and a development tone synthesizer
 - RF design-standard theme (`prxvc-desktop-ui::theme`): colour, type, radius and

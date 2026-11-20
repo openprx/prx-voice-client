@@ -90,12 +90,25 @@ pub struct MonoResampler {
 struct StreamState {
     /// Source samples accepted so far.
     in_total: u64,
-    /// Output samples emitted so far (after the start-up delay was dropped).
+    /// Output samples emitted so far (after `skip_left` ones were dropped).
     out_total: u64,
-    /// Start-up delay samples still to be dropped from the filter output.
+    /// Leading filter output still to be dropped (see [`lead_shift`]).
     skip_left: usize,
-    /// Whether `skip_left` was initialised for the current stream.
+    /// Whether the stream's alignment shift was applied.
     started: bool,
+}
+
+/// Output samples by which the filter output must be moved earlier (positive)
+/// or later (negative) to be aligned with the input.
+///
+/// Measured on the `rubato` sinc resampler used here: its output lags the
+/// input by `ratio - 1` output samples (an impulse at input sample `n` lands at
+/// `n * ratio + ratio - 1`), and it has no other start-up delay. The shift is
+/// rounded to whole samples, so the residual misalignment is at most half an
+/// output sample (none at the integer ratios 2 and 3 of 24 kHz and 16 kHz to
+/// 48 kHz).
+fn lead_shift(ratio: f64) -> i64 {
+    (ratio - 1.0).round() as i64
 }
 
 impl MonoResampler {
@@ -187,8 +200,8 @@ impl MonoResampler {
         self.stream = StreamState::default();
     }
 
-    /// Run the filter over every full chunk in `pending`, dropping the
-    /// start-up delay, and append the result to `out`.
+    /// Run the filter over every full chunk in `pending` and append the
+    /// result to `out`.
     fn drain_stream_chunks(&mut self, out: &mut Vec<f32>) -> Result<(), AudioError> {
         loop {
             let Some(needed) = self.resampler.as_ref().map(|r| r.input_frames_next()) else {
@@ -221,21 +234,31 @@ impl MonoResampler {
 
     /// Continuous streaming conversion: successive calls form one stream whose
     /// filter history and fractional position carry over, so chunk boundaries
-    /// are invisible. The filter delay is compensated, so the output is the
-    /// input signal re-sampled in time (not shifted), but it lags the input
-    /// by up to one internal block plus the filter look-ahead until
+    /// are invisible. The output is the input signal re-sampled in time (not
+    /// shifted: an impulse at input sample `n` lands at output sample
+    /// `n * target / source`, see `stream_keeps_the_time_alignment`), but it lags
+    /// the input by up to one internal block plus the filter look-ahead until
     /// [`stream_finish`](Self::stream_finish) drains the tail.
+    ///
+    /// The alignment shift is [`lead_shift`]. (An earlier version dropped
+    /// `rubato`'s reported `output_delay`, which is not a delay of its output;
+    /// that cut about 8 ms off the start and moved the whole stream earlier by
+    /// as much.)
     pub fn stream_write(&mut self, mono: &[f32]) -> Result<Vec<f32>, AudioError> {
-        let Some(resampler) = self.resampler.as_ref() else {
+        if self.resampler.is_none() {
             return Ok(mono.to_vec());
-        };
+        }
+        let mut out = Vec::new();
         if !self.stream.started {
-            self.stream.skip_left = resampler.output_delay();
             self.stream.started = true;
+            let shift = lead_shift(self.target_rate as f64 / self.source_rate as f64);
+            self.stream.skip_left = shift.max(0) as usize;
+            // A negative shift delays the stream by leading silence.
+            out.resize(shift.unsigned_abs() as usize * usize::from(shift < 0), 0.0);
+            self.stream.out_total += out.len() as u64;
         }
         self.pending.extend_from_slice(mono);
         self.stream.in_total += mono.len() as u64;
-        let mut out = Vec::new();
         self.drain_stream_chunks(&mut out)?;
         Ok(out)
     }
@@ -268,8 +291,8 @@ impl MonoResampler {
 
     /// Convert one self-contained block of mono samples.
     ///
-    /// The result has exactly `round(len * target / source)` samples and the
-    /// filter delay is compensated. The block is treated as isolated: the
+    /// The result has exactly `round(len * target / source)` samples and
+    /// is time-aligned with the input. The block is treated as isolated: the
     /// filter state is reset before and after and the edges are extended by
     /// mirror reflection, so consecutive blocks are not sample-exact across
     /// their boundary (inaudible for speech-length blocks).
@@ -288,7 +311,6 @@ impl MonoResampler {
 
         let ratio = self.target_rate as f64 / self.source_rate as f64;
         let expected = (mono.len() as f64 * ratio).round() as usize;
-        let delay = resampler.output_delay();
 
         // Extend both ends by mirror reflection (value-continuous and bounded),
         // so a block that starts or stops at a non-zero level does not look
@@ -299,7 +321,9 @@ impl MonoResampler {
         ext.extend_from_slice(mono);
         ext.extend((1..=pad).map(|k| mono[mono.len() - 1 - k]));
         let head_skip = (pad as f64 * ratio).round() as usize;
-        let need = delay + head_skip + expected;
+        let shift = lead_shift(ratio);
+        let start = (head_skip as i64 + shift).max(0) as usize;
+        let need = start + expected;
 
         let mut out: Vec<f32> = Vec::with_capacity(need + RESAMPLER_CHUNK * 4);
         let mut consumed = 0usize;
@@ -319,7 +343,7 @@ impl MonoResampler {
         }
         resampler.reset();
 
-        out.drain(..delay + head_skip);
+        out.drain(..start);
         out.truncate(expected);
         Ok(out)
     }
@@ -509,6 +533,38 @@ mod tests {
     }
 
     /// Whole-stream conversion through the stateful path, fed in `chunks`.
+    /// Position of the largest absolute sample.
+    fn peak_position(x: &[f32]) -> usize {
+        x.iter()
+            .enumerate()
+            .fold((0, 0.0f32), |a, (i, v)| if v.abs() > a.1 { (i, v.abs()) } else { a })
+            .0
+    }
+
+    #[test]
+    fn stream_keeps_the_time_alignment() {
+        // An impulse at input sample 4000 must land at 4000 * target / source,
+        // for streams (any chunking) and for blocks, up and down.
+        for (src, dst) in [(16_000u32, 48_000u32), (24_000, 48_000), (44_100, 48_000), (48_000, 16_000)] {
+            let mut input = vec![0.0f32; 16_000];
+            input[4_000] = 1.0;
+            let want = (4_000.0 * dst as f64 / src as f64).round() as usize;
+
+            let mut streamed = MonoResampler::new(src, dst).unwrap();
+            let mut out = Vec::new();
+            for chunk in input.chunks(333) {
+                out.extend(streamed.stream_write(chunk).unwrap());
+            }
+            out.extend(streamed.stream_finish().unwrap());
+            let at = peak_position(&out);
+            assert!(at.abs_diff(want) <= 1, "{src}->{dst} stream: peak at {at}, want {want}");
+
+            let block = MonoResampler::new(src, dst).unwrap().convert_block(&input).unwrap();
+            let at = peak_position(&block);
+            assert!(at.abs_diff(want) <= 1, "{src}->{dst} block: peak at {at}, want {want}");
+        }
+    }
+
     fn stream_convert(r: &mut MonoResampler, x: &[f32], chunks: &[usize]) -> Vec<f32> {
         let mut out = Vec::new();
         let mut pos = 0usize;
