@@ -683,3 +683,54 @@ fn chinese_and_latin_text_render_in_every_style() {
     assert!(text.contains("你好，世界"));
     assert!(text.contains("quick brown fox"));
 }
+
+/// The call-mode control inside the debug window, in both languages, light and dark,
+/// with an idle panel and with a running panel that carries issues.
+#[test]
+fn call_control_renders_in_both_languages_with_issues() {
+    use prxvc_desktop_ui::{
+        ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
+    };
+    let _guard = lock_locale();
+    let running = CallPanel {
+        phase: CallPhase::AudioReady,
+        in_call_mode: true,
+        default_input_ours: false,
+        displaced_to: "AirPods".into(),
+        microphone: "Built-in Mic".into(),
+        virtual_sink: "PRX Voice Microphone (Internal Sink)".into(),
+        call_app: "net.whatsapp.WhatsApp".into(),
+        activity: ActivityView::OnOtherMicrophone,
+        activity_devices: "AirPods".into(),
+        outgoing: LaneView { running: true, hears: Heard::Original, device: "Built-in Mic".into(), frames: 120, rms: 0.1, peak: 0.4, ..LaneView::default() },
+        incoming: LaneView { running: true, hears: Heard::Original, device: "process tap".into(), frames: 90, ..LaneView::default() },
+        issues: vec![IssueView {
+            key: "call.issue.default_input_displaced".into(),
+            severity: IssueSeverity::Degraded,
+            detail: "the default input is now AirPods".into(),
+        }],
+        last_error: Some(IssueView {
+            key: "call.issue.driver_missing".into(),
+            severity: IssueSeverity::Blocking,
+            detail: String::new(),
+        }),
+    };
+    for (_, system) in SCHEMES {
+        for locale in LOCALES {
+            prxvc_i18n::set_locale(locale.clone());
+            for panel in [CallPanel::default(), running.clone()] {
+                let ctx = new_ctx();
+                let mut state = sample_state();
+                state.call = panel;
+                state.windows.request_open(ToolKind::Debug);
+                let (shapes, text) = run_frames(&ctx, system, 3, |ui| {
+                    prxvc_desktop_ui::render_app(ui, &mut state);
+                });
+                assert!(shapes > 0);
+                assert!(text.contains(&prxvc_i18n::t("call.title")), "{text}");
+                assert!(text.contains(&prxvc_i18n::t("call.start")));
+            }
+        }
+    }
+    prxvc_i18n::set_locale(Locale::En);
+}

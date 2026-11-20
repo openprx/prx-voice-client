@@ -2,6 +2,7 @@
 
 use egui::CornerRadius;
 
+use crate::call_view::CallPanel;
 use crate::state::DesktopUiState;
 use crate::theme::{Tokens, radius, size, space};
 use crate::widgets;
@@ -65,7 +66,14 @@ pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
 }
 
 /// Debug dialog body: the state machine in a `surface` block, then events.
-pub(crate) fn debug_body(ui: &mut egui::Ui, tk: &Tokens, state_info: &str, events: &[String]) {
+pub(crate) fn debug_body(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    state_info: &str,
+    events: &[String],
+    call: &CallPanel,
+    commands: &mut Vec<String>,
+) {
     widgets::section_header(ui, tk, &prxvc_i18n::t("debug.state_machine"), true);
     egui::Frame::NONE
         .fill(tk.surface)
@@ -83,6 +91,8 @@ pub(crate) fn debug_body(ui: &mut egui::Ui, tk: &Tokens, state_info: &str, event
                 .wrap(),
             );
         });
+
+    crate::call_debug_view::call_section(ui, tk, call, commands);
 
     widgets::section_header(
         ui,

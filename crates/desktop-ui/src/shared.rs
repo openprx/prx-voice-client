@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use crate::call_view::CallPanel;
 use crate::{HistoryEntry, TranscriptLine};
 
 /// Network/transport connection status.
@@ -76,6 +77,8 @@ pub struct UiSnapshot {
     /// The app runs outside its macOS application bundle, so microphone and
     /// audio-capture permissions are attributed to the launching application.
     pub outside_app_bundle: bool,
+    /// Call mode as the temporary debug control shows it.
+    pub call: CallPanel,
 }
 
 /// Wakes the UI thread when another thread changes what the UI displays.
@@ -143,6 +146,8 @@ struct SharedStateInner {
     input_device: String,
     /// The app runs outside its macOS application bundle.
     outside_app_bundle: bool,
+    /// Call mode as the debug control shows it.
+    call: CallPanel,
 }
 
 /// Thread-safe shared state between the UI and async runtime.
@@ -175,6 +180,7 @@ impl SharedAppState {
                 mic_paused: false,
                 input_device: String::new(),
                 outside_app_bundle: false,
+                call: CallPanel::default(),
             })),
             repaint: RepaintSignal::default(),
         }
@@ -374,6 +380,17 @@ impl SharedAppState {
         });
     }
 
+    /// Replace the call-mode view; wakes the UI only when it changed.
+    pub fn set_call_panel(&self, panel: CallPanel) {
+        self.mutate(|inner| {
+            let changed = inner.call != panel;
+            if changed {
+                inner.call = panel;
+            }
+            changed
+        });
+    }
+
     /// Produce a read-only snapshot of all display-relevant state.
     ///
     /// The lock is held only for the duration of the clone, keeping the
@@ -413,6 +430,7 @@ impl SharedAppState {
             mic_paused: inner.mic_paused,
             input_device: inner.input_device.clone(),
             outside_app_bundle: inner.outside_app_bundle,
+            call: inner.call.clone(),
         }
     }
 }
@@ -475,6 +493,10 @@ mod tests {
             ("set_mic_paused", Box::new(|s| s.set_mic_paused(true))),
             ("set_input_device", Box::new(|s| s.set_input_device("Built-in"))),
             ("set_outside_app_bundle", Box::new(|s| s.set_outside_app_bundle(true))),
+            ("set_call_panel", Box::new(|s| s.set_call_panel(CallPanel {
+                phase: crate::call_view::CallPhase::AudioReady,
+                ..CallPanel::default()
+            }))),
         ]
     }
 

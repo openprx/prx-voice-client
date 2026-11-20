@@ -3,6 +3,8 @@
 //! Provides compile-time embedded translations for English and Chinese (Simplified)
 //! with a global locale store, fallback logic, and parameter substitution.
 
+mod call_strings;
+
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -328,6 +330,7 @@ fn build_en_translations() -> HashMap<String, String> {
     ];
     pairs
         .iter()
+        .chain(call_strings::EN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }
@@ -564,6 +567,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
     ];
     pairs
         .iter()
+        .chain(call_strings::ZH_CN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }

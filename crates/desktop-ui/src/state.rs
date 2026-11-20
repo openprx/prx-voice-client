@@ -172,6 +172,8 @@ pub struct DesktopUiState {
     pub input_device: String,
     /// Optional status bar message.
     pub status_message: Option<String>,
+    /// Call mode as the temporary debug control shows it.
+    pub call: crate::call_view::CallPanel,
     /// Internal animation time tracker.
     pub(crate) anim_time: f64,
     /// The idle orb breathes (and the app repaints for it). Tests turn it off
@@ -209,6 +211,7 @@ impl DesktopUiState {
             input_device: String::new(),
             reconnect_attempts: 0,
             status_message: None,
+            call: crate::call_view::CallPanel::default(),
             anim_time: 0.0,
             idle_animation: true,
             windows: tool_window::ToolWindows::default(),
@@ -266,6 +269,9 @@ impl DesktopUiState {
                 snap.input_device
             );
         }
+
+        // Call mode
+        self.call = snap.call;
 
         // Status
         self.status_message = snap.status_message;

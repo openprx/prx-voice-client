@@ -13,12 +13,16 @@
 //! - [`app`]: `render_app`, the per-frame composition.
 //! - `orb_view`, `status_pill`, `status_hint`, `context_menu`: the orb and its surroundings.
 //! - `transcript_view`, `history_view`, `debug_view`, `error_banner`: the content views.
+//! - [`call_view`] and `call_debug_view`: the view model and the temporary call-mode
+//!   control inside the debug window.
 //! - `legacy_pages`: page renderers `render_app` does not call.
 //! - [`theme`], [`widgets`], [`settings_view`], [`tool_window`], [`fonts`],
 //!   [`shared`], [`repaint`]: tokens, widgets, settings content, tool windows,
 //!   fonts, the engine bridge and the repaint policy.
 
 mod app;
+mod call_debug_view;
+pub mod call_view;
 mod context_menu;
 mod debug_view;
 mod error_banner;
@@ -39,6 +43,7 @@ mod transcript_view;
 pub mod widgets;
 
 pub use app::render_app;
+pub use call_view::{ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
 pub use debug_view::render_debug_page;
 pub use error_banner::render_error_banner;
 pub use history_view::render_history_panel;

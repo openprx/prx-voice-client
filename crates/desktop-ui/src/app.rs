@@ -208,10 +208,11 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
         .windows
         .debug
         .is_open()
-        .then(|| (state.debug_state_info.clone(), state.debug_events.clone()));
-    if let Some((info, events)) = debug_snapshot {
-        tool_window::show(ctx, tk, ToolKind::Debug, &mut state.windows.debug, placement, |ui| {
-            debug_body(ui, tk, &info, &events);
+        .then(|| (state.debug_state_info.clone(), state.debug_events.clone(), state.call.clone()));
+    if let Some((info, events, call)) = debug_snapshot {
+        let DesktopUiState { windows, pending_commands, .. } = &mut *state;
+        tool_window::show(ctx, tk, ToolKind::Debug, &mut windows.debug, placement, |ui| {
+            debug_body(ui, tk, &info, &events, &call, pending_commands);
         });
     }
 }
