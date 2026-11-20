@@ -7,7 +7,13 @@ use prxvc_models::catalogue::{
 use prxvc_models::{Arch, HardwareInfo, LangKey, Os};
 use serde_json::{Value, json};
 
-const ALL_RUNTIMES: [&str; 4] = ["whisper.cpp", "llama.cpp", "qwentts.cpp", "onnxruntime"];
+const ALL_RUNTIMES: [&str; 5] = [
+    "whisper.cpp",
+    "llama.cpp",
+    "llama-server",
+    "qwentts.cpp",
+    "onnxruntime",
+];
 
 fn embedded_json() -> Value {
     serde_json::to_value(Catalogue::embedded()).unwrap()
@@ -40,7 +46,7 @@ fn mac16() -> HardwareInfo {
 fn embedded_catalogue_parses_and_validates() {
     let cat = Catalogue::embedded();
     assert_eq!(cat.schema_version, 1);
-    assert_eq!(cat.catalogue_version, 2026112001);
+    assert_eq!(cat.catalogue_version, 2026112002);
     let warnings = cat.validate(&semver::Version::new(0, 2, 0), &ALL_RUNTIMES);
     assert!(warnings.is_empty(), "{warnings:?}");
     let ids: Vec<_> = cat.models().iter().map(|m| m.id.0.as_str()).collect();
@@ -50,7 +56,7 @@ fn embedded_catalogue_parses_and_validates() {
             "silero-vad-6.2",
             "silero-vad-5.1.2",
             "whisper-small",
-            "hy-mt2-7b-q4km",
+            "gemma-4-e4b-it-qat-q4-0",
             "qwen3-tts-1.7b-base-q8",
             "kokoro-82m-q8f16"
         ]
@@ -100,12 +106,12 @@ fn embedded_pins_are_exactly_the_ones_in_the_design() {
         )
     );
     assert_eq!(
-        pin("hy-mt2-7b-q4km", 0),
+        pin("gemma-4-e4b-it-qat-q4-0", 0),
         (
-            "Hy-MT2-7B-Q4_K_M.gguf".into(),
-            4624648896,
-            "9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b".into(),
-            "ab8472660ac61fac25f1af43fac2599d52a8a775".into()
+            "gemma-4-E4B_q4_0-it.gguf".into(),
+            5154941280,
+            "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee".into(),
+            "4b4a2c1d584be7264f87aac328a1bc739ce81b6c".into()
         )
     );
     assert_eq!(
@@ -417,14 +423,14 @@ fn recommendation_depends_on_the_hardware() {
     // first candidate.
     assert_eq!(
         rec(Role::Mt, &pair, mac16()).as_deref(),
-        Some("hy-mt2-7b-q4km")
+        Some("gemma-4-e4b-it-qat-q4-0")
     );
     let small = hw(8, Os::Linux, Arch::X86_64);
     let c = cat.candidates(Role::Mt, &pair, &small, rt);
     assert_eq!(c[0].badge, None);
     assert_eq!(
         rec(Role::Mt, &pair, small).as_deref(),
-        Some("hy-mt2-7b-q4km")
+        Some("gemma-4-e4b-it-qat-q4-0")
     );
     // TTS: the "recommended" rule needs macOS on Apple silicon.
     let en = LangKey::Lang("en".into());

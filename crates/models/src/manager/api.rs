@@ -64,10 +64,16 @@ impl ManagerConfig {
             endpoint: Endpoint::default(),
             max_concurrent: 2,
             app_version,
-            runtimes: ["whisper.cpp", "llama.cpp", "qwentts.cpp", "onnxruntime"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
+            runtimes: [
+                "whisper.cpp",
+                "llama.cpp",
+                "llama-server",
+                "qwentts.cpp",
+                "onnxruntime",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
             catalogue,
             active: ActiveSet::default(),
             options: ManagerOptions::default(),
