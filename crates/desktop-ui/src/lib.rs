@@ -9,6 +9,7 @@
 //! the egui style built from them, and [`widgets`] for the custom widgets.
 
 pub mod fonts;
+pub mod repaint;
 pub mod settings_view;
 pub mod shared;
 pub mod theme;
@@ -421,6 +422,9 @@ pub struct DesktopUiState {
     pub status_message: Option<String>,
     /// Internal animation time tracker.
     anim_time: f64,
+    /// The idle orb breathes (and the app repaints for it). Tests turn it off
+    /// so a settled harness shows a still orb.
+    pub idle_animation: bool,
     /// The settings, history and debug windows (native windows of their own).
     pub windows: tool_window::ToolWindows,
     /// Current color theme.
@@ -453,6 +457,7 @@ impl DesktopUiState {
             reconnect_attempts: 0,
             status_message: None,
             anim_time: 0.0,
+            idle_animation: true,
             windows: tool_window::ToolWindows::default(),
             theme: Theme::default(),
             pending_theme: None,
@@ -1194,6 +1199,13 @@ impl StatusPill {
 pub fn render_app(ui: &mut egui::Ui, state: &mut DesktopUiState) {
     let ctx = &ui.ctx().clone();
     let time = ctx.input(|i| i.time);
+    // Animation is driven by elapsed time, so the lower idle frame rate looks
+    // the same; a still orb (idle animation off) is drawn at time zero.
+    let time = if state.idle_animation || repaint::is_active_state(&state.session_state) {
+        time
+    } else {
+        0.0
+    };
     state.anim_time = time;
 
     // Style first, then resolve the RF scheme against what egui now uses
@@ -1421,8 +1433,15 @@ pub fn render_app(ui: &mut egui::Ui, state: &mut DesktopUiState) {
         });
     }
 
-    // Request continuous repaint for orb animation
-    ctx.request_repaint();
+    repaint::schedule(
+        ctx,
+        repaint::decide(&repaint::RepaintInputs {
+            session_state: &state.session_state,
+            orb_hidden: ctx.input(|i| i.viewport().visible()) == Some(false),
+            tool_window_open: ToolKind::ALL.iter().any(|k| state.windows.get(*k).is_open()),
+            idle_animation: state.idle_animation,
+        }),
+    );
 }
 
 // ---------------------------------------------------------------------------

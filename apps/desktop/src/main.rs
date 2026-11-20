@@ -105,6 +105,7 @@ impl PrxVoiceApp {
         };
 
         let shared = SharedAppState::new();
+        shared.set_repaint_context(cc.egui_ctx.clone());
         let shared_clone = shared.clone();
         let engine_config = config.clone();
 

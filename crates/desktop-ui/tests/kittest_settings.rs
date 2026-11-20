@@ -2,8 +2,10 @@
 //! view on its own, and opening and closing the settings window through
 //! `render_app`.
 //!
-//! `render_app` requests a repaint every frame, so `Harness::run` would never
-//! settle on it: those tests use stepped runs.
+//! `render_app` schedules repaints through the policy in `repaint.rs`.
+//! `Harness::run` only waits for immediate repaints, so it settles on an idle
+//! orb whether or not the breathing animation is on; the tests that need a
+//! still orb set `DesktopUiState::idle_animation` to false.
 
 mod common;
 
@@ -14,6 +16,12 @@ use prxvc_desktop_ui::{DesktopUiState, UiSettings, settings_view, theme};
 use prxvc_i18n::Locale;
 
 const LOCALES: [Locale; 2] = [Locale::En, Locale::ZhCn];
+
+fn still_state() -> DesktopUiState {
+    let mut st = DesktopUiState::new();
+    st.idle_animation = false;
+    st
+}
 
 struct ContentState {
     settings: UiSettings,
@@ -100,20 +108,50 @@ fn settings_window_opens_and_closes_with_escape() {
     prxvc_i18n::set_locale(Locale::En);
     let mut harness = common::builder(vec2(480.0, 760.0), Theme::Light).build_ui_state(
         |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_app(ui, st),
-        DesktopUiState::new(),
+        still_state(),
     );
-    harness.run_steps(3);
+    harness.run();
     assert!(!harness.state().windows.settings.is_open());
     assert!(harness.query_by_label(&prxvc_i18n::t("settings.appearance")).is_none());
 
     harness.state_mut().windows.request_open(ToolKind::Settings);
-    harness.run_steps(4);
+    harness.run();
     assert!(harness.state().windows.settings.is_open());
     harness.get_by_label(&prxvc_i18n::t("settings.appearance"));
     harness.check_accessibility();
 
     harness.key_press(egui::Key::Escape);
-    harness.run_steps(4);
+    harness.run();
     assert!(!harness.state().windows.settings.is_open(), "Escape closes the window");
     assert!(harness.query_by_label(&prxvc_i18n::t("settings.appearance")).is_none());
+}
+
+#[test]
+fn idle_orb_settles_with_and_without_the_breathing_animation() {
+    let _guard = common::lock_locale();
+    prxvc_i18n::set_locale(Locale::En);
+    for idle_animation in [true, false] {
+        let mut harness = common::builder(vec2(480.0, 760.0), Theme::Light).build_ui_state(
+            |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_app(ui, st),
+            {
+                let mut st = DesktopUiState::new();
+                st.idle_animation = idle_animation;
+                st
+            },
+        );
+        assert!(harness.run_ok().is_some(), "idle_animation={idle_animation} did not settle");
+    }
+}
+
+#[test]
+fn active_orb_keeps_repainting_every_frame() {
+    let _guard = common::lock_locale();
+    prxvc_i18n::set_locale(Locale::En);
+    let mut state = DesktopUiState::new();
+    state.session_state = "AssistantSpeaking".to_owned();
+    let mut harness = common::builder(vec2(480.0, 760.0), Theme::Light).build_ui_state(
+        |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_app(ui, st),
+        state,
+    );
+    assert!(harness.run_ok().is_none(), "an active orb must not settle");
 }
