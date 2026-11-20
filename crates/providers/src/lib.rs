@@ -67,7 +67,7 @@ pub use model_source::ModelSource;
 pub use plan::{CallPlan, DirectionPlan, RecognitionMode};
 pub use problem::{BuildError, Problem, ProblemKind, Slot};
 pub use recognition::{BuiltInRecognition, RecognitionLoader, TRANSCRIBE_BUILT_IN};
-pub use registry::{LiveEngines, ProviderRegistry};
+pub use registry::{LiveEngines, PrepareError, ProviderRegistry, VoicePrepared};
 pub use resolve::{DEFAULT_MT_PROVIDER, VoiceChoice, VoiceDirs};
 pub use runtime::{BuiltRuntimes, Runtime};
 pub use spec::{

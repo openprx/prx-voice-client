@@ -121,7 +121,10 @@ impl VadProvider for SharedVad {
 
     fn open(&self) -> Result<Box<dyn VadEngine>, VadError> {
         let opened = self.lease.engine().open();
-        if matches!(opened, Err(VadError::Unavailable { .. } | VadError::Internal(_))) {
+        if matches!(
+            opened,
+            Err(VadError::Unavailable { .. } | VadError::Internal(_))
+        ) {
             self.lease.report_failure();
         }
         opened
@@ -171,7 +174,10 @@ impl RefineAsr for SharedRefine {
         ctx: &AsrContext,
         cancel: &CancellationToken,
     ) -> Result<AsrHypothesis, AsrError> {
-        let result = self.lease.engine().transcribe(audio, rate, lang, ctx, cancel);
+        let result = self
+            .lease
+            .engine()
+            .transcribe(audio, rate, lang, ctx, cancel);
         if let Err(e) = &result
             && asr_engine_failure(e)
         {

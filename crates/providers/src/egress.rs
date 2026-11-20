@@ -70,7 +70,11 @@ pub fn summarize(plan: &CallPlan) -> EgressSummary {
     let mut primaries = Vec::new();
     let mut fallbacks = Vec::new();
     let mut push = |slot_fallback: bool, row: RoleEgress| {
-        let rows = if slot_fallback { &mut fallbacks } else { &mut primaries };
+        let rows = if slot_fallback {
+            &mut fallbacks
+        } else {
+            &mut primaries
+        };
         if !rows.contains(&row) {
             rows.push(row);
         }

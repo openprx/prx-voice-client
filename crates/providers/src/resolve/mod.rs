@@ -57,6 +57,9 @@ pub(crate) struct Resolver<'a> {
     pub dirs: &'a VoiceDirs,
     pub built: &'a crate::runtime::BuiltRuntimes,
     pub asr_needs: AsrNeeds,
+    /// Whether a cloned voice must already be prepared for the model. Preparing it is the one
+    /// operation that resolves without.
+    pub require_prepared: bool,
 }
 
 fn selection_map(sel: &prxvc_config::RoleSelection, role: CallRole) -> &prxvc_config::RoleMap {
@@ -139,8 +142,11 @@ impl Resolver<'_> {
 
         let primary_id = configured(selection_map(&self.cfg.providers.active, role), &config_key)
             .or_else(|| self.default_id(key));
-        let fallback_id = configured(selection_map(&self.cfg.providers.fallback, role), &config_key)
-            .filter(|id| !id.eq_ignore_ascii_case("none"));
+        let fallback_id = configured(
+            selection_map(&self.cfg.providers.fallback, role),
+            &config_key,
+        )
+        .filter(|id| !id.eq_ignore_ascii_case("none"));
 
         let primary = match &primary_id {
             Some(id) => one(id).map_err(|k| wrap(Slot::Primary, k)),
@@ -216,10 +222,7 @@ impl Resolver<'_> {
 }
 
 /// `Any` matches every language; a language entry matches its code.
-pub(crate) fn languages_cover(
-    specs: &[prxvc_models::LanguageSpec],
-    lang: Lang,
-) -> bool {
+pub(crate) fn languages_cover(specs: &[prxvc_models::LanguageSpec], lang: Lang) -> bool {
     specs.iter().any(|s| match s {
         prxvc_models::LanguageSpec::Any => true,
         prxvc_models::LanguageSpec::Lang { code } => code == lang.code(),

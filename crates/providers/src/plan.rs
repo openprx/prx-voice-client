@@ -125,16 +125,24 @@ impl Resolver<'_> {
                 value: b.value,
             })
         };
-        let own = parse_lang("call.self_language", &self.cfg.call.self_language).map_err(|b| vec![bad(b)])?;
-        let peer = parse_lang("call.peer_language", &self.cfg.call.peer_language).map_err(|b| vec![bad(b)])?;
+        let own = parse_lang("call.self_language", &self.cfg.call.self_language)
+            .map_err(|b| vec![bad(b)])?;
+        let peer = parse_lang("call.peer_language", &self.cfg.call.peer_language)
+            .map_err(|b| vec![bad(b)])?;
         let ui = match self.cfg.ui.language.trim() {
             "" | "system" => system,
             text => parse_lang("ui.language", text).ok().flatten().or(system),
         };
         match (own.or(ui), peer) {
             (Some(own), Some(peer)) => Ok(CallLanguages { own, peer }),
-            (Some(own), None) => Ok(CallLanguages { own, peer: other(own) }),
-            (None, Some(peer)) => Ok(CallLanguages { own: other(peer), peer }),
+            (Some(own), None) => Ok(CallLanguages {
+                own,
+                peer: other(own),
+            }),
+            (None, Some(peer)) => Ok(CallLanguages {
+                own: other(peer),
+                peer,
+            }),
             (None, None) => Err(vec![call_problem(ProblemKind::LanguageNotSet {
                 key: "call.self_language".to_owned(),
             })]),

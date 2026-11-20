@@ -13,7 +13,11 @@ pub fn model_fingerprint(entry: &ModelEntry) -> String {
     hasher.update(b"prxvc-model-fingerprint-v1\n");
     hasher.update(entry.id.as_str().as_bytes());
     for file in &entry.files {
-        for part in [file.purpose.as_str(), file.name.as_str(), file.sha256.as_str()] {
+        for part in [
+            file.purpose.as_str(),
+            file.name.as_str(),
+            file.sha256.as_str(),
+        ] {
             hasher.update([0u8]);
             hasher.update(part.as_bytes());
         }

@@ -19,7 +19,11 @@ fn clock() -> ManualClock {
 
 #[test]
 fn a_translation_test_reads_the_stream_and_reports_the_text() {
-    let fake = FakeTranslator::new(clock()).with_default_script(MtScript::tokens(["你好", "，", "能听到吗？"]));
+    let fake = FakeTranslator::new(clock()).with_default_script(MtScript::tokens([
+        "你好",
+        "，",
+        "能听到吗？",
+    ]));
     let report = test_translator(&fake, Lang::En, Lang::Zh, T);
     assert!(report.ok, "{report:?}");
     assert_eq!(report.detail, "你好，能听到吗？");
@@ -30,15 +34,33 @@ fn a_translation_test_reads_the_stream_and_reports_the_text() {
 #[test]
 fn translation_failures_are_classified() {
     for (error, class) in [
-        (MtError::Rejected { status: 401 }, FailureClass::Unauthorized),
+        (
+            MtError::Rejected { status: 401 },
+            FailureClass::Unauthorized,
+        ),
         (MtError::Rejected { status: 403 }, FailureClass::Forbidden),
         (MtError::Rejected { status: 404 }, FailureClass::NotFound),
         (MtError::Rejected { status: 429 }, FailureClass::RateLimited),
         (MtError::Rejected { status: 500 }, FailureClass::Rejected),
         (MtError::Timeout, FailureClass::Timeout),
-        (MtError::Unavailable { reason: "cannot connect: refused".into() }, FailureClass::Unreachable),
-        (MtError::Unavailable { reason: "connect timeout".into() }, FailureClass::Unreachable),
-        (MtError::Unavailable { reason: "stream stalled".into() }, FailureClass::Unavailable),
+        (
+            MtError::Unavailable {
+                reason: "cannot connect: refused".into(),
+            },
+            FailureClass::Unreachable,
+        ),
+        (
+            MtError::Unavailable {
+                reason: "connect timeout".into(),
+            },
+            FailureClass::Unreachable,
+        ),
+        (
+            MtError::Unavailable {
+                reason: "stream stalled".into(),
+            },
+            FailureClass::Unavailable,
+        ),
     ] {
         let fake = FakeTranslator::new(clock())
             .with_default_script(MtScript::tokens(["x"]).failing_open(error.clone()));
@@ -58,13 +80,28 @@ fn an_empty_translation_is_a_bad_response() {
 #[test]
 fn a_synthesis_test_discards_the_audio_and_reports_the_duration() {
     let fake = FakeSpeechSynth::new(clock()).with_default_script(TtsScript::chunks(3, 2400));
-    let report = test_synth(&fake, Lang::En, VoiceSelection::Preset { name: "preset-a".into() }, T);
+    let report = test_synth(
+        &fake,
+        Lang::En,
+        VoiceSelection::Preset {
+            name: "preset-a".into(),
+        },
+        T,
+    );
     assert!(report.ok, "{report:?}");
     assert!(report.first_response.is_some());
     assert_eq!(fake.requests()[0].text, TEST_CLAUSE);
-    let failing = FakeSpeechSynth::new(clock())
-        .with_default_script(TtsScript::chunks(1, 10).failing_open(TtsError::UnknownVoice("preset-a".into())));
-    let report = test_synth(&failing, Lang::En, VoiceSelection::Preset { name: "preset-a".into() }, T);
+    let failing = FakeSpeechSynth::new(clock()).with_default_script(
+        TtsScript::chunks(1, 10).failing_open(TtsError::UnknownVoice("preset-a".into())),
+    );
+    let report = test_synth(
+        &failing,
+        Lang::En,
+        VoiceSelection::Preset {
+            name: "preset-a".into(),
+        },
+        T,
+    );
     assert_eq!(report.error.unwrap().class, FailureClass::UnknownVoice);
 }
 
@@ -89,6 +126,13 @@ fn a_vad_test_loads_the_engine() {
     let report = test_vad(&vad);
     assert!(report.ok, "{report:?}");
     assert_eq!(vad.opens(), 1);
-    let broken = FakeVadProvider::new(VadScript::probabilities([0.0]).failing_open(VadError::Unavailable { reason: "no model".into() }));
-    assert_eq!(test_vad(&broken).error.unwrap().class, FailureClass::Unavailable);
+    let broken = FakeVadProvider::new(VadScript::probabilities([0.0]).failing_open(
+        VadError::Unavailable {
+            reason: "no model".into(),
+        },
+    ));
+    assert_eq!(
+        test_vad(&broken).error.unwrap().class,
+        FailureClass::Unavailable
+    );
 }

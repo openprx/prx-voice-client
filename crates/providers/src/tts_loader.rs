@@ -49,7 +49,8 @@ impl TtsLoader for BuiltInTts {
 
 /// Prepare and register the voice of `spec` on `engine`, through the profile's (or preset's)
 /// on-disk cache: a prepared voice costs no engine call.
-pub(crate) fn register_voice(engine: &QwenTts, spec: &TtsSpec) -> Result<(), BuildError> {
+/// Returns whether the cache served a cloned voice (`None` for a preset).
+pub(crate) fn register_voice(engine: &QwenTts, spec: &TtsSpec) -> Result<Option<bool>, BuildError> {
     let voice_err = |detail: String| BuildError::Voice {
         provider: spec.id.clone(),
         detail,
@@ -66,7 +67,7 @@ pub(crate) fn register_voice(engine: &QwenTts, spec: &TtsSpec) -> Result<(), Bui
                 .map_err(|e| voice_err(e.to_string()))?;
             engine
                 .prepare_voice_cached(&VoiceCache::new(profile_dir), &reference)
-                .map(|_| ())
+                .map(|(_, hit)| Some(hit))
                 .map_err(|e| voice_err(e.to_string()))
         }
         VoicePlan::Preset {
@@ -79,7 +80,7 @@ pub(crate) fn register_voice(engine: &QwenTts, spec: &TtsSpec) -> Result<(), Bui
                 .map_err(|e| voice_err(e.to_string()))?;
             engine
                 .register_preset(name, &reference, Some(&VoiceCache::new(dir)))
-                .map(|_| ())
+                .map(|_| None)
                 .map_err(|e| voice_err(e.to_string()))
         }
     }

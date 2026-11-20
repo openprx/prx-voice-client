@@ -5,8 +5,8 @@ use prxvc_models::{FailReason, ModelEntry, ModelId, NotReady, ReadyModel, Role, 
 use prxvc_ports::ProviderId;
 
 use super::protocol::Protocol;
-use super::{AsrNeeds, Resolver, languages_cover};
 use super::voice::VoiceChoice;
+use super::{AsrNeeds, Resolver, languages_cover};
 use crate::fingerprint::model_fingerprint;
 use crate::keys::CallRole;
 use crate::problem::ProblemKind;
@@ -67,22 +67,27 @@ impl Resolver<'_> {
     fn model_entry(&self, id: &str, role: CallRole) -> Result<&ModelEntry, ProblemKind> {
         let pid = ProviderId::new(id);
         let Some(entry) = self.catalogue.get(&ModelId::new(id)) else {
-            return Err(match self.cfg.providers.entries.iter().find(|e| e.id == id) {
-                // A protocol that serves the role has no client in this build (the cloud
-                // recognition and synthesis clients are written when the owner wants one).
-                Some(e) if Protocol::parse(&e.protocol).is_some_and(|p| role_matches(p.role(), role)) => {
-                    ProblemKind::RuntimeNotBuiltIn {
-                        id: pid,
-                        runtime: e.protocol.clone(),
+            return Err(
+                match self.cfg.providers.entries.iter().find(|e| e.id == id) {
+                    // A protocol that serves the role has no client in this build (the cloud
+                    // recognition and synthesis clients are written when the owner wants one).
+                    Some(e)
+                        if Protocol::parse(&e.protocol)
+                            .is_some_and(|p| role_matches(p.role(), role)) =>
+                    {
+                        ProblemKind::RuntimeNotBuiltIn {
+                            id: pid,
+                            runtime: e.protocol.clone(),
+                        }
                     }
-                }
-                Some(e) => ProblemKind::KindNotValidForRole {
-                    id: pid,
-                    role,
-                    found: format!("an API provider entry ({})", e.protocol),
+                    Some(e) => ProblemKind::KindNotValidForRole {
+                        id: pid,
+                        role,
+                        found: format!("an API provider entry ({})", e.protocol),
+                    },
+                    None => ProblemKind::UnknownProvider { id: id.to_owned() },
                 },
-                None => ProblemKind::UnknownProvider { id: id.to_owned() },
-            });
+            );
         };
         if entry.role != catalogue_role(role) {
             return Err(ProblemKind::KindNotValidForRole {
@@ -132,7 +137,10 @@ impl Resolver<'_> {
         if let Some(lang) = lang
             && !languages_cover(&entry.languages, lang)
         {
-            problems.push(ProblemKind::LanguageUnsupported { id: id.clone(), lang });
+            problems.push(ProblemKind::LanguageUnsupported {
+                id: id.clone(),
+                lang,
+            });
         }
         let ready = match self.models.ready(&entry.id) {
             Ok(ready) => Some(ready),

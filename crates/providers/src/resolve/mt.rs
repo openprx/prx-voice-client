@@ -46,8 +46,7 @@ impl Draft {
             } else {
                 e.display_name.clone()
             },
-            template: Some(e.template.trim().to_owned())
-                .filter(|t| !t.is_empty() && t != "custom"),
+            template: Some(e.template.trim().to_owned()).filter(|t| !t.is_empty() && t != "custom"),
             protocol: e.protocol.trim().to_owned(),
             base_url: e.base_url.trim().to_owned(),
             model: e.model.trim().to_owned(),
@@ -97,60 +96,61 @@ impl Resolver<'_> {
         target: Lang,
     ) -> Result<MtSpec, Vec<ProblemKind>> {
         let template_of = |t: &str| self.catalogue.provider(t);
-        let (draft, model_problems) = if let Some(entry) =
-            self.cfg.providers.entries.iter().find(|e| e.id == id)
-        {
-            (Draft::from_entry(entry), Vec::new())
-        } else if id == DEFAULT_MT_PROVIDER {
-            let Some(template) = template_of(DEFAULT_MT_TEMPLATE) else {
-                return Err(vec![ProblemKind::UnknownTemplate {
-                    entry: id.to_owned(),
-                    template: DEFAULT_MT_TEMPLATE.to_owned(),
-                }]);
+        let (draft, model_problems) =
+            if let Some(entry) = self.cfg.providers.entries.iter().find(|e| e.id == id) {
+                (Draft::from_entry(entry), Vec::new())
+            } else if id == DEFAULT_MT_PROVIDER {
+                let Some(template) = template_of(DEFAULT_MT_TEMPLATE) else {
+                    return Err(vec![ProblemKind::UnknownTemplate {
+                        entry: id.to_owned(),
+                        template: DEFAULT_MT_TEMPLATE.to_owned(),
+                    }]);
+                };
+                (Draft::from_template(id, template), Vec::new())
+            } else if let Some(model) = self.catalogue.get(&ModelId::new(id)) {
+                let pid = ProviderId::new(id);
+                if model.role != Role::Mt {
+                    return Err(vec![ProblemKind::KindNotValidForRole {
+                        id: pid,
+                        role: CallRole::Mt,
+                        found: format!("a {:?} model", model.role),
+                    }]);
+                }
+                let runtime = Runtime::parse(&model.runtime.name);
+                if runtime != Runtime::LlamaServer {
+                    return Err(vec![ProblemKind::RuntimeNotBuiltIn {
+                        id: pid,
+                        runtime: runtime.name().to_owned(),
+                    }]);
+                }
+                let Some(template) = template_of(DEFAULT_MT_TEMPLATE) else {
+                    return Err(vec![ProblemKind::UnknownTemplate {
+                        entry: id.to_owned(),
+                        template: DEFAULT_MT_TEMPLATE.to_owned(),
+                    }]);
+                };
+                let mut draft = Draft::from_template(id, template);
+                draft.display_name = model.display_name.clone();
+                draft.model = id.to_owned();
+                draft.serves = Some(model.id.clone());
+                if let Some(name) = model
+                    .runtime
+                    .params
+                    .as_ref()
+                    .and_then(|p| p.get("prompt_template"))
+                {
+                    draft
+                        .params
+                        .insert("prompt_template".to_owned(), name.clone());
+                }
+                let problems = match self.models.ready(&model.id) {
+                    Ok(_) => Vec::new(),
+                    Err(nr) => vec![not_ready_problem(&pid, nr)],
+                };
+                (draft, problems)
+            } else {
+                return Err(vec![ProblemKind::UnknownProvider { id: id.to_owned() }]);
             };
-            (Draft::from_template(id, template), Vec::new())
-        } else if let Some(model) = self.catalogue.get(&ModelId::new(id)) {
-            let pid = ProviderId::new(id);
-            if model.role != Role::Mt {
-                return Err(vec![ProblemKind::KindNotValidForRole {
-                    id: pid,
-                    role: CallRole::Mt,
-                    found: format!("a {:?} model", model.role),
-                }]);
-            }
-            let runtime = Runtime::parse(&model.runtime.name);
-            if runtime != Runtime::LlamaServer {
-                return Err(vec![ProblemKind::RuntimeNotBuiltIn {
-                    id: pid,
-                    runtime: runtime.name().to_owned(),
-                }]);
-            }
-            let Some(template) = template_of(DEFAULT_MT_TEMPLATE) else {
-                return Err(vec![ProblemKind::UnknownTemplate {
-                    entry: id.to_owned(),
-                    template: DEFAULT_MT_TEMPLATE.to_owned(),
-                }]);
-            };
-            let mut draft = Draft::from_template(id, template);
-            draft.display_name = model.display_name.clone();
-            draft.model = id.to_owned();
-            draft.serves = Some(model.id.clone());
-            if let Some(name) = model
-                .runtime
-                .params
-                .as_ref()
-                .and_then(|p| p.get("prompt_template"))
-            {
-                draft.params.insert("prompt_template".to_owned(), name.clone());
-            }
-            let problems = match self.models.ready(&model.id) {
-                Ok(_) => Vec::new(),
-                Err(nr) => vec![not_ready_problem(&pid, nr)],
-            };
-            (draft, problems)
-        } else {
-            return Err(vec![ProblemKind::UnknownProvider { id: id.to_owned() }]);
-        };
         let mut problems = model_problems;
         match self.finish_mt(draft, source, target) {
             Ok(spec) if problems.is_empty() => Ok(spec),
@@ -221,19 +221,23 @@ impl Resolver<'_> {
         if let Some(t) = template {
             match t.streaming {
                 Streaming::Native => {}
-                Streaming::Segmented | Streaming::None => problems.push(ProblemKind::NotStreaming {
-                    id: pid.clone(),
-                    reason: t
-                        .ineligible_reason
-                        .as_ref()
-                        .map_or_else(|| "The endpoint does not stream.".to_owned(), |r| r.en.clone()),
-                }),
+                Streaming::Segmented | Streaming::None => {
+                    problems.push(ProblemKind::NotStreaming {
+                        id: pid.clone(),
+                        reason: t.ineligible_reason.as_ref().map_or_else(
+                            || "The endpoint does not stream.".to_owned(),
+                            |r| r.en.clone(),
+                        ),
+                    })
+                }
             }
         }
 
         // Address, then the offline policy: no connection is attempted either way.
         let base = if draft.base_url.is_empty() {
-            template.map(|t| t.default_base_url.clone()).unwrap_or_default()
+            template
+                .map(|t| t.default_base_url.clone())
+                .unwrap_or_default()
         } else {
             draft.base_url.clone()
         };
@@ -287,7 +291,11 @@ impl Resolver<'_> {
             });
         }
 
-        let secret = self.read_secret(&draft, template.is_some_and(|t| t.needs_credential), &mut problems);
+        let secret = self.read_secret(
+            &draft,
+            template.is_some_and(|t| t.needs_credential),
+            &mut problems,
+        );
 
         let params = self.mt_params(&draft, template, &pid, &mut problems);
 
@@ -387,7 +395,10 @@ impl Resolver<'_> {
             Some(v) => match v.as_str().map(PromptTemplate::from_str) {
                 Some(Ok(t)) => t,
                 _ => {
-                    problems.push(invalid("prompt_template", "is not a known template name".to_owned()));
+                    problems.push(invalid(
+                        "prompt_template",
+                        "is not a known template name".to_owned(),
+                    ));
                     ok = false;
                     PromptTemplate::Generic
                 }
@@ -411,9 +422,13 @@ impl Resolver<'_> {
         // The adapter owns some body fields; ask it so the list lives in one place.
         let mut body = OpenAiChatConfig::new("http://placeholder.invalid", "m").params;
         body.extend(merged);
-        let probe = OpenAiChatConfig::new("http://placeholder.invalid", "m").with_params(body.clone());
+        let probe =
+            OpenAiChatConfig::new("http://placeholder.invalid", "m").with_params(body.clone());
         if let Err(prxvc_adapters::mt::ConfigError::ReservedParam(key)) = probe.validate() {
-            problems.push(invalid(&key, "is set by the adapter and cannot be overridden".to_owned()));
+            problems.push(invalid(
+                &key,
+                "is set by the adapter and cannot be overridden".to_owned(),
+            ));
             ok = false;
         }
         ok.then_some(ResolvedParams {

@@ -73,7 +73,11 @@ pub fn apply_schema(
     for (name, value) in given {
         out.insert(name.clone(), value.clone());
     }
-    if errors.is_empty() { Ok(out) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(out)
+    } else {
+        Err(errors)
+    }
 }
 
 #[cfg(test)]
@@ -95,7 +99,11 @@ mod tests {
 
     #[test]
     fn defaults_apply_and_given_values_win() {
-        let out = apply_schema(Some(&schema()), &given(json!({"temperature": 0.5, "custom": "x"}))).unwrap();
+        let out = apply_schema(
+            Some(&schema()),
+            &given(json!({"temperature": 0.5, "custom": "x"})),
+        )
+        .unwrap();
         assert_eq!(out["temperature"], json!(0.5));
         assert_eq!(out["cache_prompt"], json!(true));
         assert_eq!(out["idle_timeout_ms"], json!(3000));

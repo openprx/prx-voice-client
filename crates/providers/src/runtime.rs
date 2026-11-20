@@ -70,13 +70,28 @@ mod tests {
 
     #[test]
     fn names_round_trip_and_unknown_runtimes_are_kept() {
-        for name in ["llama-server", "qwentts.cpp", "transcribe", "whisper.cpp", "onnxruntime"] {
+        for name in [
+            "llama-server",
+            "qwentts.cpp",
+            "transcribe",
+            "whisper.cpp",
+            "onnxruntime",
+        ] {
             assert_eq!(Runtime::parse(name).name(), name);
         }
-        assert_eq!(Runtime::parse("future.cpp"), Runtime::Other("future.cpp".into()));
-        let none = BuiltRuntimes { qwentts: false, transcribe: false };
+        assert_eq!(
+            Runtime::parse("future.cpp"),
+            Runtime::Other("future.cpp".into())
+        );
+        let none = BuiltRuntimes {
+            qwentts: false,
+            transcribe: false,
+        };
         assert!(!Runtime::parse("future.cpp").is_built_in(&none));
         assert!(Runtime::LlamaServer.is_built_in(&none));
-        assert!(Runtime::QwenTts.is_built_in(&BuiltRuntimes { qwentts: true, ..none }));
+        assert!(Runtime::QwenTts.is_built_in(&BuiltRuntimes {
+            qwentts: true,
+            ..none
+        }));
     }
 }

@@ -19,7 +19,10 @@ fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
 #[test]
 fn no_source_outside_the_test_modules_names_a_fake_or_a_mock() {
     let mut files = Vec::new();
-    sources(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+    sources(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut files,
+    );
     assert!(files.len() > 10);
     for file in files {
         let text = fs::read_to_string(&file).unwrap();
@@ -36,8 +39,12 @@ fn no_source_outside_the_test_modules_names_a_fake_or_a_mock() {
 
 #[test]
 fn the_manifest_enables_the_fakes_feature_only_for_tests() {
-    let manifest = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
+    let manifest =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")).unwrap();
     let (normal, dev) = manifest.split_once("[dev-dependencies]").unwrap();
-    assert!(!normal.contains("fakes"), "[dependencies] must not enable `fakes`");
+    assert!(
+        !normal.contains("fakes"),
+        "[dependencies] must not enable `fakes`"
+    );
     assert!(dev.contains("fakes"));
 }

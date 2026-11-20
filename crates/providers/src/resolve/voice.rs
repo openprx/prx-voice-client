@@ -123,7 +123,7 @@ impl Resolver<'_> {
         };
         let profile: ProfileFile =
             serde_json::from_str(&text).map_err(|e| unreadable(format!("profile.json: {e}")))?;
-        if *runtime == Runtime::QwenTts {
+        if *runtime == Runtime::QwenTts && self.require_prepared {
             self.check_prepared(&profile_id, &dir, fingerprint)?;
         }
         let transcript = if profile.x_vector_only {
@@ -206,7 +206,8 @@ impl Resolver<'_> {
         };
         let dir = self.dirs.presets.join(&preset.id);
         let reference = dir.join(&preset.file.name);
-        let intact = fs::metadata(&reference).is_ok_and(|m| m.is_file() && m.len() == preset.file.size);
+        let intact =
+            fs::metadata(&reference).is_ok_and(|m| m.is_file() && m.len() == preset.file.size);
         if !intact {
             return Err(vec![ProblemKind::VoicePresetFileMissing {
                 preset: preset.id.clone(),

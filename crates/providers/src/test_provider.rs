@@ -82,7 +82,12 @@ impl TestReport {
         }
     }
 
-    fn failure(first: Option<Duration>, started: Instant, class: FailureClass, message: String) -> Self {
+    fn failure(
+        first: Option<Duration>,
+        started: Instant,
+        class: FailureClass,
+        message: String,
+    ) -> Self {
         Self {
             ok: false,
             first_response: first,
@@ -101,7 +106,10 @@ fn with_deadline<R>(timeout: Duration, body: impl FnOnce(&CancellationToken) -> 
     let watchdog = {
         let token = token.clone();
         thread::spawn(move || {
-            if done_rx.recv_timeout(timeout).is_err_and(|e| e == mpsc::RecvTimeoutError::Timeout) {
+            if done_rx
+                .recv_timeout(timeout)
+                .is_err_and(|e| e == mpsc::RecvTimeoutError::Timeout)
+            {
                 token.cancel();
                 return true;
             }
@@ -167,7 +175,9 @@ pub fn test_translator(
                 Err(e) => return Err(e),
             }
         }
-        Err(MtError::Internal("the stream ended without a result".to_owned()))
+        Err(MtError::Internal(
+            "the stream ended without a result".to_owned(),
+        ))
     });
     match outcome {
         Ok((first, text)) if !text.trim().is_empty() => TestReport::success(first, started, text),
@@ -178,7 +188,11 @@ pub fn test_translator(
             "the translation is empty".to_owned(),
         ),
         Err(e) => {
-            let class = if timed_out { FailureClass::Timeout } else { classify_mt(&e) };
+            let class = if timed_out {
+                FailureClass::Timeout
+            } else {
+                classify_mt(&e)
+            };
             TestReport::failure(None, started, class, e.to_string())
         }
     }
@@ -226,7 +240,9 @@ pub fn test_synth(
                 TtsItem::Done { audio_secs } => return Ok((first, samples, audio_secs)),
             }
         }
-        Err(TtsError::Internal("the stream ended without a result".to_owned()))
+        Err(TtsError::Internal(
+            "the stream ended without a result".to_owned(),
+        ))
     });
     match outcome {
         Ok((first, samples, secs)) if samples > 0 => {
@@ -239,7 +255,11 @@ pub fn test_synth(
             "the engine produced no audio".to_owned(),
         ),
         Err(e) => {
-            let class = if timed_out { FailureClass::Timeout } else { classify_tts(&e) };
+            let class = if timed_out {
+                FailureClass::Timeout
+            } else {
+                classify_tts(&e)
+            };
             TestReport::failure(None, started, class, e.to_string())
         }
     }
@@ -281,7 +301,11 @@ pub fn test_refiner(provider: &dyn RefineAsr, lang: Lang, timeout: Duration) -> 
     silence_report(outcome.map(|h| h.text), timed_out, started)
 }
 
-fn silence_report(outcome: Result<String, AsrError>, timed_out: bool, started: Instant) -> TestReport {
+fn silence_report(
+    outcome: Result<String, AsrError>,
+    timed_out: bool,
+    started: Instant,
+) -> TestReport {
     match outcome {
         Ok(text) if text.trim().is_empty() => TestReport::success(None, started, String::new()),
         Ok(text) => TestReport::failure(
@@ -291,7 +315,11 @@ fn silence_report(outcome: Result<String, AsrError>, timed_out: bool, started: I
             format!("silence was recognised as `{text}`"),
         ),
         Err(e) => {
-            let class = if timed_out { FailureClass::Timeout } else { classify_asr(&e) };
+            let class = if timed_out {
+                FailureClass::Timeout
+            } else {
+                classify_asr(&e)
+            };
             TestReport::failure(None, started, class, e.to_string())
         }
     }

@@ -154,7 +154,10 @@ mod tests {
     #[test]
     fn the_default_reader_serves_env_and_refuses_the_keychain() {
         let r = EnvCredentials::with_lookup(|v| (v == "K").then(|| "value".to_owned()));
-        assert_eq!(r.read(&CredentialRef::Env("K".into())).unwrap().expose(), "value");
+        assert_eq!(
+            r.read(&CredentialRef::Env("K".into())).unwrap().expose(),
+            "value"
+        );
         assert_eq!(
             r.read(&CredentialRef::Env("OTHER".into())),
             Err(CredentialReadError::NotFound)

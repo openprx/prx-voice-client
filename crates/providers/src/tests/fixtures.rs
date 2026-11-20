@@ -12,9 +12,7 @@ use prxvc_adapters::tts::qwentts::{
 };
 use prxvc_config::AppConfig;
 use prxvc_media::{Lang, ManualClock};
-use prxvc_models::{
-    Arch, Catalogue, HardwareInfo, ModelId, NotReady, Os, ReadyFile, ReadyModel,
-};
+use prxvc_models::{Arch, Catalogue, HardwareInfo, ModelId, NotReady, Os, ReadyFile, ReadyModel};
 use prxvc_ports::fakes::{
     AsrScript, FakeRefineAsr, FakeStreamingAsr, FakeVadProvider, RefineScript, VadScript,
 };
@@ -42,7 +40,15 @@ fn file(name: &str, purpose: &str, size: u64, c: char) -> Value {
            "source": {"kind": "url", "url": format!("https://example.invalid/{name}")}})
 }
 
-fn model(id: &str, role: &str, runtime: &str, streaming: &str, langs: Value, rank: Option<(&str, u32)>, files: Vec<Value>) -> Value {
+fn model(
+    id: &str,
+    role: &str,
+    runtime: &str,
+    streaming: &str,
+    langs: Value,
+    rank: Option<(&str, u32)>,
+    files: Vec<Value>,
+) -> Value {
     json!({
         "id": id, "role": role, "display_name": id,
         "description": {"en": "x", "zh-CN": "x"}, "version_label": "v",
@@ -68,16 +74,54 @@ pub fn fixture_catalogue(preset_size: u64) -> Catalogue {
         }
     }
     models.extend([
-        model("qwen3-asr-0.6b", "asr", "transcribe", "native", zh_en(), Some(("recommended", 0)),
-              vec![file("asr06.gguf", "model", 10, 'a')]),
-        model("qwen3-asr-1.7b", "asr", "transcribe", "segmented", zh_en(), Some(("smallest", 5)),
-              vec![file("asr17.gguf", "model", 10, 'b')]),
-        model("zh-only-asr", "asr", "transcribe", "native", json!([{"kind": "lang", "code": "zh"}]), None,
-              vec![file("zhasr.gguf", "model", 10, 'c')]),
-        model("future-asr", "asr", "future.cpp", "native", zh_en(), None,
-              vec![file("future.gguf", "model", 10, 'd')]),
-        model("batch-tts", "tts", "qwentts.cpp", "none", zh_en(), None,
-              vec![file("bt-m.gguf", "model", 10, 'e'), file("bt-c.gguf", "codec", 10, 'f')]),
+        model(
+            "qwen3-asr-0.6b",
+            "asr",
+            "transcribe",
+            "native",
+            zh_en(),
+            Some(("recommended", 0)),
+            vec![file("asr06.gguf", "model", 10, 'a')],
+        ),
+        model(
+            "qwen3-asr-1.7b",
+            "asr",
+            "transcribe",
+            "segmented",
+            zh_en(),
+            Some(("smallest", 5)),
+            vec![file("asr17.gguf", "model", 10, 'b')],
+        ),
+        model(
+            "zh-only-asr",
+            "asr",
+            "transcribe",
+            "native",
+            json!([{"kind": "lang", "code": "zh"}]),
+            None,
+            vec![file("zhasr.gguf", "model", 10, 'c')],
+        ),
+        model(
+            "future-asr",
+            "asr",
+            "future.cpp",
+            "native",
+            zh_en(),
+            None,
+            vec![file("future.gguf", "model", 10, 'd')],
+        ),
+        model(
+            "batch-tts",
+            "tts",
+            "qwentts.cpp",
+            "none",
+            zh_en(),
+            None,
+            vec![
+                file("bt-m.gguf", "model", 10, 'e'),
+                file("bt-c.gguf", "codec", 10, 'f'),
+            ],
+        ),
     ]);
     value["presets"] = json!([
         {"id": "preset-en-1", "model_id": TTS, "language": "en", "display_name": "English 1",
@@ -167,7 +211,11 @@ impl SynthEngine for FakeEngine {
         Ok(vec![1.0; 8])
     }
 
-    fn synthesize(&self, call: &SynthCall<'_>, ctl: &dyn CallControl) -> Result<CallEnd, EngineError> {
+    fn synthesize(
+        &self,
+        call: &SynthCall<'_>,
+        ctl: &dyn CallControl,
+    ) -> Result<CallEnd, EngineError> {
         if self.fail_calls && !call.text.starts_with("Hello, this is a short warm-up") {
             return Err(EngineError::Call {
                 status: -1,
@@ -234,7 +282,9 @@ impl RecognitionLoader for FakeRecognition {
 
     fn vad(&self, _spec: &LocalModelSpec) -> Result<Arc<dyn VadProvider>, BuildError> {
         self.vad_loads.fetch_add(1, Ordering::SeqCst);
-        Ok(Arc::new(FakeVadProvider::new(VadScript::probabilities([0.0]))))
+        Ok(Arc::new(FakeVadProvider::new(VadScript::probabilities([
+            0.0,
+        ]))))
     }
 
     fn asr(&self, _spec: &LocalModelSpec) -> Result<Arc<dyn StreamingAsr>, BuildError> {
@@ -311,7 +361,8 @@ impl Rig {
         write_wav(&dir.join("reference.wav"), 3.0);
         fs::write(
             dir.join("profile.json"),
-            json!({"schema_version": 1, "id": id, "language": "en", "transcript": "hello there"}).to_string(),
+            json!({"schema_version": 1, "id": id, "language": "en", "transcript": "hello there"})
+                .to_string(),
         )
         .unwrap();
         if prepared {
@@ -343,7 +394,9 @@ impl Rig {
             &self.cfg,
             Arc::clone(&self.catalogue),
             Arc::clone(&self.models) as _,
-            Arc::new(EnvCredentials::with_lookup(move |v| env.lock().get(v).cloned())),
+            Arc::new(EnvCredentials::with_lookup(move |v| {
+                env.lock().get(v).cloned()
+            })),
             self.dirs.clone(),
         )
         .with_hardware(HardwareInfo::new(32, Os::Macos, Arch::Aarch64))
@@ -354,7 +407,9 @@ impl Rig {
 
     /// An OpenAI-style entry with a credential in the fake environment.
     pub fn openai_entry(&mut self, id: &str, base_url: &str) {
-        self.env.lock().insert("OPENAI_KEY".to_owned(), "sk-test-secret".to_owned());
+        self.env
+            .lock()
+            .insert("OPENAI_KEY".to_owned(), "sk-test-secret".to_owned());
         let entry = toml_entry(&format!(
             "id = \"{id}\"\ntemplate = \"openai\"\nprotocol = \"openai-chat\"\nbase_url = \"{base_url}\"\n\
              model = \"gpt-4.1-mini\"\ncredential = \"env:OPENAI_KEY\"\nlocal_endpoint = false\n"

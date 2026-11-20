@@ -78,10 +78,7 @@ pub(crate) fn locality_of(host: Option<Host<&str>>) -> Locality {
             }
         }
         Some(Host::Ipv4(ip)) => classify_ip(IpAddr::V4(ip)),
-        Some(Host::Ipv6(ip)) => classify_ip(
-            ip.to_ipv4_mapped()
-                .map_or(IpAddr::V6(ip), IpAddr::V4),
-        ),
+        Some(Host::Ipv6(ip)) => classify_ip(ip.to_ipv4_mapped().map_or(IpAddr::V6(ip), IpAddr::V4)),
         None => Locality::Remote,
     }
 }
@@ -90,7 +87,9 @@ fn classify_ip(ip: IpAddr) -> Locality {
     match ip {
         _ if ip.is_loopback() => Locality::ThisComputer,
         IpAddr::V4(v4) if v4.is_private() || v4.is_link_local() => Locality::LocalNetwork,
-        IpAddr::V6(v6) if (v6.segments()[0] & 0xfe00) == 0xfc00 || (v6.segments()[0] & 0xffc0) == 0xfe80 => {
+        IpAddr::V6(v6)
+            if (v6.segments()[0] & 0xfe00) == 0xfc00 || (v6.segments()[0] & 0xffc0) == 0xfe80 =>
+        {
             Locality::LocalNetwork
         }
         _ => Locality::Remote,

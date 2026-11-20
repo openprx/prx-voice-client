@@ -157,7 +157,10 @@ mod tests {
             .config_key(),
             "zh>en"
         );
-        assert_eq!(RoleKey::AsrRefine(Lang::En).role().config_name(), "asr_refine");
+        assert_eq!(
+            RoleKey::AsrRefine(Lang::En).role().config_name(),
+            "asr_refine"
+        );
     }
 
     #[test]

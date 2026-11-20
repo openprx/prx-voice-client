@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 
 use crate::credentials::CredentialReader;
 use crate::egress::{EgressSummary, summarize};
-use crate::engines::Engines;
+use crate::engines::{Engines, Lease};
 use crate::handles::{SharedAsr, SharedRefine, SharedSynth, SharedTranslator, SharedVad};
 use crate::keys::CallLanguages;
 use crate::model_source::ModelSource;
@@ -28,8 +28,30 @@ use crate::problem::{BuildError, Problem};
 use crate::recognition::{BuiltInRecognition, RecognitionLoader};
 use crate::resolve::{AsrNeeds, Resolver, VoiceChoice, VoiceDirs};
 use crate::runtime::BuiltRuntimes;
-use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec};
+use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec, VoicePlan};
 use crate::tts_loader::{BuiltInTts, TtsLoader, check_capabilities, register_voice};
+
+/// The result of preparing the owner's voice.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoicePrepared {
+    /// The profile.
+    pub profile_id: String,
+    /// Whether the profile's cache already held the voice for this model and recording.
+    pub cache_hit: bool,
+    /// How long it took, the engine load included when the engine was not yet loaded.
+    pub elapsed: std::time::Duration,
+}
+
+/// Preparing the owner's voice failed.
+#[derive(Debug, thiserror::Error)]
+pub enum PrepareError {
+    /// The model, runtime or profile cannot be resolved.
+    #[error("the voice cannot be prepared: {} problem(s)", .0.len())]
+    Problems(Vec<Problem>),
+    /// The engine could not be loaded or the voice could not be derived.
+    #[error(transparent)]
+    Build(#[from] BuildError),
+}
 
 /// The engines that are alive right now.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -145,6 +167,14 @@ impl ProviderRegistry {
     }
 
     fn with_resolver<R>(&self, f: impl FnOnce(&Resolver<'_>) -> R) -> R {
+        self.with_resolver_opts(true, f)
+    }
+
+    fn with_resolver_opts<R>(
+        &self,
+        require_prepared: bool,
+        f: impl FnOnce(&Resolver<'_>) -> R,
+    ) -> R {
         let state = self.state.read();
         let needs = if state.cfg.pipeline.recognition_mode == "segmented" {
             AsrNeeds::SegmentedAllowed
@@ -162,6 +192,7 @@ impl ProviderRegistry {
             dirs: &self.dirs,
             built: &built,
             asr_needs: needs,
+            require_prepared,
         };
         f(&resolver)
     }
@@ -216,14 +247,18 @@ impl ProviderRegistry {
 
     /// Build the voice activity detector of `spec`.
     pub fn build_vad(&self, spec: &LocalModelSpec) -> Result<Box<dyn VadProvider>, BuildError> {
-        let lease = self.vad.acquire(spec.id.as_str().to_owned(), || self.recognition.vad(spec))?;
+        let lease = self
+            .vad
+            .acquire(spec.id.as_str().to_owned(), || self.recognition.vad(spec))?;
         lease.engine().descriptor().require_live()?;
         Ok(Box::new(SharedVad { lease }))
     }
 
     /// Build the streaming recogniser of `spec`.
     pub fn build_asr(&self, spec: &LocalModelSpec) -> Result<Box<dyn StreamingAsr>, BuildError> {
-        let lease = self.asr.acquire(spec.id.as_str().to_owned(), || self.recognition.asr(spec))?;
+        let lease = self
+            .asr
+            .acquire(spec.id.as_str().to_owned(), || self.recognition.asr(spec))?;
         let descriptor = lease.engine().descriptor();
         descriptor.require_live()?;
         if let Some(lang) = spec.lang {
@@ -233,10 +268,13 @@ impl ProviderRegistry {
     }
 
     /// Build the refine-pass recogniser of `spec`.
-    pub fn build_asr_refine(&self, spec: &LocalModelSpec) -> Result<Box<dyn RefineAsr>, BuildError> {
-        let lease = self
-            .refine
-            .acquire(spec.id.as_str().to_owned(), || self.recognition.refine(spec))?;
+    pub fn build_asr_refine(
+        &self,
+        spec: &LocalModelSpec,
+    ) -> Result<Box<dyn RefineAsr>, BuildError> {
+        let lease = self.refine.acquire(spec.id.as_str().to_owned(), || {
+            self.recognition.refine(spec)
+        })?;
         let descriptor = lease.engine().descriptor();
         descriptor.require_live()?;
         if let Some(lang) = spec.lang {
@@ -272,20 +310,52 @@ impl ProviderRegistry {
     /// spec with the same model: the first build loads and warms it up, the later ones only add
     /// their voice.
     pub fn build_tts(&self, spec: &TtsSpec) -> Result<Box<dyn SpeechSynth>, BuildError> {
+        let key = (spec.id.as_str().to_owned(), spec.fingerprint.clone());
+        let lease = self.tts_engine(spec, key)?;
+        register_voice(lease.engine(), spec)?;
+        Ok(Box::new(SharedSynth { lease }))
+    }
+
+    /// Prepare the owner's cloned voice for the configured synthesis model of `lang` (the step
+    /// after enrolment, and after a change of model): loads the shared engine when needed, derives
+    /// the voice from the profile's reference recording and stores it in the profile's cache, from
+    /// where resolution then finds it. The only operation that resolves a voice that is not yet
+    /// prepared.
+    pub fn prepare_cloned_voice(&self, lang: Lang) -> Result<VoicePrepared, PrepareError> {
+        let resolved = self
+            .with_resolver_opts(false, |r| r.tts(lang, &VoiceChoice::OwnClone))
+            .map_err(PrepareError::Problems)?;
+        let started = std::time::Instant::now();
+        let spec = resolved.primary;
+        let key = (spec.id.as_str().to_owned(), spec.fingerprint.clone());
+        let lease = self.tts_engine(&spec, key)?;
+        let cache_hit = register_voice(lease.engine(), &spec)?.unwrap_or(false);
+        let VoicePlan::Cloned { profile_id, .. } = &spec.voice else {
+            unreachable!("the owner's voice resolves to a cloned voice")
+        };
+        Ok(VoicePrepared {
+            profile_id: profile_id.clone(),
+            cache_hit,
+            elapsed: started.elapsed(),
+        })
+    }
+
+    fn tts_engine(
+        &self,
+        spec: &TtsSpec,
+        key: (String, String),
+    ) -> Result<Lease<QwenTts>, BuildError> {
         if !self.tts_loader.available() {
             return Err(BuildError::NotBuiltIn {
                 provider: spec.id.clone(),
                 runtime: spec.runtime.name().to_owned(),
             });
         }
-        let key = (spec.id.as_str().to_owned(), spec.fingerprint.clone());
-        let lease = self.tts.acquire(key, || {
+        self.tts.acquire(key, || {
             let engine = self.tts_loader.load(spec)?;
             check_capabilities(&engine, spec)?;
             Ok(engine)
-        })?;
-        register_voice(lease.engine(), spec)?;
-        Ok(Box::new(SharedSynth { lease }))
+        })
     }
 
     /// The engines alive right now: handles keep them alive, dropping the last handle frees one.
