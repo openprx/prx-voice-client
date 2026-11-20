@@ -9,6 +9,7 @@ use prxvc_ports::{
     AsrError, AsrHypothesis, AsrStream, CancellationToken, SegmentEnd, TraceStage, VadEngine,
 };
 
+use super::align::{Alignment, align_after_committed};
 use super::faults::{asr_failure, vad_failure};
 use super::messages::{ClauseSamples, Commit, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
@@ -346,7 +347,7 @@ impl RecognitionStage {
             return;
         };
         open.revision += 1;
-        let tail = committed_remainder(open, &h.text, &self.stats);
+        let tail = committed_remainder(open, h, &self.stats, &self.tracer);
         let text = join_carry(&open.carry, tail.trim());
         // The recogniser's round continues with the audio after the cut: it needs no reset.
         open.reset_round();
@@ -518,7 +519,7 @@ impl RecognitionStage {
             }
             Err(e) => return Err(asr_fault(&e)),
         };
-        let tail = committed_remainder(open, &fin.text, &self.stats);
+        let tail = committed_remainder(open, &fin, &self.stats, &self.tracer);
         let text = join_carry(&open.carry, tail.trim());
         self.asr.reset();
         open.reset_round();
@@ -598,15 +599,30 @@ impl RecognitionStage {
     }
 }
 
-/// The part of a final text that is not committed yet. Text already committed is never taken from
-/// the final again.
-fn committed_remainder(open: &OpenSegment, fin: &str, stats: &Stats) -> String {
-    if fin.starts_with(&open.committed_prefix) {
-        fin[open.committed_bytes..].to_owned()
-    } else {
-        Stats::add(&stats.stable_violations, 1);
-        fin.to_owned()
+/// The part of a final that is not committed yet. Committed text stays as committed and is never
+/// taken from the final again: the remainder is found by content ([`align_after_committed`]). A
+/// final that disagrees with the committed text is counted and traced, never patched into what was
+/// committed and never spoken again.
+fn committed_remainder(
+    open: &OpenSegment,
+    fin: &AsrHypothesis,
+    stats: &Stats,
+    tracer: &Tracer,
+) -> String {
+    if fin.contradicts_stable {
+        Stats::add(&stats.finals_contradicting_stable, 1);
     }
+    let aligned = align_after_committed(&open.committed_prefix, &fin.text);
+    if aligned.alignment != Alignment::Agrees {
+        Stats::add(&stats.final_rewrites, 1);
+        if aligned.alignment == Alignment::Unaligned {
+            Stats::add(&stats.final_unaligned, 1);
+        }
+        tracer.mark_text(open.clause(), TraceStage::FinalDisagrees, || {
+            format!("{} | {}", open.committed_prefix, fin.text)
+        });
+    }
+    fin.text[aligned.start..].to_owned()
 }
 
 fn asr_fault(e: &AsrError) -> RecognitionFault {

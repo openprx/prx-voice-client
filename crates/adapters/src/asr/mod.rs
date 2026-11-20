@@ -11,7 +11,7 @@
 //! * [`adapter`]: [`QwenAsr`] (the streaming and the refine port), its parameters, counters and start.
 //! * `core` (private): the worker thread, the queue, the order of work and fairness between streams.
 //! * `stream` (private): one stream's handle: cadence, stability, forced end at the maximum length.
-//! * `stable`, `units` (private): the stable-prefix rule and the comparison units it works on.
+//! * `stable` (private): the stable-prefix rule, over the comparison units of `prxvc_media::text_units`.
 //! * [`seam`]: the engine interface the adapter is written against.
 //! * `native` (feature `transcribe`): the engine over `crate::transcribe`, where the `unsafe` lives.
 //!
@@ -27,7 +27,6 @@ pub mod native;
 pub mod seam;
 mod stable;
 mod stream;
-mod units;
 
 #[cfg(all(test, feature = "transcribe"))]
 mod sweep_live;

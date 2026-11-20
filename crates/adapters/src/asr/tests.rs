@@ -9,7 +9,7 @@ use prxvc_ports::{
     AsrContext, AsrHypothesis, AsrStream, CancellationToken, RefineAsr, StreamingAsr,
 };
 
-use super::adapter::{AsrParams, QwenAsr, QwenAsrConfig};
+use super::adapter::{AsrParams, AsrStats, QwenAsr, QwenAsrConfig};
 use super::test_engine::{TestHandle, engine};
 
 const MS: usize = 16; // samples per millisecond at 16 kHz
@@ -308,6 +308,56 @@ fn hypotheses_carry_the_stable_prefix_and_never_retract_it() {
     // Revisions increase by one per hypothesis.
     let revs: Vec<u32> = out.iter().map(|h| h.revision).collect();
     assert_eq!(revs, [1, 2, 3, 4, 5]);
+}
+
+/// Run partials that declare "我想去商店" stable, then finalize with `final_text`.
+fn final_after_a_declared_prefix(final_text: &str) -> (AsrHypothesis, AsrStats) {
+    let f = fixture(AsrParams {
+        stable_agreement: 3,
+        stable_tail_guard: 0,
+        ..AsrParams::default()
+    });
+    let mut s = open(&f, Lang::Zh);
+    f.engine
+        .script(&["我想去商店", "我想去商店", "我想去商店", final_text]);
+    let mut declared = 0;
+    for _ in 0..3 {
+        f.clock.advance(Duration::from_millis(400));
+        let before = f.asr.stats().partial_passes;
+        s.feed(&audio(500), MonoTime::ZERO).unwrap();
+        wait_for("a pass", || f.asr.stats().partial_passes > before);
+        if let Some(h) = s.feed(&audio(1), MonoTime::ZERO).unwrap() {
+            declared = declared.max(h.stable_prefix_len);
+        }
+    }
+    assert!(declared > 0, "the prefix was declared stable");
+    let fin = s.finalize(&token()).unwrap();
+    (fin, f.asr.stats())
+}
+
+#[test]
+fn a_final_that_keeps_the_declared_prefix_does_not_say_it_contradicts_it() {
+    let (fin, stats) = final_after_a_declared_prefix("我想去商店买东西。");
+    assert!(!fin.contradicts_stable);
+    assert_eq!(stats.final_rewrites, 0);
+    // Punctuation and spacing are not a contradiction.
+    let (fin, _) = final_after_a_declared_prefix("我想去，商店");
+    assert!(!fin.contradicts_stable);
+}
+
+#[test]
+fn a_final_that_rewrites_the_declared_prefix_is_returned_as_decoded_and_says_so() {
+    let (fin, stats) = final_after_a_declared_prefix("我要去超市买东西");
+    assert_eq!(
+        fin.text, "我要去超市买东西",
+        "not forced to keep the prefix"
+    );
+    assert!(fin.contradicts_stable);
+    assert_eq!(fin.ended_by, Some(prxvc_ports::SegmentEnd::Requested));
+    assert_eq!(stats.final_rewrites, 1);
+    // A final shorter than the prefix contradicts it too.
+    let (fin, _) = final_after_a_declared_prefix("我想去");
+    assert!(fin.contradicts_stable);
 }
 
 #[test]

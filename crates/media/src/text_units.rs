@@ -1,19 +1,21 @@
 //! Comparison units of a transcript: one per CJK character and one per word of other text.
 //!
 //! Punctuation, spacing and letter case do not matter when two hypotheses are compared, so the
-//! stable-prefix rule works on these units, not on bytes (pipeline-design section 3).
+//! stable-prefix rule of a recogniser and the pipeline's alignment of a final text with committed
+//! text both work on these units, not on bytes (pipeline-design section 3). One definition keeps
+//! "the same text" the same on both sides.
 
 /// One comparison unit of a text.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Unit {
+pub struct Unit {
     /// The case-folded unit.
-    pub(crate) key: String,
+    pub key: String,
     /// Byte offset in the text just after the unit.
-    pub(crate) end: usize,
+    pub end: usize,
 }
 
 /// Whether `c` is written one character per unit (Han, kana, Hangul, and the CJK extensions).
-pub(crate) fn is_cjk(c: char) -> bool {
+pub fn is_cjk(c: char) -> bool {
     matches!(u32::from(c),
         0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF
         | 0xF900..=0xFAFF | 0x20000..=0x2FA1F)
@@ -21,7 +23,7 @@ pub(crate) fn is_cjk(c: char) -> bool {
 
 /// Split `text` into units: each CJK character alone, every other maximal run of letters and digits
 /// as one word. An apostrophe inside a word, and a `.` or `,` between two digits, belong to the word.
-pub(crate) fn units(text: &str) -> Vec<Unit> {
+pub fn units(text: &str) -> Vec<Unit> {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut out = Vec::new();
     let mut word = String::new();
@@ -63,7 +65,7 @@ pub(crate) fn units(text: &str) -> Vec<Unit> {
 }
 
 /// The punctuation that directly follows byte offset `end` (up to whitespace or the next unit).
-pub(crate) fn punctuation_after(text: &str, end: usize) -> &str {
+pub fn punctuation_after(text: &str, end: usize) -> &str {
     let rest = &text[end..];
     let len = rest
         .char_indices()

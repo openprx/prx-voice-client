@@ -89,6 +89,15 @@ pub struct Counters {
     pub stable_violations: u64,
     /// Events the direction machine or the segment book refused.
     pub rejected_events: u64,
+    /// Finals whose text disagreed with text already committed: the committed text stayed, only
+    /// the remainder was taken from the final, and nothing was re-spoken.
+    pub final_rewrites: u64,
+    /// Of those, finals that could not be aligned with the committed text by content, so that the
+    /// suffix after the committed length was taken.
+    pub final_unaligned: u64,
+    /// Finals the recogniser flagged as contradicting a prefix it had declared stable (they may
+    /// or may not touch committed text).
+    pub finals_contradicting_stable: u64,
     /// Segments the recogniser ended itself at its maximum length.
     pub forced_cuts: u64,
     /// Clauses committed.
@@ -140,6 +149,9 @@ pub(crate) struct Stats {
     pub(crate) hold_overflows: AtomicU64,
     pub(crate) stable_violations: AtomicU64,
     pub(crate) rejected_events: AtomicU64,
+    pub(crate) final_rewrites: AtomicU64,
+    pub(crate) final_unaligned: AtomicU64,
+    pub(crate) finals_contradicting_stable: AtomicU64,
     pub(crate) forced_cuts: AtomicU64,
     pub(crate) clauses_committed: AtomicU64,
     pub(crate) clauses_played: AtomicU64,
@@ -167,6 +179,9 @@ impl Stats {
             hold_overflows: get(&self.hold_overflows),
             stable_violations: get(&self.stable_violations),
             rejected_events: get(&self.rejected_events),
+            final_rewrites: get(&self.final_rewrites),
+            final_unaligned: get(&self.final_unaligned),
+            finals_contradicting_stable: get(&self.finals_contradicting_stable),
             forced_cuts: get(&self.forced_cuts),
             clauses_committed: get(&self.clauses_committed),
             clauses_played: get(&self.clauses_played),

@@ -307,6 +307,7 @@ impl RefineAsr for QwenAsr {
             revision: 1,
             is_final: true,
             ended_by: Some(SegmentEnd::Requested),
+            contradicts_stable: false,
             audio_end: MonoTime::ZERO.saturating_add(rate.duration_of(audio.len())),
         })
     }

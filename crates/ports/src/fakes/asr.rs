@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use parking_lot::Mutex;
+use prxvc_media::text_units::units;
 use prxvc_media::{Clock, Lang, MonoTime, SampleRate};
 use tokio_util::sync::CancellationToken;
 
@@ -202,6 +203,7 @@ impl StreamingAsr for FakeStreamingAsr {
             revision: 0,
             resets: 0,
             audio_end: MonoTime::ZERO,
+            declared: String::new(),
         }))
     }
 }
@@ -214,6 +216,24 @@ struct FakeAsrStream {
     revision: u32,
     resets: usize,
     audio_end: MonoTime,
+    /// The longest prefix declared stable by the segment's partials so far.
+    declared: String,
+}
+
+/// The largest index `<= at` that is a char boundary of `text`.
+fn floor(text: &str, mut at: usize) -> usize {
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+/// Whether `text` does not start with the units of `declared` (what the real adapter reports as a
+/// final that contradicts the prefix it declared stable).
+fn contradicts(declared: &str, text: &str) -> bool {
+    let want = units(declared);
+    let got = units(text);
+    got.len() < want.len() || !want.iter().zip(&got).all(|(a, b)| a.key == b.key)
 }
 
 impl AsrStream for FakeAsrStream {
@@ -239,8 +259,10 @@ impl AsrStream for FakeAsrStream {
                 revision: self.revision,
                 is_final: true,
                 ended_by: Some(SegmentEnd::MaxLength),
+                contradicts_stable: contradicts(&self.declared, text),
                 audio_end: ts,
             };
+            self.declared.clear();
             self.shared.log.record(&self.request, EventKind::Item);
             self.fed = 0;
             self.revision = 0;
@@ -253,12 +275,19 @@ impl AsrStream for FakeAsrStream {
         };
         self.revision += 1;
         self.shared.log.record(&self.request, EventKind::Item);
+        let stable = (*stable).min(text.len());
+        if stable > self.declared.len() || !text.starts_with(&self.declared) {
+            // A partial that does not keep the declared prefix is the script's own business: the
+            // longest stable prefix seen is what a final is held against.
+            self.declared = text[..floor(text, stable)].to_owned();
+        }
         Ok(Some(AsrHypothesis {
             text: text.clone(),
-            stable_prefix_len: (*stable).min(text.len()),
+            stable_prefix_len: stable,
             revision: self.revision,
             is_final: false,
             ended_by: None,
+            contradicts_stable: false,
             audio_end: ts,
         }))
     }
@@ -288,6 +317,7 @@ impl AsrStream for FakeAsrStream {
         let final_text = self.script.round(self.resets).1.to_owned();
         Ok(AsrHypothesis {
             stable_prefix_len: final_text.len(),
+            contradicts_stable: contradicts(&self.declared, &final_text),
             text: final_text,
             revision: self.revision,
             is_final: true,
@@ -300,6 +330,7 @@ impl AsrStream for FakeAsrStream {
         self.fed = 0;
         self.revision = 0;
         self.resets += 1;
+        self.declared.clear();
     }
 }
 
@@ -411,6 +442,7 @@ impl RefineAsr for FakeRefineAsr {
             revision: 1,
             is_final: true,
             ended_by: Some(SegmentEnd::Requested),
+            contradicts_stable: false,
             audio_end: shared.clock.now(),
         })
     }
@@ -514,6 +546,30 @@ mod tests {
             (fin.text.as_str(), fin.ended_by),
             ("d e f", Some(SegmentEnd::Requested))
         );
+    }
+
+    #[test]
+    fn a_final_that_rewrites_the_declared_prefix_is_flagged_and_one_that_extends_it_is_not() {
+        let rewrite = AsrScript {
+            partials: vec![
+                ("alpha bravo".into(), 11),
+                ("alpha bravo charlie".into(), 11),
+            ],
+            ..AsrScript::new([], "alpha brave charlie")
+        };
+        let extend = AsrScript {
+            partials: rewrite.partials.clone(),
+            ..AsrScript::new([], "Alpha, bravo charlie delta.")
+        };
+        for (script, flagged) in [(rewrite, true), (extend, false)] {
+            let asr = FakeStreamingAsr::new(ManualClock::new(), script);
+            let mut s = stream(&asr);
+            let p = s.feed(&[0.0], MonoTime::ZERO).unwrap().unwrap();
+            assert!(!p.contradicts_stable, "a partial never does");
+            s.feed(&[0.0], MonoTime::ZERO).unwrap();
+            let fin = s.finalize(&CancellationToken::new()).unwrap();
+            assert_eq!(fin.contradicts_stable, flagged, "{}", fin.text);
+        }
     }
 
     #[test]

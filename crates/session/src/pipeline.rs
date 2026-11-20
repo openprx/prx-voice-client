@@ -60,6 +60,7 @@
 //! The configuration of a direction is [`PipelineParams`]; the public entry is
 //! [`DirectionPipeline::start`].
 
+mod align;
 mod core;
 mod events;
 mod faults;

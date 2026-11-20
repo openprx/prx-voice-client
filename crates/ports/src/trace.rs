@@ -16,6 +16,10 @@ pub enum TraceStage {
     AsrFinalReady,
     /// A clause was committed.
     ClauseCommitted,
+    /// The final text of a segment disagreed with text the pipeline had already committed: the
+    /// committed text stayed and only the remainder was taken from the final. With text, the
+    /// committed text and the final text.
+    FinalDisagrees,
     /// The recogniser ended the segment itself at its maximum length; the speech goes on in a new
     /// segment. Recorded against the clause the cut committed (or the first clause of the segment
     /// that was cut when it committed none).

@@ -149,3 +149,134 @@ fn a_cut_after_a_clause_was_committed_commits_only_the_rest_of_the_cut_part() {
     assert_eq!(snap.counters.forced_cuts, 1);
     assert!(rig.stop().clean);
 }
+
+/// Two utterances. The first one's first clause ("alpha bravo charlie delta") is committed from
+/// the stable prefix before its segment ends, and its final text is `final_text`; the second one
+/// follows the pause, so that everything the first segment commits is behind us when the second
+/// segment's clause appears. `pairs` are the source texts the translator must answer.
+fn run_with_final(
+    final_text: &str,
+    pairs: &[(&str, &'static [&'static str])],
+) -> (
+    std::sync::Arc<prxvc_session::pipeline::DirectionSnapshot>,
+    Rig,
+) {
+    let clock = ManualClock::new();
+    let mut all = vec![
+        ("alpha bravo charlie delta", &["Alpha ", "bravo."][..]),
+        ("next words", &["Next ", "words."][..]),
+    ];
+    all.extend_from_slice(pairs);
+    let (mt, tts) = pipeline_rig::simple_providers(&clock, &all, 1);
+    // Rounds: the first clause's round (the pause commits its remainder), the empty round the
+    // segment ends in, and the second segment.
+    let mut asr = AsrScript::new([], final_text)
+        .then_round([], "")
+        .then_round(vec![("next words", 0); 40], "next words")
+        .then_round([], "");
+    asr.partials = std::iter::repeat_n(("alpha bravo".to_owned(), 0), 10)
+        .chain(std::iter::repeat_n(
+            ("alpha bravo charlie delta echo fox".to_owned(), 25),
+            70,
+        ))
+        .collect();
+    let vad = vad_runs(&[(0.0, 10), (0.9, 60), (0.0, 25), (0.9, 25), (0.0, 25)]);
+    let rig = Rig::start_with_asr(&clock, vad, asr, mt, tts, |p| {
+        p.commit.max_clause = ms(1200);
+    });
+    rig.wait_running();
+    rig.feed(10 + 45);
+    rig.wait_snapshot("the first clause from the stable prefix", |s| {
+        s.clauses.len() == 1
+    });
+    rig.feed(15 + 25 + 25 + 25);
+    let snap = rig.wait_snapshot("the second segment's clause", |s| {
+        s.clauses.iter().any(|c| c.clause.segment().seq() == 2)
+    });
+    (snap, rig)
+}
+
+/// The source texts of the clauses of the first segment.
+fn texts(snap: &prxvc_session::pipeline::DirectionSnapshot) -> Vec<&str> {
+    snap.clauses
+        .iter()
+        .filter(|c| c.clause.segment().seq() == 1)
+        .map(|c| c.source_text.as_str())
+        .collect()
+}
+
+#[test]
+fn a_final_that_rewrites_a_word_of_the_committed_clause_does_not_replace_it() {
+    let (snap, rig) = run_with_final(
+        "alpha bravo charlie delto echo foxtrot golf",
+        &[("echo foxtrot golf", &["Echo ", "golf."])],
+    );
+    assert_eq!(
+        texts(&snap),
+        ["alpha bravo charlie delta", "echo foxtrot golf"],
+        "the committed clause stays, only what follows it is taken from the final"
+    );
+    assert_eq!(snap.counters.final_rewrites, 1);
+    assert_eq!(snap.counters.final_unaligned, 0);
+    assert_eq!(snap.counters.finals_contradicting_stable, 1);
+    let events = rig.trace.events();
+    let disagree: Vec<_> = events
+        .iter()
+        .filter(|e| e.stage == TraceStage::FinalDisagrees)
+        .collect();
+    assert_eq!(disagree.len(), 1, "the disagreement is traced");
+    assert_eq!(disagree[0].clause, clause(1, 1));
+    assert_eq!(
+        disagree[0].text, None,
+        "no call content unless the sink asks"
+    );
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_final_shorter_than_the_committed_text_adds_nothing_and_is_counted() {
+    let (snap, rig) = run_with_final("alpha bravo charlie", &[]);
+    assert_eq!(texts(&snap), ["alpha bravo charlie delta"]);
+    assert_eq!(snap.counters.final_rewrites, 1);
+    assert_eq!(
+        snap.counters.clauses_committed, 2,
+        "the first clause and the next segment's, nothing from the shorter final"
+    );
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_final_that_differs_in_punctuation_and_spacing_only_is_not_a_disagreement() {
+    let (snap, rig) = run_with_final(
+        "Alpha, bravo charlie delta! Echo fox trot golf.",
+        &[("Echo fox trot golf.", &["Echo ", "golf."])],
+    );
+    assert_eq!(
+        texts(&snap),
+        ["alpha bravo charlie delta", "Echo fox trot golf."]
+    );
+    assert_eq!(snap.counters.final_rewrites, 0);
+    assert_eq!(snap.counters.final_unaligned, 0);
+    assert_eq!(snap.counters.stable_violations, 0);
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_final_that_cannot_be_aligned_falls_back_to_the_suffix_after_the_committed_length() {
+    // The committed clause is 25 bytes long; the final shares nothing with it.
+    let fin = "completely different words here now";
+    let rest = &fin[25..];
+    let (snap, rig) = run_with_final(fin, &[(rest, &["Rest ", "here."])]);
+    assert_eq!(texts(&snap), ["alpha bravo charlie delta", rest]);
+    assert_eq!(snap.counters.final_rewrites, 1);
+    assert_eq!(snap.counters.final_unaligned, 1);
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_final_with_nothing_uncommitted_left_adds_no_clause() {
+    let (snap, rig) = run_with_final("Alpha bravo charlie delta.", &[]);
+    assert_eq!(texts(&snap), ["alpha bravo charlie delta"]);
+    assert_eq!(snap.counters.final_rewrites, 0);
+    assert!(rig.stop().clean);
+}

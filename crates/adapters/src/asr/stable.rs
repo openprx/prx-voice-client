@@ -2,7 +2,7 @@
 //!
 //! Qwen3-ASR is not incremental: every partial is a fresh decode of all the audio so far, and
 //! about three quarters of such updates rewrite earlier text (bench/asr). So the adapter decides
-//! what is stable from agreement: the longest prefix, in comparison units ([`super::units`]: one
+//! what is stable from agreement: the longest prefix, in comparison units ([`prxvc_media::text_units`]: one
 //! per Chinese character, one per word of other text, punctuation and spacing ignored), on which
 //! the last `N` consecutive hypotheses agree is declared stable.
 //!
@@ -21,7 +21,7 @@
 
 use std::collections::VecDeque;
 
-use super::units::{Unit, punctuation_after, units};
+use prxvc_media::text_units::{Unit, punctuation_after, units};
 
 /// A hypothesis after the rule was applied.
 #[derive(Clone, Debug, PartialEq, Eq)]

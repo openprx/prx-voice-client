@@ -130,6 +130,7 @@ impl QwenStream {
             revision: self.revision,
             is_final: false,
             ended_by: None,
+            contradicts_stable: false,
             audio_end: self.audio_end(pass.samples),
         }))
     }
@@ -208,6 +209,7 @@ impl QwenStream {
             revision,
             is_final: true,
             ended_by: Some(SegmentEnd::MaxLength),
+            contradicts_stable: s.repaired,
             audio_end,
         }
     }
@@ -346,6 +348,7 @@ impl AsrStream for QwenStream {
             revision: self.revision,
             is_final: true,
             ended_by: Some(SegmentEnd::Requested),
+            contradicts_stable: s.repaired,
             audio_end: self.audio_end(covered),
         })
     }

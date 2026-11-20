@@ -69,6 +69,12 @@ pub struct AsrHypothesis {
     pub is_final: bool,
     /// Why the segment ended; `None` on a partial hypothesis, `Some` on every final one.
     pub ended_by: Option<SegmentEnd>,
+    /// Only on a final: its text contradicts a prefix this stream declared stable earlier in the
+    /// segment (the recogniser's best final reading is returned as decoded, not forced to keep the
+    /// prefix, which would cost accuracy). Always `false` on a partial, which never retracts its
+    /// declared prefix. A consumer that already acted on the prefix must not take that text from
+    /// the final again (pipeline-design 3.1).
+    pub contradicts_stable: bool,
     /// The end of the audio this hypothesis covers.
     pub audio_end: MonoTime,
 }
