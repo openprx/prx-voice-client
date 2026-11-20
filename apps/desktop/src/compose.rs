@@ -45,7 +45,8 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     // First thing that touches audio: put the default input back if the last run
     // ended in call mode without restoring it (pipeline-design PD-4.2.3).
     crate::routing_recovery::recover_at_start(&shared);
-    let handle = spawn_engine_thread(shared.clone(), config.clone());
+    let call = crate::call_compose::CallControl::start(&shared, &config);
+    let handle = spawn_engine_thread(shared.clone(), config.clone(), call.clone());
 
     let hotkey_manager = match hotkey::HotkeyManager::new(cc.egui_ctx.clone()) {
         Ok(m) => {
@@ -78,6 +79,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
         last_locale: initial_locale.to_owned(),
         config,
         last_saved,
+        call,
     }
 }
 
@@ -126,6 +128,7 @@ fn restore_window_geometry(
 fn spawn_engine_thread(
     shared: SharedAppState,
     config: prxvc_config::AppConfig,
+    call: crate::call_compose::CallControl,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
@@ -135,7 +138,7 @@ fn spawn_engine_thread(
                 return;
             }
         };
-        rt.block_on(run_engine_loop(shared, config));
+        rt.block_on(run_engine_loop(shared, config, call));
     })
 }
 

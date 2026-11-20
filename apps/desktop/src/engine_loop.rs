@@ -7,6 +7,7 @@ use prxvc_core::engine::Engine;
 use prxvc_desktop_ui::{EventSnapshot, NetworkStatus, SharedAppState, TranscriptLine};
 
 use crate::asr_session::AudioWiring;
+use crate::call_compose::CallControl;
 use prxvc_audio::input_supervisor::AudioLoopEvent;
 use crate::commands::{CommandContext, process_command};
 use crate::compose;
@@ -24,6 +25,7 @@ struct EngineLoop {
     asr_text_rx: std::sync::mpsc::Receiver<RecognizedUtterance>,
     audio_events_rx: std::sync::mpsc::Receiver<AudioLoopEvent>,
     playback: PlaybackDriver,
+    call: CallControl,
     loop_config: LoopConfig,
     turn_policy: TurnPolicy,
     /// Cancels sent for a reply that had not started speaking: their
@@ -36,7 +38,11 @@ struct EngineLoop {
 /// Initializes storage and config, creates the engine, loads history from
 /// the database, then enters a polling loop that processes UI commands
 /// through the engine and relays transport events back to the UI.
-pub(crate) async fn run_engine_loop(shared: SharedAppState, config: prxvc_config::AppConfig) {
+pub(crate) async fn run_engine_loop(
+    shared: SharedAppState,
+    config: prxvc_config::AppConfig,
+    call: CallControl,
+) {
     // Initialize storage (graceful degradation if unavailable).
     let storage = compose::initialize_storage();
 
@@ -93,6 +99,7 @@ pub(crate) async fn run_engine_loop(shared: SharedAppState, config: prxvc_config
         asr_text_rx,
         audio_events_rx,
         playback,
+        call,
         loop_config: LoopConfig {
             endpoint: EndpointConfig::from_end_silence_ms(config.audio.end_silence_ms),
         },
@@ -103,6 +110,7 @@ pub(crate) async fn run_engine_loop(shared: SharedAppState, config: prxvc_config
     // Main polling loop.
     loop {
         state.drain_commands();
+        state.release_assistant_when_idle();
         state.relay_audio_events();
         state.relay_utterances();
 
@@ -125,6 +133,17 @@ impl EngineLoop {
             self.turn_policy.reset();
         }
         for cmd in &commands {
+            // The `Call*` group belongs to call mode and never reaches the assistant's handler.
+            if self.call.handle_command(cmd) {
+                continue;
+            }
+            // An assistant session and call mode never share the microphone path.
+            if cmd == "StartSession"
+                && let Err(message) = self.call.claim_assistant()
+            {
+                crate::event_map::push_error(&self.shared, &message);
+                continue;
+            }
             let mut ctx = CommandContext {
                 engine: &mut self.engine,
                 shared: &self.shared,
@@ -135,6 +154,17 @@ impl EngineLoop {
                 loop_config: self.loop_config,
             };
             process_command(&mut ctx, cmd);
+        }
+    }
+
+    /// Give the microphone back to call mode once no assistant session or capture runs.
+    fn release_assistant_when_idle(&mut self) {
+        let session_live = self.engine.active_session().is_some_and(|s| {
+            s.state != prxvc_session::SessionState::Completed
+                && s.state != prxvc_session::SessionState::Failed
+        });
+        if !session_live && !self.audio_loop.is_running() {
+            self.call.release_assistant();
         }
     }
 

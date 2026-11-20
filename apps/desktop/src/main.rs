@@ -13,6 +13,9 @@
 //! - `event_map`: engine events to shared UI state
 //! - `asr_session`: ASR and audio capture loop start-up
 //! - `persistence`: history, session save and settings write
+//! - `call_compose`: call mode: the coordinator thread, its commands and snapshots, exclusion with the assistant
+//! - `call_panel`: the coordinator's snapshot as the debug control's view model
+//! - `call_host` (macOS): the real host and audio paths behind the coordinator's seams
 //! - `routing_recovery`: restores the system default input after a crash in call mode, at start
 //! - `diagnostics`: diagnostics export
 //! - `driver_install`: virtual microphone driver status, install, update and uninstall
@@ -24,6 +27,10 @@
 mod app;
 mod asr_session;
 mod bundle;
+#[cfg(target_os = "macos")]
+mod call_host;
+mod call_compose;
+mod call_panel;
 mod cli;
 mod commands;
 mod compose;

@@ -29,12 +29,20 @@ pub(crate) struct PrxVoiceApp {
     pub(crate) config: prxvc_config::AppConfig,
     /// Persisted subset of the settings last written (or loaded).
     pub(crate) last_saved: settings::SettingsSnapshot,
+    /// Call mode: stopped (and the default input restored) when the app closes.
+    pub(crate) call: crate::call_compose::CallControl,
 }
 
 impl eframe::App for PrxVoiceApp {
     /// Tell the glow renderer to clear with fully transparent color.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
         [0.0, 0.0, 0.0, 0.0]
+    }
+
+    /// Closing the app ends call mode first, so the system default input is
+    /// restored instead of being left to the next start's crash recovery.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.call.shutdown();
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

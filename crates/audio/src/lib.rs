@@ -107,6 +107,8 @@ pub(crate) mod tap_rt;
 pub mod tap_consent;
 #[cfg(target_os = "macos")]
 mod tap_supervisor;
+#[cfg(target_os = "macos")]
+pub mod tap_pump_source;
 pub mod tap_types;
 pub mod tap_watchdog;
 pub mod tap_zero_watchdog;

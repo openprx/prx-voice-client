@@ -94,6 +94,16 @@ pub enum PumpEvent {
         /// Milliseconds without a buffer.
         idle_ms: u64,
     },
+    /// Capture of the call application is not permitted (consent revoked or missing).
+    CaptureDenied {
+        /// Text for the log and the debug view.
+        detail: String,
+    },
+    /// Capture of the call application could not be rebuilt for another reason.
+    CaptureFailed {
+        /// Text for the log and the debug view.
+        detail: String,
+    },
 }
 
 /// A bounded queue of [`PumpEvent`]s shared by the pump, its source wrapper and the owner.
