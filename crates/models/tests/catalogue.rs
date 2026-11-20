@@ -7,8 +7,9 @@ use prxvc_models::catalogue::{
 use prxvc_models::{Arch, HardwareInfo, LangKey, Os};
 use serde_json::{Value, json};
 
-const ALL_RUNTIMES: [&str; 5] = [
+const ALL_RUNTIMES: [&str; 6] = [
     "whisper.cpp",
+    "transcribe.cpp",
     "llama.cpp",
     "llama-server",
     "qwentts.cpp",
@@ -46,7 +47,7 @@ fn mac16() -> HardwareInfo {
 fn embedded_catalogue_parses_and_validates() {
     let cat = Catalogue::embedded();
     assert_eq!(cat.schema_version, 1);
-    assert_eq!(cat.catalogue_version, 2026112002);
+    assert_eq!(cat.catalogue_version, 2026112004);
     let warnings = cat.validate(&semver::Version::new(0, 2, 0), &ALL_RUNTIMES);
     assert!(warnings.is_empty(), "{warnings:?}");
     let ids: Vec<_> = cat.models().iter().map(|m| m.id.0.as_str()).collect();
@@ -55,6 +56,9 @@ fn embedded_catalogue_parses_and_validates() {
         [
             "silero-vad-6.2",
             "silero-vad-5.1.2",
+            "qwen3-asr-0.6b-q8",
+            "qwen3-asr-1.7b-q8",
+            // To be removed with the Whisper code once the assistant flow uses the new recogniser.
             "whisper-small",
             "gemma-4-e4b-it-qat-q4-0",
             "qwen3-tts-1.7b-base-q8",
@@ -91,10 +95,28 @@ fn embedded_pins_are_exactly_the_ones_in_the_design() {
     assert_eq!(
         pin("silero-vad-6.2", 0),
         (
-            "ggml-silero-v6.2.0.bin".into(),
-            885098,
-            "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987".into(),
-            "9ffd54a1e1ee413ddf265af9913beaf518d1639b".into()
+            "silero-vad-v6.2-F32.gguf".into(),
+            1241056,
+            "0d871a800c420fdd5d1b17a3aea4296d1c39608f0ff4a9295eb76457eb1c88e6".into(),
+            "a9b2d61c20ae4ddf3644edb34969e8185a485448".into()
+        )
+    );
+    assert_eq!(
+        pin("qwen3-asr-0.6b-q8", 0),
+        (
+            "Qwen3-ASR-0.6B-Q8_0.gguf".into(),
+            850423456,
+            "f081b2d5e23bd669d92cc331d722a8a0681943b8e6f34b48996fd5c319b5acd8".into(),
+            "7e7c69a577fa2725dfedbe34b5e999336e30a19b".into()
+        )
+    );
+    assert_eq!(
+        pin("qwen3-asr-1.7b-q8", 0),
+        (
+            "Qwen3-ASR-1.7B-Q8_0.gguf".into(),
+            2185030624,
+            "9a0d81792dfea2d5f278b8a63deb3ea6e02139ce42c2301f32ea19c4f77526b7".into(),
+            "0e0a596e3959c3f3f2ab7d443a5b6f0f4a4bba6f".into()
         )
     );
     assert_eq!(
@@ -237,8 +259,8 @@ fn each_validation_rule_rejects_a_crafted_bad_entry() {
     );
     has(
         &rejected(|v| {
-            let f = v["models"][4]["files"][0].clone();
-            v["models"][4]["files"][1] = f;
+            let f = v["models"][6]["files"][0].clone();
+            v["models"][6]["files"][1] = f;
         }),
         "duplicate file name",
     );
@@ -280,7 +302,7 @@ fn each_validation_rule_rejects_a_crafted_bad_entry() {
         "language kind",
     );
     has(
-        &rejected(|v| v["models"][3]["languages"] = json!([{"kind": "lang", "code": "zh"}])),
+        &rejected(|v| v["models"][5]["languages"] = json!([{"kind": "lang", "code": "zh"}])),
         "language kind",
     );
     has(
@@ -323,7 +345,7 @@ fn each_validation_rule_rejects_a_crafted_bad_entry() {
 #[test]
 fn unknown_runtime_names_are_allowed_but_warned_about() {
     let mut v = embedded_json();
-    v["models"][2]["runtime"]["name"] = json!("future.cpp");
+    v["models"][4]["runtime"]["name"] = json!("future.cpp");
     let cat = parse(&v).expect("unknown runtime is not a parse error");
     let w = cat.validate(&semver::Version::new(0, 2, 0), &ALL_RUNTIMES);
     assert_eq!(
@@ -383,13 +405,13 @@ fn candidates_follow_role_language_runtime_and_hidden() {
     assert_eq!(vad[0].badge, Some(Badge::Recommended));
 
     let asr_zh = cat.candidates(Role::Asr, &LangKey::Lang("zh".into()), &mac16(), rt);
-    assert_eq!(asr_zh.len(), 1);
+    assert_eq!(asr_zh.len(), 3, "both Qwen3-ASR entries and Whisper");
     assert!(
         cat.candidates(Role::Asr, &LangKey::Lang("fr".into()), &mac16(), rt)
             .is_empty()
     );
 
-    // Without the whisper.cpp runtime nothing is offered for asr or vad.
+    // Without the whisper.cpp and transcribe.cpp runtimes nothing is offered for asr or vad.
     let rt_small = ["llama.cpp"];
     assert!(
         cat.candidates(Role::Asr, &LangKey::Lang("zh".into()), &mac16(), &rt_small)
@@ -457,15 +479,15 @@ fn recommendation_depends_on_the_hardware() {
     assert_eq!(tts_mac[0].badge, Some(Badge::Recommended));
     let tts_win = cat.candidates(Role::Tts, &en, &hw(32, Os::Windows, Arch::X86_64), rt);
     assert_eq!(tts_win[0].badge, None);
-    // ASR has only a "smallest" rule: used when nothing is recommended.
+    // Qwen3-ASR 0.6B is the recommended recogniser; Whisper keeps its "smallest" rule.
     let zh = LangKey::Lang("zh".into());
     assert_eq!(
         cat.candidates(Role::Asr, &zh, &mac16(), rt)[0].badge,
-        Some(Badge::Smallest)
+        Some(Badge::Recommended)
     );
     assert_eq!(
         rec(Role::Asr, &zh, mac16()).as_deref(),
-        Some("whisper-small")
+        Some("qwen3-asr-0.6b-q8")
     );
     // No candidates, no recommendation.
     assert_eq!(rec(Role::Asr, &LangKey::Lang("fr".into()), mac16()), None);
@@ -504,10 +526,12 @@ fn candidate_order_is_rule_rank_then_name_and_non_streaming_is_not_selectable() 
         order,
         [
             "asr-batch",
+            "qwen3-asr-0.6b-q8",
             "asr-rank1",
             "asr-rank5",
             "whisper-small",
             "asr-alpha",
+            "qwen3-asr-1.7b-q8",
             "asr-zeta"
         ]
     );
@@ -523,5 +547,5 @@ fn candidate_order_is_rule_rank_then_name_and_non_streaming_is_not_selectable() 
             ALL_RUNTIMES.as_slice(),
         )
         .unwrap();
-    assert_eq!(rec.id.0, "asr-rank1");
+    assert_eq!(rec.id.0, "qwen3-asr-0.6b-q8");
 }
