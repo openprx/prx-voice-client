@@ -117,6 +117,18 @@ impl ModelHandle {
                 .map(|e| e.id.clone())
                 .ok_or(NotReady::NoSelection)?,
         };
+        self.ready(&id)
+    }
+
+    /// The ready model with catalogue id `id`, whether or not it is the
+    /// active selection of its role: paths only for a fully verified install.
+    /// A caller that chooses its own ids (the provider registry) uses this
+    /// instead of [`ModelHandle::resolve`].
+    pub fn ready(&self, id: &ModelId) -> Result<ReadyModel, NotReady> {
+        let sh = &self.inner;
+        let catalogue = sh.catalogue.read().clone();
+        let runtimes = sh.runtime_refs();
+        let id = id.clone();
         let entry = catalogue.get(&id).ok_or(NotReady::NoSelection)?;
         if !runtimes.contains(&entry.runtime.name.as_str()) {
             return Err(NotReady::UnsupportedRuntime {
