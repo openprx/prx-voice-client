@@ -514,7 +514,6 @@ impl RecognitionStage {
         open.clause_index = open.clause_index.saturating_add(1);
         open.last_commit_ts = end;
         open.carry.clear();
-        open.pause_traced = false;
         open.first_partial_traced = false;
         let keep_from = end.as_nanos().saturating_sub(duration_nanos(pad));
         while open
@@ -538,7 +537,6 @@ impl RecognitionStage {
             open.onset,
             RecognitionEvent::EndSegment,
         ));
-        self.asr.reset();
         self.segmenter.end_segment();
         Ok(())
     }

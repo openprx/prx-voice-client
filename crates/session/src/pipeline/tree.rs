@@ -133,12 +133,6 @@ impl TokenTree {
     pub fn forget_segment(&self, segment: SegmentId) {
         self.state.lock().segments.remove(&segment.seq());
     }
-
-    /// Segments with a scope now.
-    #[cfg(test)]
-    pub fn open_segments(&self) -> usize {
-        self.state.lock().segments.len()
-    }
 }
 
 #[cfg(test)]
