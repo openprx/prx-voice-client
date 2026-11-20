@@ -1191,7 +1191,8 @@ impl StatusPill {
 ///
 /// The entire window is transparent. Only the orb, state label, transcript,
 /// and context-menu popups are visible. The orb is draggable to move the window.
-pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
+pub fn render_app(ui: &mut egui::Ui, state: &mut DesktopUiState) {
+    let ctx = &ui.ctx().clone();
     let time = ctx.input(|i| i.time);
     state.anim_time = time;
 
@@ -1211,7 +1212,7 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
 
     egui::CentralPanel::default()
         .frame(frame)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             let rect = ui.max_rect();
             let center = egui::pos2(rect.center().x, rect.top() + 90.0);
 
@@ -1249,7 +1250,7 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                     egui::pos2(rect.center().x - 80.0, below_pill),
                     egui::vec2(160.0, layout::CONTROL_HEIGHT_SMALL),
                 );
-                ui.allocate_new_ui(
+                ui.scope_builder(
                     egui::UiBuilder::new()
                         .max_rect(btn_rect)
                         .layout(egui::Layout::top_down(egui::Align::Center)),
@@ -1346,7 +1347,6 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                     .clicked()
                     {
                         state.pending_commands.push("StopSession".into());
-                        ui.close_menu();
                     }
                     ui.add_space(space::S4);
                     ui.separator();
@@ -1366,7 +1366,6 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                             "debug" => state.windows.request_open(ToolKind::Debug),
                             _ => {}
                         }
-                        ui.close_menu();
                     }
                 }
                 ui.add_space(space::S4);

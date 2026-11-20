@@ -149,7 +149,7 @@ pub fn add_system_cjk(defs: &mut FontDefinitions, data: Vec<u8>) {
 struct Installed;
 
 fn marker() -> Id {
-    Id::new("prxvc-desktop-ui-fonts-installed")
+    Id::unique("prxvc-desktop-ui-fonts-installed")
 }
 
 /// Install the embedded fonts (and the system CJK font, if given) into `ctx`.
@@ -182,7 +182,7 @@ mod tests {
         let ctx = Context::default();
         install(&ctx, system);
         // Fonts become active at the start of the next pass.
-        let _ = ctx.run(Default::default(), |_| {});
+        ctx.run_ui(Default::default(), |_| {}).drop_without_applying_deltas();
         ctx
     }
 
@@ -191,9 +191,9 @@ mod tests {
         let ctx = ctx_with(None);
         for family in families() {
             let id = FontId::new(14.0, family.clone());
-            let width = ctx.fonts(|f| f.glyph_width(&id, 'A'));
+            let width = ctx.fonts_mut(|f| f.glyph_width(&id, 'A'));
             assert!(width > 0.0, "family {family:?} has no usable Latin glyph");
-            let height = ctx.fonts(|f| f.row_height(&id));
+            let height = ctx.fonts_mut(|f| f.row_height(&id));
             assert!(height > 0.0, "family {family:?} has no row height");
         }
     }
@@ -248,8 +248,8 @@ mod tests {
         let ctx = Context::default();
         install(&ctx, Some(NOTO_REGULAR.to_vec()));
         ensure_installed(&ctx);
-        let _ = ctx.run(Default::default(), |_| {});
+        ctx.run_ui(Default::default(), |_| {}).drop_without_applying_deltas();
         let id = FontId::new(14.0, FontFamily::Proportional);
-        assert!(ctx.fonts(|f| f.has_glyph(&id, '汉')));
+        assert!(ctx.fonts_mut(|f| f.has_glyph(&id, '汉')));
     }
 }

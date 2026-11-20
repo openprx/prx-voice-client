@@ -31,7 +31,7 @@ const SCREEN: egui::Vec2 = vec2(400.0, 600.0);
 fn new_ctx() -> egui::Context {
     let ctx = egui::Context::default();
     fonts::install(&ctx, None);
-    let _ = ctx.run(RawInput::default(), |_| {});
+    ctx.run_ui(RawInput::default(), |_| {}).drop_without_applying_deltas();
     ctx
 }
 
@@ -66,7 +66,7 @@ fn run_frames(
     ctx: &egui::Context,
     system: EguiTheme,
     frames: usize,
-    ui: impl FnMut(&egui::Context),
+    ui: impl FnMut(&mut egui::Ui),
 ) -> (usize, String) {
     run_frames_sized(ctx, system, SCREEN, frames, ui)
 }
@@ -76,11 +76,11 @@ fn run_frames_sized(
     system: EguiTheme,
     size: egui::Vec2,
     frames: usize,
-    mut ui: impl FnMut(&egui::Context),
+    mut ui: impl FnMut(&mut egui::Ui),
 ) -> (usize, String) {
     let mut last = (0, String::new());
     for i in 0..frames {
-        let output = ctx.run(raw_input_sized(system, size, i as f64 * 0.016, vec![]), |ctx| ui(ctx));
+        let output = ctx.run_ui(raw_input_sized(system, size, i as f64 * 0.016, vec![]), |u| ui(u));
         let mut text = String::new();
         for clipped in &output.shapes {
             collect_text(&clipped.shape, &mut text);
@@ -90,6 +90,7 @@ fn run_frames_sized(
             "egui reported a widget id clash:\n{text}"
         );
         last = (output.shapes.len(), text);
+        output.drop_without_applying_deltas();
     }
     last
 }
@@ -159,8 +160,8 @@ fn main_view_renders_for_both_schemes_and_languages() {
             prxvc_i18n::set_locale(locale.clone());
             let ctx = new_ctx();
             let mut state = sample_state();
-            let (shapes, _) = run_frames(&ctx, system, 3, |ctx| {
-                prxvc_desktop_ui::render_app(ctx, &mut state);
+            let (shapes, _) = run_frames(&ctx, system, 3, |ui| {
+                prxvc_desktop_ui::render_app(ui, &mut state);
             });
             assert!(shapes > 0, "{scheme:?}/{locale:?}: no shapes painted");
             assert_eq!(
@@ -184,8 +185,8 @@ fn popup_dialogs_render_for_both_schemes_and_languages() {
             state.windows.request_open(ToolKind::History);
             state.windows.request_open(ToolKind::Debug);
             state.settings.use_mock = false; // also shows the server URL field
-            let (shapes, text) = run_frames(&ctx, system, 3, |ctx| {
-                prxvc_desktop_ui::render_app(ctx, &mut state);
+            let (shapes, text) = run_frames(&ctx, system, 3, |ui| {
+                prxvc_desktop_ui::render_app(ui, &mut state);
             });
             assert!(shapes > 0);
             assert!(text.contains(&prxvc_i18n::t("settings.title")));
@@ -207,8 +208,8 @@ fn legacy_themes_still_render() {
         let mut state = sample_state();
         state.theme = legacy;
         state.windows.request_open(ToolKind::Settings);
-        let (shapes, _) = run_frames(&ctx, EguiTheme::Light, 3, |ctx| {
-            prxvc_desktop_ui::render_app(ctx, &mut state);
+        let (shapes, _) = run_frames(&ctx, EguiTheme::Light, 3, |ui| {
+            prxvc_desktop_ui::render_app(ui, &mut state);
         });
         assert!(shapes > 0);
         // A legacy theme pins the dark scheme regardless of the system.
@@ -230,8 +231,8 @@ fn every_existing_setting_is_shown_in_both_languages() {
             };
             let mut pending = None;
             // Tall screen so that no row is clipped away.
-            let (shapes, text) = run_frames_sized(&ctx, system, vec2(400.0, 2400.0), 2, |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
+            let (shapes, text) = run_frames_sized(&ctx, system, vec2(400.0, 2400.0), 2, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
                     let tk = theme::tokens_for(ui.ctx());
                     settings_view::render_settings_content(
                         ui,
@@ -279,8 +280,8 @@ fn legacy_panels_and_banner_render() {
     state.error_message = Some("Connection lost".into());
     state.error_recoverable = true;
     let mut settings = UiSettings::default();
-    let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             render_error_banner(ui, &mut state);
             render_settings_panel(ui, &mut settings);
             prxvc_desktop_ui::render_nav_bar(ui, &mut state);
@@ -316,9 +317,10 @@ fn click_at<R>(
     ];
     let mut result = None;
     for (i, events) in frames.into_iter().enumerate() {
-        let _ = ctx.run(raw_input(EguiTheme::Light, i as f64 * 0.05, events), |ctx| {
+        ctx.run_pass(raw_input(EguiTheme::Light, i as f64 * 0.05, events), |ctx| {
             result = Some(body(ctx));
-        });
+        })
+        .drop_without_applying_deltas();
     }
     result.expect("at least one frame ran")
 }
@@ -331,7 +333,7 @@ fn switch_toggles_on_click() {
     let mut value = false;
     let changed = click_at(&ctx, pos2(60.0, 60.0), |ctx| {
         let mut changed = false;
-        egui::Area::new(egui::Id::new("switch_test"))
+        egui::Area::new(egui::Id::unique("switch_test"))
             .fixed_pos(pos2(50.0, 50.0))
             .show(ctx, |ui| {
                 changed = widgets::switch(ui, &tk, &mut value).changed();
@@ -349,7 +351,7 @@ fn disabled_button_does_not_react() {
     let tk = theme::LIGHT;
     let clicked = click_at(&ctx, pos2(60.0, 60.0), |ctx| {
         let mut clicked = false;
-        egui::Area::new(egui::Id::new("button_test"))
+        egui::Area::new(egui::Id::unique("button_test"))
             .fixed_pos(pos2(50.0, 50.0))
             .show(ctx, |ui| {
                 clicked = widgets::button_with(ui, &tk, ButtonKind::Primary, "Go", 32.0, false)
@@ -367,7 +369,7 @@ fn enabled_button_reports_click() {
     let tk = theme::DARK;
     let clicked = click_at(&ctx, pos2(60.0, 60.0), |ctx| {
         let mut clicked = false;
-        egui::Area::new(egui::Id::new("button_test"))
+        egui::Area::new(egui::Id::unique("button_test"))
             .fixed_pos(pos2(50.0, 50.0))
             .show(ctx, |ui| {
                 clicked = widgets::button(ui, &tk, ButtonKind::Secondary, "Go").clicked();
@@ -388,7 +390,7 @@ fn segmented_click_selects_the_other_segment() {
     // The second segment of a two-segment control is right of the first; click
     // near the right end of the track.
     click_at(&ctx, pos2(50.0 + 100.0, 66.0), |ctx| {
-        egui::Area::new(egui::Id::new("segmented_test"))
+        egui::Area::new(egui::Id::unique("segmented_test"))
             .fixed_pos(pos2(50.0, 50.0))
             .show(ctx, |ui| {
                 if let Some(i) = widgets::segmented(ui, &tk, 0, &["English", "\u{4e2d}\u{6587}"]) {
@@ -420,8 +422,8 @@ fn settings_content_fits_480_px_in_both_schemes_and_languages() {
                 let mut painted = Rect::NOTHING;
                 for i in 0..3 {
                     let input = raw_input_sized(system, vec2(content_width + 48.0, 4100.0), i as f64 * 0.016, vec![]);
-                    let output = ctx.run(input, |ctx| {
-                        egui::Area::new(egui::Id::new("fit"))
+                    let output = ctx.run_pass(input, |ctx| {
+                        egui::Area::new(egui::Id::unique("fit"))
                             .fixed_pos(content.min)
                             .show(ctx, |ui| {
                                 ui.set_width(content_width);
@@ -440,6 +442,7 @@ fn settings_content_fits_480_px_in_both_schemes_and_languages() {
                     for clipped in &output.shapes {
                         painted = painted.union(clipped.shape.visual_bounding_rect());
                     }
+                    output.drop_without_applying_deltas();
                 }
                 let tag = format!("{scheme:?}/{locale:?}/mock={use_mock}");
                 assert!(
@@ -488,12 +491,13 @@ fn opening_and_closing_settings_never_resizes_or_moves_the_orb_window() {
         if frame == 4 {
             state.windows.get_mut(ToolKind::Settings).close();
         }
-        let output = ctx.run(raw_input(EguiTheme::Light, frame as f64 * 0.016, vec![]), |ctx| {
-            prxvc_desktop_ui::render_app(ctx, &mut state);
+        let output = ctx.run_ui(raw_input(EguiTheme::Light, frame as f64 * 0.016, vec![]), |ui| {
+            prxvc_desktop_ui::render_app(ui, &mut state);
         });
         if let Some(root) = output.viewport_output.get(&egui::ViewportId::ROOT) {
             commands.extend(root.commands.iter().cloned());
         }
+        output.drop_without_applying_deltas();
     }
     assert!(
         !commands.iter().any(|c| matches!(
@@ -516,10 +520,10 @@ fn setting_row_puts_the_control_right_and_centred() {
     let mut value = false;
     let mut control = Rect::NOTHING;
     let mut row = Rect::NOTHING;
-    run_frames_sized(&ctx, EguiTheme::Light, vec2(400.0, 600.0), 3, |ctx| {
-        egui::Area::new(egui::Id::new("row"))
+    run_frames_sized(&ctx, EguiTheme::Light, vec2(400.0, 600.0), 3, |ui| {
+        egui::Area::new(egui::Id::unique("row"))
             .fixed_pos(pos2(20.0, 20.0))
-            .show(ctx, |ui| {
+            .show(ui.ctx(), |ui| {
                 ui.set_width(320.0);
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let top = ui.cursor().top();
@@ -562,14 +566,14 @@ const GLYPH_SAMPLES: &[(&str, &str)] = &[
 fn every_text_style_draws_every_sample_without_the_replacement_glyph() {
     let ctx = new_ctx();
     theme::install(&ctx);
-    let _ = ctx.run(RawInput::default(), |_| {});
+    ctx.run_ui(RawInput::default(), |_| {}).drop_without_applying_deltas();
     for (scheme, _) in SCHEMES {
         let style = theme::style_for(&scheme.tokens(), matches!(scheme, Scheme::Dark));
         for (text_style, font_id) in &style.text_styles {
             for (what, sample) in GLYPH_SAMPLES {
                 let missing: Vec<char> = sample
                     .chars()
-                    .filter(|c| !ctx.fonts(|f| f.has_glyph(font_id, *c)))
+                    .filter(|c| !ctx.fonts_mut(|f| f.has_glyph(font_id, *c)))
                     .collect();
                 assert!(
                     missing.is_empty(),
@@ -588,7 +592,7 @@ fn every_weight_family_draws_the_samples() {
         let id = egui::FontId::new(15.0, family.clone());
         for (what, sample) in GLYPH_SAMPLES {
             assert!(
-                ctx.fonts(|f| f.has_glyphs(&id, sample)),
+                ctx.fonts_mut(|f| f.has_glyphs(&id, sample)),
                 "{family:?}: {what} sample is not fully covered"
             );
         }
@@ -601,7 +605,7 @@ fn glyph_check_detects_a_missing_glyph() {
     // the test context: the check must say so, or the tests above prove nothing.
     let ctx = new_ctx();
     let id = egui::FontId::new(15.0, egui::FontFamily::Proportional);
-    assert!(!ctx.fonts(|f| f.has_glyph(&id, '\u{20000}')));
+    assert!(!ctx.fonts_mut(|f| f.has_glyph(&id, '\u{20000}')));
 }
 
 #[test]
@@ -621,8 +625,8 @@ fn heading_text_is_semibold_and_body_text_is_regular() {
     theme::install(&ctx);
     let tk = theme::LIGHT;
     let mut seen = Vec::new();
-    let _ = ctx.run(RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    ctx.run_ui(RawInput::default(), |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let items = [
                 widgets::text("Title", theme::size::TITLE, tk.text),
                 widgets::text("Section", theme::size::SUBHEADING, tk.text),
@@ -642,7 +646,8 @@ fn heading_text_is_semibold_and_body_text_is_regular() {
                 })
                 .collect();
         });
-    });
+    })
+    .drop_without_applying_deltas();
     assert_eq!(
         seen,
         vec![
@@ -659,8 +664,8 @@ fn chinese_and_latin_text_render_in_every_style() {
     let _guard = lock_locale();
     let ctx = new_ctx();
     theme::install(&ctx);
-    let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             for style in [
                 egui::TextStyle::Small,
                 egui::TextStyle::Body,
