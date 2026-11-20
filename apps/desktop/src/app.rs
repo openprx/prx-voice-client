@@ -6,8 +6,7 @@ use eframe::egui;
 use prxvc_desktop_ui::tool_window::ToolKind;
 use prxvc_desktop_ui::{SharedAppState, Theme};
 
-use crate::persistence::save_settings_to_config;
-use crate::{hotkey, settings, tray};
+use crate::{hotkey, settings, settings_host, tray};
 
 /// Top-level application wiring egui to the async runtime.
 pub(crate) struct PrxVoiceApp {
@@ -24,10 +23,11 @@ pub(crate) struct PrxVoiceApp {
     /// Last observed i18n locale, used to detect language changes reliably.
     pub(crate) last_locale: String,
     /// The configuration in effect (loaded at startup, the one the engine is
-    /// built from). Settings saves start from it and change only what the
-    /// popup edits.
+    /// built from). The settings window writes through the configuration's
+    /// atomic `update`, never into this copy.
     pub(crate) config: prxvc_config::AppConfig,
-    /// Persisted subset of the settings last written (or loaded).
+    /// The state of the settings window last known to be stored (or loaded);
+    /// edits are found by comparing against it.
     pub(crate) last_saved: settings::SettingsSnapshot,
     /// Call mode: stopped (and the default input restored) when the app closes.
     pub(crate) call: crate::call_compose::CallControl,
@@ -43,10 +43,15 @@ impl eframe::App for PrxVoiceApp {
     /// restored instead of being left to the next start's crash recovery.
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.call.shutdown();
+        settings_host::on_exit(&self.ui_state);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         for kind in ToolKind::ALL {
+            // The settings window's place lives in `ui.settings_window` of the configuration.
+            if kind == ToolKind::Settings {
+                continue;
+            }
             if let Some(geometry) = self.ui_state.windows.get(kind).geometry() {
                 eframe::set_value(storage, kind.storage_key(), &geometry.to_tuple());
             }
@@ -59,6 +64,13 @@ impl eframe::App for PrxVoiceApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Sync state from async runtime
         self.ui_state.sync_from_shared(&self.shared);
+        settings_host::before_frame(
+            ctx,
+            &mut self.ui_state,
+            &self.shared,
+            &self.config,
+            &mut self.last_saved,
+        );
 
         // Check hotkey
         if let Some(ref mut hk) = self.hotkey_manager {
@@ -89,9 +101,7 @@ impl eframe::App for PrxVoiceApp {
                         self.shared.clear_transcript();
                     }
                     tray::TrayAction::Settings => {
-                        self.ui_state
-                            .windows
-                            .request_open(ToolKind::Settings);
+                        self.ui_state.open_settings(None);
                     }
                     tray::TrayAction::Quit => {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -129,9 +139,27 @@ impl eframe::App for PrxVoiceApp {
                 tray.refresh_labels();
             }
         }
+        // The tray's first line says what the app is doing (text is set only when it changes;
+        // a language change changes the text too).
+        if let Some(ref tray) = self.tray_manager {
+            tray.set_state_line(
+                &tray::tray_state(
+                    &self.ui_state.session_state,
+                    self.ui_state.call.phase,
+                    self.ui_state.error_message.as_deref(),
+                )
+                .text(),
+            );
+        }
 
-        // Persist settings to config.toml when they change
-        save_settings_to_config(&mut self.config, &mut self.last_saved, &self.ui_state.settings);
+        // Store settings edits through the configuration's atomic update, run the
+        // window's commands, remember the window when it closed.
+        settings_host::after_frame(
+            ui.ctx(),
+            &mut self.ui_state,
+            &self.shared,
+            &mut self.last_saved,
+        );
 
         // Flush commands to async runtime
         self.ui_state.flush_commands_to_shared(&self.shared);

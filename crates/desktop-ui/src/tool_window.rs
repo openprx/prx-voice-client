@@ -8,7 +8,9 @@
 //!
 //! Immediate viewports are used: the window content borrows the UI state
 //! directly, with no shared-state plumbing. See [`show`] for the platform
-//! notes.
+//! notes. The settings window also remembers the monitor it was on: a
+//! remembered position is used only while the orb's monitor has the same
+//! size (design 2.1a, multi-monitor rule 1).
 
 use egui::{Pos2, Rect, Vec2, ViewportBuilder, ViewportClass, ViewportCommand, ViewportId, pos2, vec2};
 
@@ -31,8 +33,9 @@ pub const SETTINGS_CONTENT_WIDTH: f32 = layout::DIALOG_WIDTH;
 pub const WINDOW_PADDING: f32 = space::S24;
 /// Gap between the orb window and a window opened beside it.
 pub const PLACEMENT_GAP: f32 = space::S12;
-/// The strip of a window (its title bar) that must stay reachable on screen.
-const GRAB_STRIP: Vec2 = vec2(100.0, 40.0);
+/// The strip of a window (its title bar) that must stay on screen: the top 40 px
+/// across 200 px of width (design 2.1a, multi-monitor rule 1).
+const GRAB_STRIP: Vec2 = vec2(200.0, 40.0);
 
 impl ToolKind {
     /// Every kind.
@@ -76,15 +79,17 @@ impl ToolKind {
     /// Smallest inner size.
     pub fn min_size(self) -> Vec2 {
         match self {
-            ToolKind::Settings => vec2(400.0, 360.0),
+            ToolKind::Settings => vec2(layout::DIALOG_WIDTH, 480.0),
             ToolKind::History | ToolKind::Debug => vec2(320.0, 300.0),
         }
     }
 
     /// Largest inner size.
     pub fn max_size(self) -> Vec2 {
-        let _ = self;
-        vec2(760.0, 1000.0)
+        match self {
+            ToolKind::Settings => vec2(1100.0, 1000.0),
+            ToolKind::History | ToolKind::Debug => vec2(760.0, 1000.0),
+        }
     }
 }
 
@@ -138,10 +143,21 @@ pub fn clamp_size(kind: ToolKind, size: Vec2) -> Vec2 {
     vec2(size.x.clamp(min.x, max.x), size.y.clamp(min.y, max.y))
 }
 
-/// Geometry for opening `kind`: the remembered one when its title bar is still
-/// reachable on `screen` (size always clamped to the limits), otherwise a
-/// fresh placement beside `orb`. Without a known screen the remembered
-/// position is trusted and a fresh placement falls back to the orb's corner.
+/// Move `pos` so that the title strip of a window of `size` lies on `screen`:
+/// at least [`GRAB_STRIP`] of it is inside, the rest may hang over an edge.
+pub fn clamp_title_strip(screen: Rect, pos: Pos2, size: Vec2) -> Pos2 {
+    let strip_w = GRAB_STRIP.x.min(size.x);
+    let min_x = screen.left() - (size.x - strip_w);
+    let max_x = (screen.right() - strip_w).max(min_x);
+    let max_y = (screen.bottom() - GRAB_STRIP.y).max(screen.top());
+    pos2(pos.x.clamp(min_x, max_x), pos.y.clamp(screen.top(), max_y))
+}
+
+/// Geometry for opening `kind`: the remembered one, its size clamped to the
+/// limits and its title bar moved onto `screen` when it is not there (design
+/// 2.1a rule 1), otherwise a fresh placement beside `orb`. Without a known
+/// screen the remembered position is trusted and a fresh placement falls back
+/// to the orb's corner.
 pub fn initial_geometry(
     kind: ToolKind,
     saved: Option<Geometry>,
@@ -150,13 +166,11 @@ pub fn initial_geometry(
 ) -> Geometry {
     if let Some(saved) = saved {
         let size = clamp_size(kind, saved.size);
-        let reachable = screen.is_none_or(|s| {
-            let strip = s.intersect(Rect::from_min_size(saved.pos, vec2(size.x, GRAB_STRIP.y)));
-            strip.width() >= GRAB_STRIP.x && strip.height() >= GRAB_STRIP.y.min(30.0)
-        });
-        if reachable {
-            return Geometry { pos: saved.pos, size };
-        }
+        let pos = match screen {
+            Some(screen) => clamp_title_strip(screen, saved.pos, size),
+            None => saved.pos,
+        };
+        return Geometry { pos, size };
     }
     let size = kind.default_size();
     let orb = orb.unwrap_or_else(|| Rect::from_min_size(pos2(40.0, 40.0), vec2(220.0, 320.0)));
@@ -177,6 +191,8 @@ pub struct ToolWindowState {
     placed: Option<Geometry>,
     /// Latest observed geometry, persisted across launches.
     current: Option<Geometry>,
+    /// Size of the monitor the window was on when `current` was recorded.
+    monitor: Option<Vec2>,
 }
 
 impl ToolWindowState {
@@ -208,9 +224,26 @@ impl ToolWindowState {
         self.current = Some(geometry);
     }
 
+    /// Remember geometry and the monitor size recorded with it (loaded from
+    /// the configuration).
+    pub fn restore_on_monitor(&mut self, geometry: Geometry, monitor: Option<Vec2>) {
+        self.current = Some(geometry);
+        self.monitor = monitor;
+    }
+
     /// Record the geometry the OS reports for the open window.
     pub fn observe(&mut self, geometry: Geometry) {
         self.current = Some(geometry);
+    }
+
+    /// Record the size of the monitor the open window is on.
+    pub fn observe_monitor(&mut self, monitor: Vec2) {
+        self.monitor = Some(monitor);
+    }
+
+    /// Size of the monitor recorded with the latest geometry.
+    pub fn monitor(&self) -> Option<Vec2> {
+        self.monitor
     }
 
     /// Latest known geometry, for persistence.
@@ -219,8 +252,19 @@ impl ToolWindowState {
     }
 
     /// Geometry to create the window with; fixed until the window closes.
-    fn placement(&mut self, kind: ToolKind, orb: Option<Rect>, screen: Option<Rect>) -> Geometry {
-        let saved = self.current;
+    fn placement(
+        &mut self,
+        kind: ToolKind,
+        orb: Option<Rect>,
+        screen: Option<Rect>,
+        monitor: Option<Vec2>,
+    ) -> Geometry {
+        // A position recorded on a monitor of another size is not trusted.
+        let same_monitor = match (self.monitor, monitor) {
+            (Some(saved), Some(now)) => (saved - now).abs().max_elem() < 1.0,
+            _ => true,
+        };
+        let saved = self.current.filter(|_| same_monitor);
         *self
             .placed
             .get_or_insert_with(|| initial_geometry(kind, saved, orb, screen))
@@ -266,6 +310,8 @@ impl ToolWindows {
 /// Where the orb window is on screen, as far as the platform tells.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Placement {
+    /// Size of the monitor the orb is on, as the platform reports it.
+    pub monitor: Option<Vec2>,
     /// The orb window's outer rectangle in screen points.
     pub orb: Option<Rect>,
     /// The screen the orb is on. winit reports only the monitor size, not its
@@ -288,7 +334,7 @@ impl Placement {
             }
             _ => None,
         };
-        Self { orb, screen }
+        Self { monitor, orb, screen }
     }
 }
 
@@ -312,10 +358,35 @@ pub fn show(
     placement: Placement,
     mut add_body: impl FnMut(&mut egui::Ui),
 ) {
+    show_raw(ctx, tk, kind, state, placement, |ui| {
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| add_body(ui));
+    });
+}
+
+/// The padded, filled frame every tool window draws its content in.
+pub fn window_frame(tk: &Tokens) -> egui::Frame {
+    egui::Frame::NONE
+        .fill(tk.bg)
+        .inner_margin(egui::Margin::same(WINDOW_PADDING as i8))
+}
+
+/// Like [`show`], but `add_body` draws straight into the padded frame and
+/// does its own scrolling (the settings window scrolls only its content
+/// column, not its section list).
+pub fn show_raw(
+    ctx: &egui::Context,
+    tk: &Tokens,
+    kind: ToolKind,
+    state: &mut ToolWindowState,
+    placement: Placement,
+    mut body: impl FnMut(&mut egui::Ui),
+) {
     if !state.open {
         return;
     }
-    let geometry = state.placement(kind, placement.orb, placement.screen);
+    let geometry = state.placement(kind, placement.orb, placement.screen, placement.monitor);
     let title = kind.title();
     let builder = ViewportBuilder::default()
         .with_title(title.clone())
@@ -329,42 +400,42 @@ pub fn show(
 
     ctx.show_viewport_immediate(kind.viewport_id(), builder, |ui, class| {
         let ctx = ui.ctx().clone();
-        let frame = egui::Frame::NONE
-            .fill(tk.bg)
-            .inner_margin(egui::Margin::same(WINDOW_PADDING as i8));
-        let body = |ui: &mut egui::Ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| add_body(ui));
-        };
-        let (close_requested, escape) = ctx.input(|i| {
+        let frame = window_frame(tk);
+        let (close_requested, escape, close_chord) = ctx.input_mut(|i| {
             (
                 i.viewport().close_requested(),
                 i.key_pressed(egui::Key::Escape),
+                i.consume_key(egui::Modifiers::COMMAND, egui::Key::W),
             )
         });
         // Escape closes this window only: not while a drop-down is open or a
         // text field has the keyboard (the first press leaves the field).
         let escape = escape && !ctx.any_popup_open() && !ctx.egui_wants_keyboard_input();
-        if close_requested || escape {
+        if close_requested || escape || close_chord {
             state.close();
             return;
         }
         if class == ViewportClass::EmbeddedWindow {
             // No native windows (tests, backends without viewport support):
             // egui has already wrapped this callback in a `Window`.
-            frame.show(ui, body);
+            frame.show(ui, |ui| body(ui));
             return;
         }
 
         if state.take_focus() {
             ctx.send_viewport_cmd(ViewportCommand::Focus);
         }
-        let (outer, inner) = ctx.input(|i| (i.viewport().outer_rect, i.viewport().inner_rect));
+        let (outer, inner, monitor) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.outer_rect, v.inner_rect, v.monitor_size)
+        });
         if let (Some(outer), Some(inner)) = (outer, inner) {
             state.observe(Geometry { pos: outer.min, size: inner.size() });
+            if let Some(monitor) = monitor {
+                state.observe_monitor(monitor);
+            }
         }
-        egui::CentralPanel::default().frame(frame).show(ui, body);
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| body(ui));
     });
 }
 
@@ -414,13 +485,13 @@ mod tests {
     fn placement_is_fixed_while_open_and_recomputed_after_close() {
         let mut s = ToolWindowState::default();
         s.request_open();
-        let a = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN));
+        let a = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), None);
         // The window was moved by the user; the creation geometry stays.
         s.observe(Geometry { pos: pos2(500.0, 300.0), size: vec2(600.0, 700.0) });
-        let b = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN));
+        let b = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN), None);
         assert_eq!(a, b);
         s.close();
-        let c = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN));
+        let c = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN), None);
         assert_eq!(c.pos, pos2(500.0, 300.0), "reopens where the user left it");
         assert_eq!(c.size, vec2(600.0, 700.0));
     }
@@ -472,11 +543,45 @@ mod tests {
     }
 
     #[test]
-    fn saved_geometry_off_screen_falls_back_to_a_fresh_placement() {
+    fn saved_geometry_off_screen_is_moved_back_so_the_title_bar_is_reachable() {
         let saved = Geometry { pos: pos2(5000.0, 3000.0), size: vec2(528.0, 640.0) };
         let g = initial_geometry(ToolKind::Settings, Some(saved), Some(orb_at(100.0, 100.0)), Some(SCREEN));
-        assert_eq!(g.pos, pos2(100.0 + 220.0 + PLACEMENT_GAP, 100.0));
+        let strip = Rect::from_min_size(g.pos, vec2(g.size.x, 40.0)).intersect(SCREEN);
+        assert!(strip.width() >= 200.0 && strip.height() >= 40.0, "{g:?}");
+        assert_eq!(g.size, saved.size);
+    }
+
+    #[test]
+    fn a_window_partly_off_the_left_edge_stays_while_200_px_of_its_title_bar_show() {
+        let saved = Geometry { pos: pos2(-300.0, 50.0), size: vec2(528.0, 640.0) };
+        let g = initial_geometry(ToolKind::Settings, Some(saved), None, Some(SCREEN));
+        assert_eq!(g.pos, saved.pos, "228 px of the title bar are still visible");
+        let saved = Geometry { pos: pos2(-400.0, 50.0), size: vec2(528.0, 640.0) };
+        let g = initial_geometry(ToolKind::Settings, Some(saved), None, Some(SCREEN));
+        assert_eq!(g.pos.x, -328.0, "moved right until 200 px show");
+    }
+
+    #[test]
+    fn a_position_from_a_monitor_of_another_size_is_not_used() {
+        let mut s = ToolWindowState::default();
+        s.restore_on_monitor(
+            Geometry { pos: pos2(300.0, 200.0), size: vec2(600.0, 700.0) },
+            Some(vec2(2560.0, 1440.0)),
+        );
+        s.request_open();
+        let g = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), Some(vec2(1440.0, 900.0)));
+        assert_eq!(g.pos, pos2(100.0 + 220.0 + PLACEMENT_GAP, 100.0), "beside the orb");
         assert_eq!(g.size, ToolKind::Settings.default_size());
+    }
+
+    #[test]
+    fn a_position_from_a_monitor_of_the_same_size_is_restored() {
+        let mut s = ToolWindowState::default();
+        let saved = Geometry { pos: pos2(300.0, 200.0), size: vec2(600.0, 700.0) };
+        s.restore_on_monitor(saved, Some(vec2(1440.0, 900.0)));
+        s.request_open();
+        let g = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), Some(vec2(1440.0, 900.0)));
+        assert_eq!(g, saved);
     }
 
     #[test]

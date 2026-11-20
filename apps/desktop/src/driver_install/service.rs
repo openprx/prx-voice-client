@@ -99,8 +99,10 @@ impl Tracker {
 static TRACKER: Tracker = Tracker::new();
 
 /// The current state for the UI.
-#[allow(dead_code)] // Read by the settings view in the UI package; no UI exists yet.
-pub(crate) fn snapshot() -> DriverSnapshot {
+/// Read the driver's status now (from files only) and return it with the last operation's
+/// state. The settings window shows this through `view::driver_view`.
+pub(crate) fn refresh_status() -> DriverSnapshot {
+    TRACKER.set_status(installer().status());
     TRACKER.snapshot()
 }
 
@@ -291,6 +293,6 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, "DriverInstall");
         assert!(events[0].detail.starts_with("status:"));
-        assert!(snapshot().status.is_some());
+        assert!(TRACKER.snapshot().status.is_some());
     }
 }

@@ -447,9 +447,26 @@ pub fn select(
     options: &[String],
     selected: usize,
 ) -> Option<usize> {
+    select_named(ui, tk, id_salt, width, current, current, options, selected)
+}
+
+/// [`select`] with an accessible name that differs from the shown value (the
+/// name of the setting it belongs to), so that two selects showing the same
+/// value can be told apart.
+#[allow(clippy::too_many_arguments)]
+pub fn select_named(
+    ui: &mut Ui,
+    tk: &Tokens,
+    id_salt: impl egui::AsIdSalt,
+    width: f32,
+    name: &str,
+    current: &str,
+    options: &[String],
+    selected: usize,
+) -> Option<usize> {
     let id = ui.make_persistent_id(id_salt);
     let (rect, response) = ui.allocate_exact_size(vec2(width, layout::FIELD_HEIGHT), Sense::click());
-    response.widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, current));
+    response.widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, name));
     let _ = id;
     let popup_id = egui::Popup::default_response_id(&response);
     // `Popup::menu` toggles on the click when it is shown below; account for
@@ -468,11 +485,14 @@ pub fn select(
         ui.painter().rect_filled(rect, corner, fill);
         ui.painter()
             .rect_stroke(rect, corner, hairline(tk.input_border), StrokeKind::Inside);
-        let galley = ui.painter().layout_no_wrap(
+        // A value wider than the box ends in an ellipsis instead of running over the edge.
+        let mut job = egui::text::LayoutJob::simple_singleline(
             current.to_owned(),
             FontId::proportional(size::BODY),
             Color32::PLACEHOLDER,
         );
+        job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 12.0 - 32.0);
+        let galley = ui.painter().layout_job(job);
         let tpos = pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0);
         ui.painter().galley(tpos, galley, tk.text);
         paint_chevron_down(ui, pos2(rect.right() - 16.0, rect.center().y), tk.control);
@@ -741,6 +761,8 @@ pub fn chip(ui: &mut Ui, tk: &Tokens, tone: Tone, label: &str) -> Response {
     );
     let desired = galley.size() + vec2(16.0, 8.0);
     let (rect, response) = ui.allocate_exact_size(desired, Sense::hover());
+    // The status is read out as text: a chip is the only place some rows say it.
+    response.widget_info(|| WidgetInfo::labeled(egui::Role::Label, true, label));
     if ui.is_rect_visible(rect) {
         ui.painter()
             .rect_filled(rect, CornerRadius::same(radius::CHIP), fill);

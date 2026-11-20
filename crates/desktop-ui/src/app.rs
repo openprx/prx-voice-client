@@ -7,7 +7,7 @@ use crate::debug_view::debug_body;
 use crate::history_view::history_rows;
 use crate::orb_view::{orb_animation, paint_orb};
 use crate::repaint;
-use crate::settings_view;
+use crate::settings_window;
 use crate::state::DesktopUiState;
 use crate::status_hint::{state_hint, translate_state_human};
 use crate::status_pill::StatusPill;
@@ -32,6 +32,11 @@ pub fn render_app(ui: &mut egui::Ui, state: &mut DesktopUiState) {
         0.0
     };
     state.anim_time = time;
+
+    // Cmd+, (macOS) or Ctrl+, opens the settings window while the orb window is focused.
+    if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Comma)) {
+        state.open_settings(None);
+    }
 
     let tk = resolve_tokens(ctx, state);
 
@@ -191,9 +196,30 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
 
     let current_theme = state.theme.name;
     {
-        let DesktopUiState { windows, settings, pending_theme, .. } = &mut *state;
-        tool_window::show(ctx, tk, ToolKind::Settings, &mut windows.settings, placement, |ui| {
-            settings_view::render_settings_content(ui, tk, settings, current_theme, pending_theme);
+        let DesktopUiState {
+            windows,
+            settings,
+            pending_theme,
+            settings_view,
+            settings_data,
+            settings_commands,
+            network_status,
+            ..
+        } = &mut *state;
+        tool_window::show_raw(ctx, tk, ToolKind::Settings, &mut windows.settings, placement, |ui| {
+            settings_window::body(
+                ui,
+                tk,
+                settings_window::BodyArgs {
+                    settings: &mut *settings,
+                    data: settings_data,
+                    commands: &mut *settings_commands,
+                    view: &mut *settings_view,
+                    current_theme,
+                    pending_theme: &mut *pending_theme,
+                    network: network_status,
+                },
+            );
         });
     }
 

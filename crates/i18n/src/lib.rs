@@ -4,6 +4,10 @@
 //! with a global locale store, fallback logic, and parameter substitution.
 
 mod call_strings;
+mod settings_permission_strings;
+mod settings_pipeline_strings;
+mod settings_session_strings;
+mod settings_strings;
 mod translation_strings;
 
 use std::collections::HashMap;
@@ -333,6 +337,10 @@ fn build_en_translations() -> HashMap<String, String> {
         .iter()
         .chain(call_strings::EN)
         .chain(translation_strings::EN)
+        .chain(settings_strings::EN)
+        .chain(settings_session_strings::EN)
+        .chain(settings_pipeline_strings::EN)
+        .chain(settings_permission_strings::EN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }
@@ -571,6 +579,10 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         .iter()
         .chain(call_strings::ZH_CN)
         .chain(translation_strings::ZH_CN)
+        .chain(settings_strings::ZH_CN)
+        .chain(settings_session_strings::ZH_CN)
+        .chain(settings_pipeline_strings::ZH_CN)
+        .chain(settings_permission_strings::ZH_CN)
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
 }
