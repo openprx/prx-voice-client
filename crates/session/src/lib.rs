@@ -21,8 +21,11 @@
 //! * `commit_policy`: when text commits to a clause and to synthesis.
 //! * `interrupt`: what an interruption cancels (D-P5).
 //! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
+//! * `call` (layer L2): the call coordinator that owns these machines, with
+//!   its host seams, snapshot, commands and typed errors.
 
 pub mod adapter;
+pub mod call;
 pub mod driver;
 pub mod interpret;
 
