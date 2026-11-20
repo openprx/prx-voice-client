@@ -1,0 +1,20 @@
+# Vendored upstream source for prxvc-transcribe-sys. Refresh with
+# crates/native/scripts/vendor.sh transcribe <checkout>; never edit vendor/ by hand.
+name = "transcribe.cpp"
+url = "https://github.com/handy-computer/transcribe.cpp"
+commit = "275cd50d2c4104c204009a197ac091b9687668e5"
+commit_date = "2026-11-11"
+licence = "MIT"
+licence_file = "vendor/transcribe.cpp/LICENSE"
+third_party_file = "vendor/transcribe.cpp/THIRD-PARTY-LICENSES.md"
+
+[ggml]
+# ggml lives inside the transcribe.cpp tree (ggml/UPSTREAM), with four downstream patches.
+url = "git@github.com:ggml-org/ggml.git"
+commit = "d7cb574130e6f01ad25b3289685489200febcd74"
+licence = "MIT"
+licence_file = "vendor/transcribe.cpp/ggml/LICENSE"
+
+# What is left out of the copy: examples/, tests/, tools/, bindings/, docs/, samples/
+# and reports/ of transcribe.cpp; ggml examples, tests, docs and every backend other
+# than CPU, Metal and BLAS. The upstream CMakeLists.txt is used unmodified.

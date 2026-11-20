@@ -48,3 +48,109 @@ documents every transformation.
   instantiated as static fonts at weights 400 and 600 (fontTools). The
   Reserved Font Name 'Source' is not used as, or in, the name of the modified
   fonts, which keep the family name "Noto Sans SC".
+
+## Native runtimes (call translation)
+
+The call-translation build links two native runtimes as dynamic libraries
+(`libprxvc_qwentts.dylib`, `libprxvc_transcribe.dylib`, placed in
+`Contents/Frameworks`). Their sources are vendored unmodified under
+`crates/native/*/vendor/` with their licence files; `VENDOR.toml` next to each
+records the upstream URL and the pinned commit. Every component below is MIT
+licensed; the licence file of each component is named in its entry. The
+copyright notices are reproduced here verbatim, followed by the MIT permission
+notice that applies to all MIT components in this section.
+
+### qwentts.cpp (text to speech)
+
+- Used for: speech synthesis in the call-translation pipeline.
+- Source: https://github.com/ServeurpersoCom/qwentts.cpp, commit
+  2edb35f87b709a070b2d5379f77e5c52a1daa585 (2026-11-17).
+- Licence: MIT (`crates/native/qwentts-sys/vendor/qwentts.cpp/LICENSE`).
+- Copyright: Copyright (c) 2023-2026 The omnivoice.cpp authors
+
+### ggml, copy inside qwentts.cpp
+
+- Source: https://github.com/ServeurpersoCom/ggml, commit
+  ef4555b7aede4467a5de803b103615e0a5f30dd8 (submodule of qwentts.cpp).
+- Licence: MIT (`crates/native/qwentts-sys/vendor/qwentts.cpp/ggml/LICENSE`).
+- Copyright: Copyright (c) 2023-2026 The ggml authors
+
+### transcribe.cpp (speech recognition)
+
+- Used for: speech recognition and voice activity detection.
+- Source: https://github.com/handy-computer/transcribe.cpp, commit
+  275cd50d2c4104c204009a197ac091b9687668e5 (2026-11-11).
+- Licence: MIT (`crates/native/transcribe-sys/vendor/transcribe.cpp/LICENSE`;
+  upstream's own list of its third-party components is
+  `vendor/transcribe.cpp/THIRD-PARTY-LICENSES.md`).
+- Copyright: Copyright (c) 2026 The transcribe.cpp authors
+
+### ggml, copy inside transcribe.cpp
+
+- Source: https://github.com/ggml-org/ggml, commit
+  d7cb574130e6f01ad25b3289685489200febcd74, with the four downstream patches
+  listed in `vendor/transcribe.cpp/ggml/UPSTREAM`.
+- Licence: MIT (`crates/native/transcribe-sys/vendor/transcribe.cpp/ggml/LICENSE`).
+- Copyright: Copyright (c) 2023-2026 The ggml authors
+
+### Silero VAD (translation inside transcribe.cpp)
+
+- Source: https://github.com/snakers4/silero-vad, version 6.2.3 (tag v6.2.3,
+  commit 5cd7945). The code is a translation of its speech-timestamp
+  post-processing; no model or Python source is included.
+- Licence: MIT (`vendor/transcribe.cpp/src/third_party/silero_vad/LICENSE`).
+- Copyright: Copyright (c) 2020-present Silero Team
+
+### MIT permission notice (qwentts.cpp, transcribe.cpp, ggml, Silero VAD)
+
+```
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### miniz (inside transcribe.cpp)
+
+- Source: https://github.com/richgel999/miniz, release 3.1.1 (commit
+  d10b03cc73475af673df40f06e5cefd1d5f940d9).
+- Licence: MIT (`vendor/transcribe.cpp/src/third_party/miniz/LICENSE`),
+  reproduced in full below.
+
+```
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+All Rights Reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
