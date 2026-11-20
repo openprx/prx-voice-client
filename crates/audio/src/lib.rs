@@ -9,7 +9,9 @@
 //! * Playback: [`playback_sink::PlaybackSink`] implements
 //!   [`prxvc_ports::AudioSink`] and [`stream_sink::StreamSink`] (end of stream
 //!   and the drain signal). [`cpal_output::open_default`] and
-//!   [`cpal_output::open_named`] build one on an output device.
+//!   [`cpal_output::open_named`] build one on an output device;
+//!   [`virtual_mic::VirtualMicSink`] opens the virtual microphone driver's
+//!   hidden sink by UID, checked by [`driver_status::DriverStatus`].
 //!
 //! Frames are the `prxvc-media` types: mono `f32`, a sample rate, a monotonic
 //! timestamp and a sequence number.
@@ -21,8 +23,8 @@
 //! is kept apart from the rest so that this can be checked by a text search:
 //!
 //! * Every function or method that a device callback runs lives in a file
-//!   named `*_rt.rs` (today `cpal_input_rt.rs`, `cpal_output_rt.rs` and
-//!   `playback_buffer_rt.rs`).
+//!   named `*_rt.rs` (today `cpal_input_rt.rs`, `cpal_output_rt.rs`,
+//!   `core_audio_output_rt.rs` and `playback_buffer_rt.rs`).
 //! * The closure handed to the device (`build_input_stream`,
 //!   `build_output_stream`) does nothing but call a function of an `_rt`
 //!   module, so no real-time logic hides in a non-`_rt` file.
@@ -45,13 +47,15 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod audio_loop;
-#[cfg(target_os = "macos")]
-pub mod blackhole_sink;
 pub mod buffer;
 pub mod capture_reader;
 pub mod capture_source;
 #[cfg(target_os = "macos")]
 pub mod core_audio_devices;
+#[cfg(target_os = "macos")]
+pub(crate) mod core_audio_output;
+#[cfg(target_os = "macos")]
+pub(crate) mod core_audio_output_rt;
 #[cfg(target_os = "macos")]
 pub mod core_audio_tap;
 pub mod cpal_input;
@@ -60,6 +64,9 @@ pub mod cpal_output;
 pub(crate) mod cpal_output_rt;
 pub mod cpal_stream;
 pub mod device;
+pub mod device_directory;
+pub mod driver_plist;
+pub mod driver_status;
 pub mod echo_gate;
 pub mod endpoint;
 pub mod input_devices;
@@ -82,6 +89,8 @@ mod tap_supervisor;
 pub mod tap_types;
 pub mod tap_watchdog;
 pub mod turn_policy;
+#[cfg(target_os = "macos")]
+pub mod virtual_mic;
 pub mod vad_window;
 #[cfg(feature = "whisper")]
 pub mod whisper_asr;

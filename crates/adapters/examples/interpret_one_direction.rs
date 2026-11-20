@@ -2,7 +2,7 @@
 //!
 //! Wires every layer for a single turn:
 //!   CoreAudioTapSource → MonoResampler16k → WhisperAsr → InterpretDriver
-//!   (Translator + SineToneSynthesizer) → BlackHole playback
+//!   (Translator + SineToneSynthesizer) → virtual microphone
 //!
 //! Requires macOS 14.4+, the `integration` feature, and Whisper model files:
 //!   export PRXVC_WHISPER_MODEL=/path/to/ggml-small.bin
@@ -11,6 +11,8 @@
 //!   export PRXVC_MT_BASE_URL=http://localhost:11434/v1
 //!   export PRXVC_MT_MODEL=qwen2.5:7b
 //!   export PRXVC_MT_API_KEY=...            # cloud only
+//! Optional output device (UID); empty or unset means the PRX Voice microphone driver:
+//!   export PRXVC_VIRTUAL_MIC_DEVICE=...
 //!
 //! Usage:
 //!   cargo run -p prxvc-adapters --features integration \
@@ -23,11 +25,11 @@
 fn main() {
     use std::time::{Duration, Instant};
 
-    use prxvc_audio::blackhole_sink::open_blackhole;
-    use prxvc_audio::core_audio_tap::CoreAudioTapSource;
+        use prxvc_audio::core_audio_tap::CoreAudioTapSource;
     use prxvc_audio::resample::{ASR_SAMPLE_RATE, MonoResampler};
     use prxvc_audio::routing::ProcessFilter;
     use prxvc_audio::stream_sink::StreamSink;
+    use prxvc_audio::virtual_mic::{VirtualMicOptions, VirtualMicSink};
     use prxvc_audio::whisper_asr::{WhisperAsr, WhisperAsrConfig};
     use prxvc_media::{AudioFrame, MonoTime, SampleRate};
     use prxvc_ports::{AudioSink, AudioSource};
@@ -151,7 +153,7 @@ fn main() {
         }
     };
 
-    // ---- play synthesized translation (best-effort via BlackHole) ----
+    // ---- play synthesized translation (best-effort into the virtual microphone) ----
     if let Some(audio) = output.audio {
         let frame = match SampleRate::new(audio.sample_rate)
             .map_err(|e| e.to_string())
@@ -166,18 +168,19 @@ fn main() {
             }
         };
         let dur = Duration::from_secs_f32(audio.samples.len() as f32 / audio.sample_rate as f32);
-        match open_blackhole() {
+        let device = std::env::var("PRXVC_VIRTUAL_MIC_DEVICE").unwrap_or_default();
+        match VirtualMicSink::open(&VirtualMicOptions::from_config(&device, None)) {
             Ok(mut sink) => match sink.start() {
                 Ok(_) => {
                     sink.write(&frame);
                     sink.end_stream();
-                    println!("[demo] playing {:.1}s of synthesized audio into BlackHole ...", dur.as_secs_f32());
+                    println!("[demo] playing {:.1}s of synthesized audio into the virtual microphone ...", dur.as_secs_f32());
                     std::thread::sleep(dur + Duration::from_millis(200));
                     sink.stop();
                 }
-                Err(e) => eprintln!("[demo] BlackHole playback skipped: {e}"),
+                Err(e) => eprintln!("[demo] virtual microphone playback skipped: {e}"),
             },
-            Err(e) => eprintln!("[demo] BlackHole not available ({e}); skipping playback"),
+            Err(e) => eprintln!("[demo] virtual microphone not available ({e}); skipping playback"),
         }
     } else {
         println!("[demo] nothing recognized; turn aborted");

@@ -291,7 +291,7 @@ InterpretDriver / InterpretSession  (state machine = single source of truth)
     v
 Playback
     - to the ear (remote -> local direction), or
-    - into the meeting app via VirtualMicSink / BlackHoleSink (local -> remote)
+    - into the meeting app via VirtualMicSink (local -> remote)
 ```
 
 The pipeline stays platform- and engine-agnostic through traits:
