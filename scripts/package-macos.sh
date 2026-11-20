@@ -9,7 +9,7 @@
 #   --skip-build   reuse the binary already built for this profile and target
 #   --zip          also write dist/PRX-Voice-<version>-<arch>.zip (ditto, keeps signature)
 #   --native       build with the native runtime features (cargo features in PRXVC_NATIVE_FEATURES,
-#                  default "qwentts"), put the dynamic libraries the executable links into
+#                  default "qwentts transcribe"), put the dynamic libraries the executable links into
 #                  Contents/Frameworks, replace the development rpath by @executable_path/../Frameworks
 #                  and sign them with the executable's identity. Default builds are unchanged.
 #
@@ -22,7 +22,7 @@
 #                             PRXVC_NOTARY_ISSUER. Never run unless set.
 #
 #   PRXVC_NATIVE              1 is the same as --native.
-#   PRXVC_NATIVE_FEATURES     cargo features for --native (default: qwentts).
+#   PRXVC_NATIVE_FEATURES     cargo features for --native, space separated (default: "qwentts transcribe").
 #
 # See packaging/macos/README.md.
 set -euo pipefail
@@ -43,7 +43,7 @@ target=""
 skip_build=0
 make_zip=0
 native="${PRXVC_NATIVE:-0}"
-native_features="${PRXVC_NATIVE_FEATURES:-qwentts}"
+native_features="${PRXVC_NATIVE_FEATURES:-qwentts transcribe}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --debug) profile=debug ;;
@@ -228,6 +228,13 @@ if [ "$native" = 1 ]; then
   native_lines="$(printf '%s\n' "$check" | grep '^native: ' || true)"
   printf '%s\n' "$native_lines"
   case "$native_lines" in ""|*"native: "*none*) die "--check reports no loadable native library" ;; esac
+  # Every requested runtime must be linked, bundled and loadable: one library and one report line each.
+  for feature in $native_features; do
+    printf '%s\n' "$native_lines" | grep -q "^native: *$feature " \
+      || die "--check reports no loadable $feature runtime"
+    [ -f "$contents/Frameworks/libprxvc_$feature.dylib" ] \
+      || die "libprxvc_$feature.dylib is not in Contents/Frameworks"
+  done
 fi
 
 echo "built $bundle (version $version, build $build_number, id $bundle_id, signed: $([ "$identity" = - ] && echo ad-hoc || echo "$identity"))"

@@ -17,7 +17,7 @@ use prxvc_media::Lang;
 use super::native::NativeEngine;
 use super::seam::RecognizeEngine;
 use super::stable::StablePrefix;
-use super::units::units;
+use prxvc_media::text_units::units;
 use crate::tts::qwentts::wav;
 
 fn bench() -> PathBuf {

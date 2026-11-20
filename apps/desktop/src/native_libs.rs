@@ -13,6 +13,11 @@ pub(crate) fn report_lines() -> Vec<String> {
         "native:      qwentts {}",
         prxvc_adapters::tts::qwentts::engine::runtime_version()
     ));
+    #[cfg(feature = "transcribe")]
+    lines.push(format!(
+        "native:      transcribe {}",
+        prxvc_adapters::transcribe::runtime_version()
+    ));
     if lines.is_empty() {
         lines.push("native:      none (built without native features)".into());
     }

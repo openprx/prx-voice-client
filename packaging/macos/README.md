@@ -35,13 +35,14 @@ Native libraries belong in `Contents/Frameworks/`; the script signs everything f
 there (and in `PlugIns/`, `Library/`, `Resources/Drivers/`) before it signs the bundle.
 
 `--native` (or `PRXVC_NATIVE=1`; `scripts/run-app.sh --native` passes it on) builds with the
-native runtime cargo features (`PRXVC_NATIVE_FEATURES`, default `qwentts`), copies the dynamic
-libraries the executable links through `@rpath` from `target/<profile>/native-libs/` into
+native runtime cargo features (`PRXVC_NATIVE_FEATURES`, space separated, default
+`qwentts transcribe`: the synthesis and the recognition runtime), copies the dynamic libraries
+the executable links through `@rpath` from `target/<profile>/native-libs/` into
 `Contents/Frameworks/`, deletes the executable's absolute development rpath, adds
 `@executable_path/../Frameworks`, signs the libraries with the bundle's identity and then
 checks: only the bundle-relative rpath is left, each library is present and signed with the
 executable's identity, `codesign --verify --deep --strict` passes, and `--check` run from
-inside the bundle reports a `native:` line per loadable library. Default builds are unchanged.
+inside the bundle reports a `native:` line per loadable library, one for each requested feature. Default builds are unchanged.
 
 ## Virtual microphone driver payload
 

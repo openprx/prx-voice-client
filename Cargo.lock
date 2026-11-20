@@ -4113,6 +4113,7 @@ dependencies = [
  "prxvc-observe",
  "prxvc-ports",
  "prxvc-protocol",
+ "prxvc-providers",
  "prxvc-session",
  "prxvc-storage",
  "tempfile",

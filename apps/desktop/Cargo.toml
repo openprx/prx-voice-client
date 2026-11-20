@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 prxvc-audio = { workspace = true }
 prxvc-adapters = { workspace = true, optional = true }
+prxvc-providers = { workspace = true, optional = true }
 prxvc-media = { workspace = true }
 prxvc-ports = { workspace = true }
 prxvc-core = { workspace = true }
@@ -39,7 +40,11 @@ tray-icon = { workspace = true }
 default = []
 # Native runtimes, built as dynamic libraries and shipped in the bundle's Contents/Frameworks.
 # `qwentts`: the in-process text-to-speech engine of `prxvc-adapters`. Off by default, additive.
-qwentts = ["dep:prxvc-adapters", "prxvc-adapters/qwentts"]
+# `transcribe`: the in-process recognition runtime (Silero VAD and Qwen3-ASR). Off by default, additive.
+# Each also turns on the provider registry's feature of the same name, so that the registry can build
+# the provider (`prxvc-providers`).
+qwentts = ["dep:prxvc-adapters", "prxvc-adapters/qwentts", "dep:prxvc-providers", "prxvc-providers/qwentts"]
+transcribe = ["dep:prxvc-adapters", "prxvc-adapters/transcribe", "dep:prxvc-providers", "prxvc-providers/transcribe"]
 
 [lints]
 workspace = true
