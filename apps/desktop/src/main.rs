@@ -176,7 +176,7 @@ impl eframe::App for PrxVoiceApp {
         self.ui_state.sync_from_shared(&self.shared);
 
         // Check hotkey
-        if let Some(ref hk) = self.hotkey_manager {
+        if let Some(ref mut hk) = self.hotkey_manager {
             if hk.was_triggered() {
                 if !self.ui_state.session_active {
                     self.shared.push_command("CreateSession");
