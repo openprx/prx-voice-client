@@ -7,11 +7,10 @@ use egui::epaint::Shape;
 use egui::{Event, Modifiers, PointerButton, RawInput, Rect, Theme as EguiTheme, pos2, vec2};
 use prxvc_desktop_ui::fonts;
 use prxvc_desktop_ui::theme::{self, Scheme};
-use prxvc_desktop_ui::tool_window::{self, ToolKind};
+use prxvc_desktop_ui::tool_window::ToolKind;
 use prxvc_desktop_ui::widgets::{self, ButtonKind};
 use prxvc_desktop_ui::{
-    DesktopUiState, HistoryEntry, NetworkStatus, Theme, TranscriptLine, UiSettings,
-    render_error_banner, render_settings_panel, settings_view,
+    DesktopUiState, HistoryEntry, NetworkStatus, Theme, TranscriptLine, render_error_banner,
 };
 use prxvc_i18n::Locale;
 
@@ -218,76 +217,18 @@ fn legacy_themes_still_render() {
 }
 
 #[test]
-fn every_existing_setting_is_shown_in_both_languages() {
-    let _guard = lock_locale();
-    for (_, system) in SCHEMES {
-        for locale in LOCALES {
-            prxvc_i18n::set_locale(locale.clone());
-            let ctx = new_ctx();
-            theme::install(&ctx);
-            let mut settings = UiSettings {
-                use_mock: false,
-                ..UiSettings::default()
-            };
-            let mut pending = None;
-            // Tall screen so that no row is clipped away.
-            let (shapes, text) = run_frames_sized(&ctx, system, vec2(400.0, 2400.0), 2, |ui| {
-                egui::CentralPanel::default().show(ui, |ui| {
-                    let tk = theme::tokens_for(ui.ctx());
-                    settings_view::render_settings_content(
-                        ui,
-                        &tk,
-                        &mut settings,
-                        theme::RF_THEME_NAME,
-                        &mut pending,
-                    );
-                });
-            });
-            assert!(shapes > 0);
-            for key in [
-                "settings.theme",
-                "settings.language",
-                "settings.auto_play",
-                "settings.save_history",
-                "settings.show_transcript",
-                "settings.use_mock",
-                "settings.server_url",
-                "settings.hotkey",
-                "settings.appearance",
-                "settings.section.language",
-                "settings.section.audio",
-                "settings.section.privacy",
-                "settings.section.connection",
-                "settings.section.system",
-            ] {
-                let label = prxvc_i18n::t(key);
-                assert_ne!(label, key, "missing translation for {key}");
-                assert!(text.contains(&label), "{locale:?}: {key} not shown");
-            }
-            assert!(text.contains(&prxvc_i18n::t("settings.language.en")));
-            assert!(text.contains(&prxvc_i18n::t("settings.language.zh")));
-        }
-    }
-    prxvc_i18n::set_locale(Locale::En);
-}
-
-#[test]
-fn legacy_panels_and_banner_render() {
+fn banner_and_panels_render() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(Locale::En);
     let ctx = new_ctx();
     let mut state = sample_state();
     state.error_message = Some("Connection lost".into());
     state.error_recoverable = true;
-    let mut settings = UiSettings::default();
     let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
         egui::CentralPanel::default().show(ui, |ui| {
             render_error_banner(ui, &mut state);
-            render_settings_panel(ui, &mut settings);
-            prxvc_desktop_ui::render_nav_bar(ui, &mut state);
             prxvc_desktop_ui::render_history_panel(ui, &state.history_entries.clone());
             prxvc_desktop_ui::render_debug_page(ui, &state);
-            prxvc_desktop_ui::render_about_page(ui);
         });
     });
     assert!(shapes > 0);
@@ -399,66 +340,6 @@ fn segmented_click_selects_the_other_segment() {
             });
     });
     assert_eq!(chosen, Some(1));
-}
-
-/// Settings content laid out at the standard's 480 px width, in every scheme
-/// and language: nothing the content paints reaches outside its rectangle.
-#[test]
-fn settings_content_fits_480_px_in_both_schemes_and_languages() {
-    let _guard = lock_locale();
-    let content_width = tool_window::SETTINGS_CONTENT_WIDTH;
-    assert_eq!(content_width, 480.0);
-    for (scheme, system) in SCHEMES {
-        for locale in LOCALES {
-            for use_mock in [true, false] {
-                prxvc_i18n::set_locale(locale.clone());
-                let ctx = new_ctx();
-                theme::install(&ctx);
-                let mut settings = UiSettings { use_mock, ..UiSettings::default() };
-                let mut pending = None;
-                let content =
-                    Rect::from_min_size(pos2(tool_window::WINDOW_PADDING, 20.0), vec2(content_width, 4000.0));
-                let mut used = Rect::NOTHING;
-                let mut painted = Rect::NOTHING;
-                for i in 0..3 {
-                    let input = raw_input_sized(system, vec2(content_width + 48.0, 4100.0), i as f64 * 0.016, vec![]);
-                    let output = ctx.run_pass(input, |ctx| {
-                        egui::Area::new(egui::Id::unique("fit"))
-                            .fixed_pos(content.min)
-                            .show(ctx, |ui| {
-                                ui.set_width(content_width);
-                                let tk = theme::tokens_for(ui.ctx());
-                                settings_view::render_settings_content(
-                                    ui,
-                                    &tk,
-                                    &mut settings,
-                                    theme::RF_THEME_NAME,
-                                    &mut pending,
-                                );
-                                used = ui.min_rect();
-                            });
-                    });
-                    painted = Rect::NOTHING;
-                    for clipped in &output.shapes {
-                        painted = painted.union(clipped.shape.visual_bounding_rect());
-                    }
-                    output.drop_without_applying_deltas();
-                }
-                let tag = format!("{scheme:?}/{locale:?}/mock={use_mock}");
-                assert!(
-                    used.width() <= content_width + 0.5,
-                    "{tag}: content is {} wide, the content rect is {content_width}",
-                    used.width()
-                );
-                assert!(
-                    painted.left() >= content.left() - 2.0 && painted.right() <= content.right() + 2.0,
-                    "{tag}: painted {painted:?} leaves the content rect {content:?}"
-                );
-                assert!(used.height() > 400.0, "{tag}: all sections should be laid out");
-            }
-        }
-    }
-    prxvc_i18n::set_locale(Locale::En);
 }
 
 /// The window title comes from the catalogue in both languages.

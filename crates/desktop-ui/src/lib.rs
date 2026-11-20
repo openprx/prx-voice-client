@@ -15,10 +15,13 @@
 //! - `transcript_view`, `history_view`, `debug_view`, `error_banner`: the content views.
 //! - [`call_view`] and `call_debug_view`: the view model and the temporary call-mode
 //!   control inside the debug window.
-//! - `legacy_pages`: page renderers `render_app` does not call.
-//! - [`theme`], [`widgets`], [`settings_view`], [`tool_window`], [`fonts`],
-//!   [`shared`], [`repaint`]: tokens, widgets, settings content, tool windows,
-//!   fonts, the engine bridge and the repaint policy.
+//! - [`theme`], [`widgets`] (and `widgets_radio`), [`tool_window`], [`fonts`], [`shared`],
+//!   [`repaint`]: tokens, widgets, tool windows, fonts, the engine bridge and the repaint policy.
+//! - The settings window: [`settings_window`] (layout and navigation),
+//!   [`settings_section`] (the sections), [`settings_view`] (page dispatch) and one
+//!   `settings_<section>` file per page, with `settings_rows` as their row vocabulary;
+//!   [`settings_data`] (what the app probes), [`settings_feed`] (how it arrives) and
+//!   [`settings_command`] (what the window asks of the app).
 
 mod app;
 mod call_debug_view;
@@ -28,10 +31,26 @@ mod debug_view;
 mod error_banner;
 pub mod fonts;
 mod history_view;
-mod legacy_pages;
 mod orb_view;
 pub mod repaint;
+mod settings_about;
+mod settings_advanced;
+mod settings_assistant;
+mod settings_audio;
+mod settings_call;
+pub mod settings_command;
+pub mod settings_data;
+pub mod settings_feed;
+mod settings_general;
+mod settings_permissions;
+mod settings_pipeline;
+mod settings_privacy;
+mod settings_rows;
+pub mod settings_section;
+mod settings_shortcuts;
 pub mod settings_view;
+mod settings_voice;
+pub mod settings_window;
 pub mod shared;
 mod state;
 mod status_hint;
@@ -41,18 +60,19 @@ mod theme_presets;
 pub mod tool_window;
 mod transcript_view;
 pub mod widgets;
+mod widgets_radio;
 
 pub use app::render_app;
 pub use call_view::{ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
 pub use debug_view::render_debug_page;
 pub use error_banner::render_error_banner;
 pub use history_view::render_history_panel;
-pub use legacy_pages::{
-    render_about_page, render_controls, render_history_page, render_nav_bar,
-    render_network_indicator, render_session_panel, render_settings_page, render_settings_panel,
-    render_sidebar, render_state_info,
-};
 pub use orb_view::render_orb;
+pub use settings_command::{RevealTarget, SettingsCommand, SystemPane};
+pub use settings_data::SettingsData;
+pub use settings_feed::SettingsFeed;
+pub use settings_section::SettingsSection;
+pub use settings_window::SettingsViewState;
 pub use shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
 pub use state::{
     DesktopUiState, HistoryEntry, Page, SessionViewModel, TranscriptLine, UiSettings,
@@ -66,10 +86,7 @@ pub mod prelude {
     pub use crate::shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
     pub use crate::{
         DesktopUiState, HistoryEntry, Page, Scheme, SessionViewModel, Theme, Tokens,
-        TranscriptLine, UiSettings, render_about_page, render_app, render_controls,
-        render_debug_page, render_error_banner, render_history_page, render_history_panel,
-        render_nav_bar, render_network_indicator, render_orb, render_session_panel,
-        render_settings_page, render_settings_panel, render_sidebar, render_state_info,
-        render_transcript,
+        TranscriptLine, UiSettings, render_app, render_debug_page, render_error_banner,
+        render_history_panel, render_orb, render_transcript,
     };
 }

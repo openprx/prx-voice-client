@@ -1,9 +1,18 @@
 //! The orb's right-click context menu: stop, open a tool window, close the app.
 
+use crate::settings_section::SettingsSection;
 use crate::state::DesktopUiState;
 use crate::theme::{Tokens, space};
 use crate::tool_window::ToolKind;
 use crate::widgets;
+
+/// What a menu item opens.
+enum MenuTarget {
+    /// The settings window at a page.
+    Settings(SettingsSection),
+    /// Another tool window.
+    Tool(ToolKind),
+}
 
 /// Attach the context menu to the orb's response. Items push commands or
 /// window requests onto `state`.
@@ -34,18 +43,25 @@ pub(crate) fn orb_context_menu(
             ui.add_space(space::S4);
         }
 
-        let menu_items = [
-            (prxvc_i18n::t("settings.title"), "settings"),
-            (prxvc_i18n::t("history.title"), "history"),
-            (prxvc_i18n::t("debug.title"), "debug"),
+        // The settings entries open the one settings window at a named page.
+        let menu_items: [(String, MenuTarget); 5] = [
+            (prxvc_i18n::t("settings.title"), MenuTarget::Settings(SettingsSection::General)),
+            (
+                prxvc_i18n::t("settings.menu.pipeline"),
+                MenuTarget::Settings(SettingsSection::SpeechPipeline),
+            ),
+            (
+                prxvc_i18n::t("settings.menu.permissions"),
+                MenuTarget::Settings(SettingsSection::Permissions),
+            ),
+            (prxvc_i18n::t("history.title"), MenuTarget::Tool(ToolKind::History)),
+            (prxvc_i18n::t("debug.title"), MenuTarget::Tool(ToolKind::Debug)),
         ];
-        for (label, key) in &menu_items {
+        for (label, target) in &menu_items {
             if widgets::menu_item(ui, tk, label, false).clicked() {
-                match *key {
-                    "settings" => state.windows.request_open(ToolKind::Settings),
-                    "history" => state.windows.request_open(ToolKind::History),
-                    "debug" => state.windows.request_open(ToolKind::Debug),
-                    _ => {}
+                match target {
+                    MenuTarget::Settings(section) => state.open_settings(Some(*section)),
+                    MenuTarget::Tool(kind) => state.windows.request_open(*kind),
                 }
             }
         }
