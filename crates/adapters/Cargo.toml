@@ -14,17 +14,20 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "json"] }
+prxvc-media = { workspace = true }
+prxvc-ports = { workspace = true }
+# Private runtime of the streaming MT client: one task per request, so that a
+# cancelled request drops its connection (`mt::openai_chat`).
+tokio = { workspace = true }
 
 # Pulled in only by the `integration` feature (end-to-end example).
 # Path (not workspace-inherited) so we can disable default features here.
 prxvc-audio = { path = "../audio", default-features = false, optional = true }
-prxvc-media = { workspace = true, optional = true }
-prxvc-ports = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
-integration = ["dep:prxvc-audio", "dep:prxvc-media", "dep:prxvc-ports", "prxvc-audio/whisper"]
+integration = ["dep:prxvc-audio", "prxvc-audio/whisper"]
 
 [lints]
 workspace = true
