@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -63,6 +63,7 @@ struct Options {
     file: Option<(PathBuf, String)>,
     bench_asr: PathBuf,
     max_backlog_ms: Option<u32>,
+    no_backlog_skip: bool,
     own: String,
     peer: String,
 }
@@ -80,6 +81,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         file: None,
         bench_asr: PathBuf::from(DEFAULT_BENCH_ASR),
         max_backlog_ms: None,
+        no_backlog_skip: false,
         own: "zh".into(),
         peer: "en".into(),
     };
@@ -124,6 +126,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                         .map_err(|_| "bad --max-backlog-ms")?,
                 )
             }
+            "--no-backlog-skip" => o.no_backlog_skip = true,
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -212,6 +215,9 @@ fn execute(o: &Options) -> Result<bool, String> {
     // The languages of the run, whatever the interface language derives them to.
     config.call.self_language.clone_from(&o.own);
     config.call.peer_language.clone_from(&o.peer);
+    if o.no_backlog_skip {
+        config.pipeline.backlog_skipping = false;
+    }
     if let Some(ms) = o.max_backlog_ms {
         config.pipeline.max_backlog_ms = ms;
     }
@@ -249,7 +255,12 @@ fn execute(o: &Options) -> Result<bool, String> {
             "wav file"
         }
     );
-    println!("max backlog {} ms", config.pipeline.max_backlog_ms);
+    println!(
+        "backlog skipping {}, max backlog {} ms, max lag {} ms",
+        if config.pipeline.backlog_skipping { "on" } else { "off" },
+        config.pipeline.max_backlog_ms,
+        config.pipeline.max_lag_ms
+    );
     println!("{}", sysinfo::snapshot("machine before"));
     let mut built = build_directions(&registry, &config, &plan).map_err(|f| {
         f.faults

@@ -97,6 +97,9 @@ impl Core {
         if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
             c.translation.push_str(delta);
         }
+        if let Some(info) = self.clauses.get_mut(&clause) {
+            info.target_text.push_str(delta);
+        }
     }
 
     fn translation_done(&mut self, clause: ClauseId) {

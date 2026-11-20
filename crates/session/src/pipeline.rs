@@ -90,6 +90,6 @@ pub use input::{AudioInput, PushOutcome};
 pub use params::{PipelineParams, QueueCaps, RecognitionMode, RecoveryParams};
 pub use queue::{Policy, QueueStats};
 pub use snapshot::{
-    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, PartialSnapshot, SkipReason,
+    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, PartialSnapshot, SkipReason, SkippedClause,
     SnapshotSubscriber,
 };

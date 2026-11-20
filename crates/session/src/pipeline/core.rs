@@ -35,7 +35,8 @@ use super::messages::{
 use super::params::PipelineParams;
 use super::queue::{BoundedQueue, Pushed};
 use super::snapshot::{
-    ClauseSnapshot, ErrorSnapshot, PartialSnapshot, SkipReason, SnapshotPublisher, Stats,
+    ClauseSnapshot, ErrorSnapshot, PartialSnapshot, SkipReason, SkippedClause, SnapshotPublisher,
+    Stats,
 };
 use super::trace::Tracer;
 use super::tree::TokenTree;
@@ -90,8 +91,10 @@ struct ClauseInfo {
     source_ts: MonoTime,
     /// The streaming text, the fallback of a failed refine pass.
     source_text: String,
-    /// Length of the clause's speech, the backlog estimate until synthesis is known.
-    source_len: Duration,
+    /// When the clause's source speech ended.
+    source_end: MonoTime,
+    /// The translation so far: the backlog estimate until synthesis is known.
+    target_text: String,
     synthesised: Duration,
     chunks: u32,
     tts_done: bool,
@@ -117,6 +120,8 @@ pub(crate) struct Core {
     book: SegmentBook,
     clauses: BTreeMap<ClauseId, ClauseInfo>,
     captions: VecDeque<ClauseSnapshot>,
+    skips: VecDeque<SkippedClause>,
+    backlog_due: Option<MonoTime>,
     partial: Option<PartialSnapshot>,
     commit_stash: Option<Commit>,
     skip_reason: Option<SkipReason>,
@@ -144,6 +149,8 @@ impl Core {
             state: DirectionState::Off,
             clauses: BTreeMap::new(),
             captions: VecDeque::new(),
+            skips: VecDeque::new(),
+            backlog_due: None,
             partial: None,
             commit_stash: None,
             skip_reason: None,

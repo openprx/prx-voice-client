@@ -393,6 +393,7 @@ mod tests {
             }],
             counters: Counters { late_dropped: 4, forced_cuts: 1, ..Counters::default() },
             backlog_ms: 0,
+            recent_skips: Vec::new(),
             last_error: None,
         };
         let mut s = snapshot();

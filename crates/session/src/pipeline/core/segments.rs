@@ -76,7 +76,8 @@ impl Core {
                 revision,
                 source_ts,
                 source_text: commit.text.clone(),
-                source_len: commit.source_end.saturating_since(commit.source_start),
+                source_end: commit.source_end,
+                target_text: String::new(),
                 synthesised: std::time::Duration::ZERO,
                 chunks: 0,
                 tts_done: false,
@@ -165,6 +166,7 @@ impl Core {
                     c.skipped = Some(reason);
                 }
                 Stats::add(&self.w.stats.skipped, 1);
+                self.record_skip(clause, reason);
                 match reason {
                     SkipReason::Backlog => Stats::add(&self.w.stats.backlog_skips, 1),
                     SkipReason::Stale => Stats::add(&self.w.stats.stale_skips, 1),

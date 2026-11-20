@@ -153,15 +153,26 @@ impl Core {
 
     /// When the next probe of a failed provider is due.
     pub(crate) fn next_deadline(&self) -> Option<prxvc_media::MonoTime> {
-        match (&self.state, &self.recovery) {
+        let retry = match (&self.state, &self.recovery) {
             (DirectionState::Failed { .. }, Some(r)) if !r.probing => Some(r.due),
             _ => None,
+        };
+        match (retry, self.backlog_due) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
         }
     }
 
     /// The injected clock reached a deadline of [`Core::next_deadline`].
     pub(crate) fn on_timer(&mut self, now: prxvc_media::MonoTime) {
-        if self.next_deadline().is_some_and(|due| now >= due) {
+        if self.backlog_due.is_some_and(|due| now >= due) {
+            self.after_event();
+        }
+        let retry_due = match (&self.state, &self.recovery) {
+            (DirectionState::Failed { .. }, Some(r)) if !r.probing => Some(r.due),
+            _ => None,
+        };
+        if retry_due.is_some_and(|due| now >= due) {
             self.begin_retry();
             self.after_event();
         }

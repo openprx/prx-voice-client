@@ -269,28 +269,64 @@ fn audio_held_beyond_the_limit_fails_that_clause_and_not_the_direction() {
     );
 }
 
+/// Twenty Chinese characters: about 4.4 s of speech at the synthesiser's rate.
+const LONG: &str = "今天下午我们要去机场接一位从上海来的老朋友";
+
+fn backlog_harness(enabled: bool) -> Harness {
+    harness(|p| {
+        p.backlog = crate::backlog::BacklogParams {
+            enabled,
+            max_backlog: Duration::from_secs(6),
+            max_lag: Duration::from_secs(10),
+        };
+    })
+}
+
 #[test]
-fn the_backlog_rule_skips_the_oldest_clauses_and_degrades_the_direction_until_it_drains() {
-    let mut h = harness(|p| p.max_backlog = Duration::from_millis(1_000));
+fn a_long_clause_followed_by_a_short_one_is_not_skipped() {
+    let mut h = backlog_harness(true);
     h.speech(1);
-    h.commit(1, "第一句话很长", 100, 700);
-    h.commit(1, "第二句话也长", 700, 1_300);
+    h.commit(1, &LONG.repeat(2), 100, 600);
+    h.commit(1, "嗯", 600, 700);
+    let snap = h.snapshot();
+    assert!(snap.backlog_ms > 6_000, "{}", snap.backlog_ms);
+    assert_eq!(snap.clauses[0].state, ClauseState::Recognized);
+    assert_eq!(snap.counters.skipped, 0);
+    assert!(snap.recent_skips.is_empty());
+    assert!(!snap.reasons.contains(&DegradeReason::BacklogSkipping));
+}
+
+#[test]
+fn continuous_speech_builds_a_backlog_and_the_stale_oldest_clause_is_skipped_visibly() {
+    let mut h = backlog_harness(true);
+    h.speech(1);
+    h.commit(1, LONG, 100, 1_000);
+    h.commit(1, LONG, 1_000, 5_000);
+    h.commit(1, LONG, 5_000, 9_000);
+    let snap = h.snapshot();
+    assert!(snap.backlog_ms > 6_000);
+    assert_eq!(snap.counters.skipped, 0, "over the bound but not stale yet");
+    assert_eq!(
+        h.core.next_deadline(),
+        Some(MonoTime::from_millis(11_000)),
+        "the oldest clause becomes stale 10 s after its speech ended"
+    );
+    h.clock.advance(Duration::from_millis(12_000));
+    h.core.on_timer(h.clock.now());
     let snap = h.snapshot();
     assert_eq!(snap.clauses[0].state, ClauseState::Skipped);
+    assert_eq!(snap.clauses[0].skipped, Some(SkipReason::Backlog));
+    assert_eq!(snap.clauses[0].source_text, LONG);
+    assert_eq!(snap.clauses[1].state, ClauseState::Recognized);
     assert_eq!(snap.counters.backlog_skips, 1);
+    assert_eq!(snap.counters.skipped, 1);
+    assert_eq!(snap.recent_skips.len(), 1);
+    assert_eq!(snap.recent_skips[0].clause, cl(1, 0));
+    assert_eq!(snap.recent_skips[0].source_text, LONG);
+    assert_eq!(snap.recent_skips[0].lag_ms, 11_000);
     assert!(snap.reasons.contains(&DegradeReason::BacklogSkipping));
-    h.commit(1, "第三句话还长", 1_300, 1_900);
-    assert_eq!(h.snapshot().counters.backlog_skips, 2);
-    h.command(Command::CancelSegment(seg(1)));
-    let snap = h.snapshot();
-    assert_eq!(
-        snap.state,
-        DirectionState::Running,
-        "the backlog is below half the bound"
-    );
     let events = h.drain();
     assert!(events.contains(&PipelineEvent::Degraded(DegradeReason::BacklogSkipping)));
-    assert!(events.contains(&PipelineEvent::Recovered(DegradeReason::BacklogSkipping)));
     assert!(events.iter().any(|e| matches!(
         e,
         PipelineEvent::ClauseSkipped {
@@ -298,6 +334,74 @@ fn the_backlog_rule_skips_the_oldest_clauses_and_degrades_the_direction_until_it
             ..
         }
     )));
+    // The condition ends when what is left is below half the bound.
+    h.command(Command::CancelSegment(seg(1)));
+    assert!(!h.snapshot().reasons.contains(&DegradeReason::BacklogSkipping));
+    assert!(h.drain().contains(&PipelineEvent::Recovered(DegradeReason::BacklogSkipping)));
+}
+
+#[test]
+fn the_clause_that_is_playing_is_never_cut_and_the_newest_is_kept() {
+    let mut h = backlog_harness(true);
+    h.speech(1);
+    h.commit(1, LONG, 100, 1_000);
+    let c0 = cl(1, 0);
+    h.translate(c0);
+    h.chunk(c0, 100);
+    h.command(Command::PlaybackStarted {
+        clause: c0,
+        at: MonoTime::from_millis(1_100),
+    });
+    h.commit(1, LONG, 1_000, 5_000);
+    h.commit(1, LONG, 5_000, 9_000);
+    h.commit(1, LONG, 9_000, 13_000);
+    h.clock.advance(Duration::from_millis(60_000));
+    h.core.on_timer(h.clock.now());
+    let snap = h.snapshot();
+    assert_eq!(snap.clauses[0].state, ClauseState::Playing);
+    assert_eq!(snap.clauses[0].skipped, None);
+    assert_eq!(snap.clauses[1].state, ClauseState::Skipped);
+    assert_eq!(snap.clauses[2].state, ClauseState::Skipped);
+    assert_eq!(snap.clauses[3].state, ClauseState::Recognized);
+    assert_eq!(snap.counters.backlog_skips, 2);
+    let order: Vec<ClauseId> = snap.recent_skips.iter().map(|s| s.clause).collect();
+    assert_eq!(order, vec![cl(1, 1), cl(1, 2)], "oldest first");
+}
+
+#[test]
+fn with_skipping_disabled_everything_is_kept_however_late() {
+    let mut h = backlog_harness(false);
+    h.speech(1);
+    for i in 0..4_u64 {
+        h.commit(1, LONG, i * 4_000, (i + 1) * 4_000);
+    }
+    h.clock.advance(Duration::from_millis(600_000));
+    h.core.on_timer(h.clock.now());
+    let snap = h.snapshot();
+    assert!(snap.backlog_ms > 15_000);
+    assert!(snap
+        .clauses
+        .iter()
+        .all(|c| c.state == ClauseState::Recognized && c.skipped.is_none()));
+    assert_eq!(snap.counters.skipped, 0);
+    assert!(snap.recent_skips.is_empty());
+    assert!(!snap.reasons.contains(&DegradeReason::BacklogSkipping));
+    assert_eq!(h.core.next_deadline(), None);
+}
+
+#[test]
+fn the_backlog_of_a_synthesised_clause_is_its_real_audio_not_the_speech_that_was_spoken() {
+    let mut h = backlog_harness(true);
+    h.speech(1);
+    h.commit(1, &LONG.repeat(3), 100, 20_000);
+    let c0 = cl(1, 0);
+    h.translate(c0);
+    h.chunk(c0, 400);
+    h.stage(c0, StageEvent::TtsDone { clause: c0 });
+    h.commit(1, "好", 20_000, 20_500);
+    // Another clause is playing ahead of it, so the first one waits, as queued audio of 400 ms.
+    let snap = h.snapshot();
+    assert!(snap.backlog_ms < 1_500, "{}", snap.backlog_ms);
 }
 
 #[test]

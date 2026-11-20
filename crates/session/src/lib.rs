@@ -54,7 +54,9 @@ mod session;
 mod state;
 mod turn;
 
-pub use backlog::{BacklogClause, BacklogDecision, SkippingChange, decide_backlog};
+pub use backlog::{
+    BacklogClause, BacklogDecision, BacklogParams, SkippingChange, decide_backlog, estimate_speech,
+};
 pub use call_state::{
     CallAction, CallEvent, CallReason, CallReasons, CallRejection, CallState, ProviderProgress,
 };

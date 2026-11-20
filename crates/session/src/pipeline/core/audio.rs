@@ -6,6 +6,7 @@ use prxvc_media::{ClauseId, Envelope, MonoTime, PcmChunk};
 use prxvc_ports::TraceStage;
 
 use super::{ClauseInfo, Core, Held};
+use crate::backlog::estimate_speech;
 use crate::fault::{FaultKind, Stage};
 use crate::pipeline::events::{ClauseAudio, PipelineEvent};
 use crate::pipeline::messages::StageFailure;
@@ -151,14 +152,20 @@ impl Core {
         self.apply_clause(clause, ClauseEventKind::PlaybackFinished);
     }
 
-    /// Audio waiting for its turn plus unsynthesised clauses, for the backlog rule.
+    /// The audio a clause will occupy, for the backlog rule: its real synthesised length once
+    /// synthesis is done, otherwise the speaking time of its target text so far (of its source
+    /// text before it is translated), and never less than what is synthesised already.
     pub(super) fn clause_audio_estimate(&self, clause: ClauseId) -> Duration {
         self.clauses.get(&clause).map_or(Duration::ZERO, |i| {
             if i.tts_done {
-                i.synthesised
-            } else {
-                i.source_len.max(i.synthesised)
+                return i.synthesised;
             }
+            let estimate = if i.target_text.trim().is_empty() {
+                estimate_speech(self.p.source, &i.source_text)
+            } else {
+                estimate_speech(self.p.target, &i.target_text)
+            };
+            estimate.max(i.synthesised)
         })
     }
 }

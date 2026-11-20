@@ -394,8 +394,12 @@ pub struct PipelineConfig {
     pub mt_context_clauses: u32,
     /// Playout jitter buffer, in milliseconds.
     pub jitter_buffer_ms: u32,
-    /// Unplayed audio per direction above which the oldest clause is skipped, in milliseconds.
+    /// Skip stale queued clauses to keep up with the speaker. Off plays everything, however late.
+    pub backlog_skipping: bool,
+    /// Queued audio per direction above which stale clauses are skipped, in milliseconds.
     pub max_backlog_ms: u32,
+    /// A queued clause is stale once its source speech ended this long ago, in milliseconds.
+    pub max_lag_ms: u32,
     /// Time between two partial recognition passes of one segment, in milliseconds (the
     /// recogniser re-decodes the growing audio of the open segment at this cadence).
     pub asr_redecode_interval_ms: u32,
@@ -428,7 +432,9 @@ impl Default for PipelineConfig {
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,
-            max_backlog_ms: 6_000,
+            backlog_skipping: true,
+            max_backlog_ms: 15_000,
+            max_lag_ms: 20_000,
             asr_redecode_interval_ms: 400,
             asr_first_decode_after_ms: 480,
             asr_stable_agreement: 4,

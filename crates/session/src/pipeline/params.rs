@@ -5,6 +5,7 @@ use std::time::Duration;
 use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 
+use crate::backlog::BacklogParams;
 use crate::commit_policy::CommitParams;
 use crate::interrupt::InterruptParams;
 use crate::output::OutputPolicy;
@@ -107,8 +108,8 @@ pub struct PipelineParams {
     pub pad: Duration,
     /// `pipeline.mt_context_clauses`: previous source/target pairs sent as context.
     pub mt_context_clauses: usize,
-    /// `pipeline.max_backlog_ms`.
-    pub max_backlog: Duration,
+    /// `pipeline.backlog_skipping`, `max_backlog_ms` and `max_lag_ms`.
+    pub backlog: BacklogParams,
     /// `pipeline.jitter_buffer_ms`. The pipeline does not read it: the
     /// playout side that consumes the audio events does. Carried so that one
     /// struct mirrors the section.
@@ -152,7 +153,7 @@ impl PipelineParams {
             min_speech: Duration::from_millis(160),
             pad: Duration::from_millis(200),
             mt_context_clauses: 4,
-            max_backlog: Duration::from_secs(6),
+            backlog: BacklogParams::default(),
             jitter_buffer: Duration::from_millis(150),
             voice,
             glossary: Vec::new(),

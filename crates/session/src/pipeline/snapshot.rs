@@ -17,7 +17,8 @@ use crate::segment_book::Activity;
 pub enum SkipReason {
     /// New speech of the same speaker arrived and the clause lagged more than the limit (D-P5).
     Stale,
-    /// The direction lagged more than `pipeline.max_backlog_ms` (3.4.3).
+    /// The direction had more than `pipeline.max_backlog_ms` queued and the clause was older than
+    /// `pipeline.max_lag_ms` (3.4.3).
     Backlog,
     /// A queue ahead of the clause was full.
     QueueFull,
@@ -49,6 +50,20 @@ pub struct ClauseSnapshot {
     pub translation: String,
     /// Set when the clause was skipped.
     pub skipped: Option<SkipReason>,
+}
+
+/// A clause that was skipped and will not be spoken, kept after it left the captions so that the
+/// listener can see what was not said.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SkippedClause {
+    /// The clause.
+    pub clause: ClauseId,
+    /// Its source text, for the captions.
+    pub source_text: String,
+    /// Why it was skipped.
+    pub reason: SkipReason,
+    /// How long after the end of its source speech it was skipped, in milliseconds.
+    pub lag_ms: u64,
 }
 
 /// The last failure of the direction.
@@ -129,8 +144,11 @@ pub struct DirectionSnapshot {
     pub clauses: Vec<ClauseSnapshot>,
     /// Counters.
     pub counters: Counters,
-    /// Audio queued for playback and not yet played, by the backlog estimate.
+    /// Audio queued for playback and not yet played: real synthesised length where known, else the
+    /// speaking time of the target text.
     pub backlog_ms: u64,
+    /// The most recent skipped clauses, oldest first, with their source text.
+    pub recent_skips: Vec<SkippedClause>,
     /// The last failure, kept after recovery.
     pub last_error: Option<ErrorSnapshot>,
 }

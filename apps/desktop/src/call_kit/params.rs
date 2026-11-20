@@ -7,7 +7,7 @@ use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 use prxvc_providers::RecognitionMode as PlannedMode;
 use prxvc_session::pipeline::{PipelineParams, RecognitionMode};
-use prxvc_session::{CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough};
+use prxvc_session::{BacklogParams, CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough};
 
 fn ms(n: u32) -> Duration {
     Duration::from_millis(u64::from(n))
@@ -102,7 +102,11 @@ pub(crate) fn pipeline_params(
     params.min_speech = ms(p.min_speech_ms);
     params.pad = ms(p.pad_ms);
     params.mt_context_clauses = p.mt_context_clauses as usize;
-    params.max_backlog = ms(p.max_backlog_ms);
+    params.backlog = BacklogParams {
+        enabled: p.backlog_skipping,
+        max_backlog: ms(p.max_backlog_ms),
+        max_lag: ms(p.max_lag_ms),
+    };
     params.jitter_buffer = ms(p.jitter_buffer_ms);
     params
 }
@@ -137,6 +141,25 @@ mod tests {
         assert_eq!(params.interrupt.max_lag, Duration::from_millis(3000));
         assert_eq!((params.source, params.target), (Lang::Zh, Lang::En));
         assert_eq!(params.jitter_buffer, Duration::from_millis(150));
+        assert_eq!(params.backlog, BacklogParams::default());
+    }
+
+    #[test]
+    fn the_backlog_keys_are_read() {
+        let mut config = AppConfig::default();
+        config.pipeline.backlog_skipping = false;
+        config.pipeline.max_backlog_ms = 9_000;
+        config.pipeline.max_lag_ms = 12_000;
+        let params = pipeline_params(
+            &config,
+            Direction::Outgoing,
+            (Lang::Zh, Lang::En),
+            voice(),
+            PlannedMode::Streaming,
+        );
+        assert!(!params.backlog.enabled);
+        assert_eq!(params.backlog.max_backlog, Duration::from_millis(9_000));
+        assert_eq!(params.backlog.max_lag, Duration::from_millis(12_000));
     }
 
     #[test]

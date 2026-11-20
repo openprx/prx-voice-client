@@ -370,7 +370,7 @@ fn a_full_translation_queue_skips_the_oldest_waiting_clause_and_reports_it() {
     let tts = FakeSpeechSynth::new(clock.clone()).with_default_script(TtsScript::chunks(1, 2400));
     let asr = asr_script(&[SRC; 11]);
     let rig = Rig::start_with_asr(&clock, utterances(11, 25), asr, mt, tts, |p| {
-        p.max_backlog = std::time::Duration::from_secs(10_000);
+        p.backlog.max_backlog = std::time::Duration::from_secs(10_000);
         p.interrupt.barge_in = false;
     });
     rig.wait_running();
