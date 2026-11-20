@@ -16,6 +16,7 @@ use std::time::Instant;
 use prxvc_audio::echo_gate::EchoGateHandle;
 use prxvc_audio::playback::AssistantPlayer;
 use prxvc_core::engine::Engine;
+use prxvc_media::{PcmChunk, SampleRate};
 use prxvc_protocol::transport::TtsAudioChunk;
 use prxvc_session::SessionState;
 
@@ -57,7 +58,14 @@ impl PlaybackDriver {
             // has started playing it.
             self.gate.with(|g| g.reply_activity(now));
             self.end_signalled = false;
-            if let Err(e) = self.player.play(chunk) {
+            let pcm = match pcm_chunk(chunk) {
+                Ok(pcm) => pcm,
+                Err(e) => {
+                    tracing::warn!("assistant audio playback failed: {e}");
+                    continue;
+                }
+            };
+            if let Err(e) = self.player.play(&pcm) {
                 tracing::warn!("assistant audio playback failed: {e}");
             }
         }
@@ -121,6 +129,19 @@ impl PlaybackDriver {
     }
 }
 
+/// Decode a transport chunk (mono PCM16 little-endian) into the playback
+/// chunk type. A dangling odd byte is ignored.
+fn pcm_chunk(chunk: &TtsAudioChunk) -> Result<PcmChunk, String> {
+    let rate = SampleRate::new(chunk.sample_rate)
+        .map_err(|_| "format mismatch: expected non-zero sample rate, got 0 Hz".to_owned())?;
+    let samples = chunk
+        .pcm16
+        .chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / i16::MAX as f32)
+        .collect();
+    Ok(PcmChunk { samples, rate })
+}
+
 /// Whether the active session plays its reply aloud.
 fn reply_is_audible(engine: &Engine) -> bool {
     engine
@@ -135,8 +156,10 @@ mod tests {
     use std::time::Duration;
 
     use prxvc_audio::echo_gate::{DEFAULT_HOLD_OFF, EchoGate, GateState};
-    use prxvc_audio::pipeline::AudioOutput;
-    use prxvc_audio::{AudioError, AudioOutputFrame, AudioState};
+    use prxvc_audio::output::OutputStats;
+    use prxvc_audio::stream_sink::StreamSink;
+    use prxvc_media::AudioFrame;
+    use prxvc_ports::{AudioSink, EndpointError, EndpointHealth, SinkInfo, WriteOutcome};
     use prxvc_core::bus::event_channel;
     use prxvc_protocol::Command;
 
@@ -149,31 +172,46 @@ mod tests {
 
     struct FakeOutput(Arc<parking_lot::Mutex<Probe>>);
 
-    impl AudioOutput for FakeOutput {
-        fn start(&mut self) -> Result<(), AudioError> {
-            Ok(())
+    impl AudioSink for FakeOutput {
+        fn start(&mut self) -> Result<SinkInfo, EndpointError> {
+            Ok(SinkInfo {
+                rate: SampleRate::HZ_48000,
+                device: "fake".to_owned(),
+            })
         }
-        fn stop(&mut self) -> Result<(), AudioError> {
-            Ok(())
-        }
-        fn write_frame(&mut self, _: &AudioOutputFrame) -> Result<(), AudioError> {
+        fn write(&mut self, frame: &AudioFrame) -> WriteOutcome {
             self.0.lock().drained = false;
-            Ok(())
+            WriteOutcome {
+                accepted: frame.len(),
+                dropped: 0,
+            }
         }
-        fn flush(&mut self) -> Result<(), AudioError> {
+        fn flush(&mut self) {
             let mut p = self.0.lock();
             p.flushes += 1;
             p.drained = true;
-            Ok(())
         }
+        fn queued(&self) -> Duration {
+            Duration::ZERO
+        }
+        fn health(&self) -> EndpointHealth {
+            EndpointHealth::default()
+        }
+        fn stop(&mut self) {}
+    }
+
+    impl StreamSink for FakeOutput {
         fn end_stream(&mut self) {
             self.0.lock().ends += 1;
         }
         fn is_drained(&self) -> bool {
             self.0.lock().drained
         }
-        fn state(&self) -> AudioState {
-            AudioState::OutputPlaying
+        fn wait_drained(&self, _timeout: Duration) -> bool {
+            self.is_drained()
+        }
+        fn stats(&self) -> OutputStats {
+            OutputStats::default()
         }
     }
 
@@ -191,7 +229,7 @@ mod tests {
         }));
         let p = Arc::clone(&probe);
         let player = AssistantPlayer::new(Box::new(move || {
-            Ok(Box::new(FakeOutput(Arc::clone(&p))) as Box<dyn AudioOutput>)
+            Ok(Box::new(FakeOutput(Arc::clone(&p))) as Box<dyn StreamSink>)
         }));
         let gate = EchoGateHandle::new(EchoGate::new(echo_control, DEFAULT_HOLD_OFF));
         let (event_tx, _rx) = event_channel(256);
@@ -323,5 +361,23 @@ mod tests {
             r.driver.gate.poll(ms(30)),
             GateState::Open { just_reopened: false }
         );
+    }
+
+    #[test]
+    fn transport_chunks_decode_to_f32_and_reject_a_zero_rate() {
+        let pcm = pcm_chunk(&TtsAudioChunk {
+            session_id: uuid::Uuid::nil(),
+            sample_rate: 24_000,
+            pcm16: vec![0xFF, 0x7F, 0x00, 0x00, 0x01],
+        })
+        .expect("valid chunk");
+        assert_eq!(pcm.rate, SampleRate::HZ_24000);
+        assert_eq!(pcm.samples, vec![1.0, 0.0], "odd trailing byte dropped");
+        let zero = TtsAudioChunk {
+            session_id: uuid::Uuid::nil(),
+            sample_rate: 0,
+            pcm16: vec![0; 4],
+        };
+        assert!(pcm_chunk(&zero).is_err());
     }
 }

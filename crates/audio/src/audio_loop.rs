@@ -198,11 +198,11 @@ fn run_audio_loop(
 
         // Read all available audio frames (non-blocking).
         let mut got_frame = false;
-        while let Some(input_frame) = mic.read_frame() {
+        while let Some(frame) = mic.read_frame() {
             // Frames captured while the assistant speaks (and shortly after)
             // are dropped; on reopening the recogniser starts afresh (the
             // gate resets it) and so do the timers.
-            match route_frame(&gate, std::time::Instant::now(), &input_frame.frame, &mut asr) {
+            match route_frame(&gate, std::time::Instant::now(), &frame, &mut asr) {
                 Routed::Dropped => continue,
                 Routed::DeliveredAfterReset => {
                     last_vad_check = std::time::Instant::now();

@@ -23,7 +23,7 @@ use crate::tap_format::{InputBuffer, MAX_BUFFERS, RawFormat, StreamLayout};
 use crate::tap_ring::{RingConsumer, RingProducer, SLOT_SAMPLES, tap_ring};
 use crate::tap_supervisor::{Supervisor, spawn_supervisor};
 use crate::tap_types::{TapConfig, TapCounters, TapError, TapEvent, TapStats, TapTarget};
-use crate::{AudioError, AudioFormat, AudioFrame};
+use crate::{AudioFormat, AudioFrame};
 
 /// Slots in the ring between the IO thread and the consumer: about 1.5 s of
 /// 512-frame callbacks at 48 kHz.
@@ -478,22 +478,37 @@ pub fn frame_peak_amplitude(frame: &AudioFrame) -> f32 {
 pub type SharedTap = Arc<CoreAudioTap>;
 
 // ---------------------------------------------------------------------------
-// AppAudioSource implementation
+// AudioSource implementation
 // ---------------------------------------------------------------------------
 
-use crate::AudioState;
-use crate::routing::{AppAudioSource, ProcessFilter};
+use std::time::Instant;
 
-/// macOS [`AppAudioSource`] backed by a Core Audio process tap.
+use prxvc_media::{AudioFrame as MediaFrame, MonoTime, SampleRate, SystemClock};
+use prxvc_ports::{AudioSource, EndpointError, EndpointHealth, SourceInfo};
+
+use crate::resample::downmix_to_mono;
+use crate::routing::ProcessFilter;
+
+/// The rate reported by [`AudioSource::start`] before the first frame: the
+/// tap's native rate is 48 kHz on current hardware. Each frame carries the
+/// rate it was really captured at.
+const NOMINAL_RATE: SampleRate = SampleRate::HZ_48000;
+
+/// macOS [`AudioSource`] backed by a Core Audio process tap.
 ///
-/// Lazily starts the tap on [`start`](AppAudioSource::start) using the configured
-/// [`TapConfig`], delivers native-format frames via
-/// [`try_recv`](AppAudioSource::try_recv), and tears the tap down on
-/// [`stop`](AppAudioSource::stop) or drop.
+/// Lazily starts the tap on [`start`](AudioSource::start) using the configured
+/// [`TapConfig`], delivers frames downmixed to mono at the tap's native rate via
+/// [`read`](AudioSource::read), and tears the tap down on
+/// [`stop`](AudioSource::stop) or drop. Frames are stamped when they are read
+/// from the ring (the tap does not yet pass the host time through).
 pub struct CoreAudioTapSource {
     config: TapConfig,
     inner: Option<(CoreAudioTap, TapReceiver)>,
-    state: AudioState,
+    clock: SystemClock,
+    sequence: u64,
+    overruns_seen: u64,
+    frames: u64,
+    last_error: Option<String>,
 }
 
 impl CoreAudioTapSource {
@@ -508,7 +523,15 @@ impl CoreAudioTapSource {
 
     /// Create a source with an explicit tap configuration (target and mute mode).
     pub fn with_config(config: TapConfig) -> Self {
-        Self { config, inner: None, state: AudioState::InputClosed }
+        Self {
+            config,
+            inner: None,
+            clock: SystemClock::new(),
+            sequence: 0,
+            overruns_seen: 0,
+            frames: 0,
+            last_error: None,
+        }
     }
 
     /// Health events of the running tap, if any.
@@ -520,33 +543,81 @@ impl CoreAudioTapSource {
     pub fn stats(&self) -> Option<TapStats> {
         self.inner.as_ref().map(|(tap, _)| tap.stats())
     }
+
+    /// Downmix a tap frame to a mono media frame stamped now.
+    fn frame_to_media(&mut self, frame: &AudioFrame, gap: bool) -> Result<MediaFrame, EndpointError> {
+        let mono = downmix_to_mono(frame).map_err(|e| EndpointError::Internal(e.to_string()))?;
+        let rate = SampleRate::new(frame.sample_rate)
+            .map_err(|e| EndpointError::Internal(e.to_string()))?;
+        let ts: MonoTime = prxvc_media::Clock::now(&self.clock);
+        let media = MediaFrame::new(mono, rate, ts, self.sequence)
+            .map_err(|e| EndpointError::Internal(e.to_string()))?;
+        self.sequence += 1;
+        Ok(media.with_discontinuity(gap))
+    }
 }
 
-impl AppAudioSource for CoreAudioTapSource {
-    fn start(&mut self) -> Result<(), AudioError> {
+impl AudioSource for CoreAudioTapSource {
+    fn start(&mut self) -> Result<SourceInfo, EndpointError> {
         if self.inner.is_some() {
-            return Err(AudioError::InvalidStateTransition {
-                from: self.state.to_string(),
-                to: AudioState::InputStreaming.to_string(),
-            });
+            return Err(EndpointError::Internal("tap is already started".to_owned()));
         }
-        self.inner = Some(CoreAudioTap::start(self.config.clone())?);
-        self.state = AudioState::InputStreaming;
-        Ok(())
+        match CoreAudioTap::start(self.config.clone()) {
+            Ok(inner) => {
+                self.inner = Some(inner);
+                self.sequence = 0;
+                self.overruns_seen = 0;
+                self.last_error = None;
+                Ok(SourceInfo { rate: NOMINAL_RATE, device: "process tap".to_owned() })
+            }
+            Err(e) => {
+                let e = EndpointError::Unavailable { reason: e.to_string() };
+                self.last_error = Some(e.to_string());
+                Err(e)
+            }
+        }
     }
 
-    fn stop(&mut self) -> Result<(), AudioError> {
+    fn read(&mut self, out: &mut Vec<MediaFrame>, max_wait: Duration) -> Result<(), EndpointError> {
+        let deadline = Instant::now() + max_wait;
+        loop {
+            let Some((tap, rx)) = self.inner.as_mut() else {
+                return Err(EndpointError::NotStarted);
+            };
+            let overruns = tap.stats().overrun_slots;
+            let mut gap = overruns != self.overruns_seen;
+            self.overruns_seen = overruns;
+            let mut taken = 0;
+            let mut raw = Vec::new();
+            while let Some(frame) = rx.try_recv() {
+                raw.push(frame);
+            }
+            for frame in &raw {
+                let media = self.frame_to_media(frame, std::mem::take(&mut gap))?;
+                out.push(media);
+                taken += 1;
+            }
+            self.frames += taken;
+            if taken > 0 || Instant::now() >= deadline {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(2).min(deadline - Instant::now()));
+        }
+    }
+
+    fn health(&self) -> EndpointHealth {
+        let stats = self.stats();
+        EndpointHealth {
+            running: self.inner.is_some(),
+            frames: self.frames,
+            dropped_samples: stats.map_or(0, |s| s.overrun_frames),
+            underruns: 0,
+            last_error: self.last_error.clone(),
+        }
+    }
+
+    fn stop(&mut self) {
         // Dropping the CoreAudioTap stops the native tap.
         self.inner = None;
-        self.state = AudioState::InputClosed;
-        Ok(())
-    }
-
-    fn try_recv(&mut self) -> Option<AudioFrame> {
-        self.inner.as_mut().and_then(|(_, rx)| rx.try_recv())
-    }
-
-    fn state(&self) -> AudioState {
-        self.state
     }
 }

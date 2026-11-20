@@ -1,54 +1,10 @@
-use crate::output::OutputStats;
-use crate::{AudioError, AudioFrame, AudioInputFrame, AudioOutputFrame, AudioState, VadDecision};
+//! Audio pipeline state machine (input and output states, frame counter) and the voice-activity processor trait.
+
+use crate::{AudioError, AudioFrame, AudioState, VadDecision};
 
 // ---------------------------------------------------------------------------
 // Traits
 // ---------------------------------------------------------------------------
-
-/// Audio input source trait for capturing audio from a device or stream.
-pub trait AudioInput: Send {
-    /// Start capturing audio.
-    fn start(&mut self) -> Result<(), AudioError>;
-    /// Stop capturing audio.
-    fn stop(&mut self) -> Result<(), AudioError>;
-    /// Read the next input frame (blocks until available or returns `None` on timeout).
-    fn read_frame(&mut self) -> Result<Option<AudioInputFrame>, AudioError>;
-    /// Current state of the input.
-    fn state(&self) -> AudioState;
-}
-
-/// Audio output sink trait for playing audio to a device or stream.
-pub trait AudioOutput: Send {
-    /// Start playback.
-    fn start(&mut self) -> Result<(), AudioError>;
-    /// Stop playback.
-    fn stop(&mut self) -> Result<(), AudioError>;
-    /// Write an output frame for playback.
-    fn write_frame(&mut self, frame: &AudioOutputFrame) -> Result<(), AudioError>;
-    /// Discard audio that has been written but not yet played.
-    fn flush(&mut self) -> Result<(), AudioError> {
-        Ok(())
-    }
-    /// Tell the output that the current stream has no more audio for now, so
-    /// that running dry is a normal end and not counted as an underrun.
-    fn end_stream(&mut self) {}
-    /// Whether everything written has been played (nothing is queued).
-    fn is_drained(&self) -> bool {
-        true
-    }
-    /// Block until [`is_drained`](Self::is_drained) or `timeout` passes.
-    /// Returns whether the output is drained.
-    fn wait_drained(&self, timeout: std::time::Duration) -> bool {
-        let _ = timeout;
-        self.is_drained()
-    }
-    /// Underrun / overrun counters.
-    fn stats(&self) -> OutputStats {
-        OutputStats::default()
-    }
-    /// Current state of the output.
-    fn state(&self) -> AudioState;
-}
 
 /// Voice-activity detection processor trait.
 pub trait VadProcessor: Send {

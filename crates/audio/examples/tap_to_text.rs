@@ -1,7 +1,7 @@
 //! End-to-end capture → 16 kHz → ASR probe.
 //!
 //! Wires the full "other party → text" path:
-//!   CoreAudioTapSource → MonoResampler16k → WhisperAsr (English) → printed text
+//!   CoreAudioTapSource → MonoResampler (16 kHz) → WhisperAsr (English) → printed text
 //!
 //! Requires the `whisper` feature (on by default) and model files:
 //!   export PRXVC_WHISPER_MODEL=/path/to/ggml-small.bin
@@ -18,9 +18,10 @@ fn main() {
     use std::time::{Duration, Instant};
 
     use prxvc_audio::core_audio_tap::CoreAudioTapSource;
-    use prxvc_audio::resample::MonoResampler16k;
-    use prxvc_audio::routing::{AppAudioSource, ProcessFilter};
+    use prxvc_audio::resample::{ASR_SAMPLE_RATE, MonoResampler};
+    use prxvc_audio::routing::ProcessFilter;
     use prxvc_audio::whisper_asr::{WhisperAsr, WhisperAsrConfig};
+    use prxvc_ports::AudioSource;
 
     let mut args = std::env::args().skip(1);
     let pid: i32 = match args.next().and_then(|s| s.parse().ok()) {
@@ -61,19 +62,25 @@ fn main() {
     }
     println!("[tap_to_text] capturing pid {pid} for {secs}s, ASR lang='{lang}' ...");
 
-    let mut resampler: Option<MonoResampler16k> = None;
+    let mut resampler: Option<MonoResampler> = None;
+    let mut batch = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(secs);
     let mut last_flush = Instant::now();
     let flush_every = Duration::from_millis(2000); // consecutive-style chunking
 
     while Instant::now() < deadline {
         // Drain all currently available captured frames.
-        while let Some(frame) = source.try_recv() {
+        batch.clear();
+        if let Err(e) = source.read(&mut batch, Duration::from_millis(20)) {
+            eprintln!("[tap_to_text] capture error: {e}");
+            std::process::exit(1);
+        }
+        for frame in &batch {
             // Build the resampler from the first frame's native rate.
             if resampler.is_none() {
-                match MonoResampler16k::new(frame.sample_rate) {
+                match MonoResampler::new(frame.rate().hz(), ASR_SAMPLE_RATE) {
                     Ok(r) => {
-                        println!("[tap_to_text] source {}Hz/{}ch → 16k mono", frame.sample_rate, frame.channels);
+                        println!("[tap_to_text] source {} mono → 16k mono", frame.rate());
                         resampler = Some(r);
                     }
                     Err(e) => {
@@ -83,7 +90,7 @@ fn main() {
                 }
             }
             if let Some(conv) = resampler.as_mut() {
-                match conv.push_frame(&frame) {
+                match conv.push_samples(frame.samples()) {
                     Ok(samples) => asr.push_samples(&samples),
                     Err(e) => eprintln!("[tap_to_text] convert error: {e}"),
                 }
@@ -107,7 +114,7 @@ fn main() {
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    let _ = source.stop();
+    source.stop();
     println!("[tap_to_text] done.");
 }
 

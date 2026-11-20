@@ -7,13 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-prxvc-core = { workspace = true }
-prxvc-session = { workspace = true }
-prxvc-protocol = { workspace = true }
-prxvc-config = { workspace = true }
 prxvc-i18n = { workspace = true }
 egui = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
 

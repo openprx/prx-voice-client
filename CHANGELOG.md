@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `prxvc-audio` capture and playback no longer lock or allocate on the device
+  callbacks: the microphone callback writes into a preallocated lock-free ring and
+  the output callback drains a lock-free playback ring. Both endpoints implement
+  the `AudioSource` and `AudioSink` ports with `prxvc-media` frames; the old
+  `AudioInput`, `AudioOutput`, `AppAudioSource` and `VirtualMicSink` traits are gone.
+  A test fails when real-time code (`*_rt.rs`) uses a lock, an allocation, logging or
+  a channel send.
+
 ### Added
 - macOS application bundle `PRX Voice.app` (`scripts/package-macos.sh`,
   `scripts/run-app.sh`, `packaging/macos/`): bundle identifier
