@@ -205,6 +205,14 @@ fn is_final_mark(c: char) -> bool {
     SENTENCE_FINAL.contains(&c)
 }
 
+/// The byte offset just after the last sentence-final mark of `text`, if it has one.
+pub(crate) fn last_sentence_end(text: &str) -> Option<usize> {
+    text.char_indices()
+        .filter(|(_, c)| is_final_mark(*c))
+        .map(|(at, c)| at + c.len_utf8())
+        .next_back()
+}
+
 fn ends_sentence(text: &str) -> bool {
     text.trim_end()
         .chars()

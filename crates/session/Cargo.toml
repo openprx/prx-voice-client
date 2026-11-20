@@ -15,6 +15,12 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
+# Lock and condition variable of the bounded stage queues (cannot be poisoned).
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+# Scriptable fakes of every port (CS-5): the pipeline tests run on them.
+prxvc-ports = { workspace = true, features = ["fakes"] }
 
 [lints]
 workspace = true

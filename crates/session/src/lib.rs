@@ -21,11 +21,15 @@
 //! * `commit_policy`: when text commits to a clause and to synthesis.
 //! * `interrupt`: what an interruption cancels (D-P5).
 //! * `backlog`: which queued clauses are skipped when a direction lags (3.4.3).
+//!
+//! The direction pipeline that runs these machines on threads is the module
+//! `pipeline`.
 //! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
 
 pub mod adapter;
 pub mod driver;
 pub mod interpret;
+pub mod pipeline;
 
 mod backlog;
 mod call_state;
