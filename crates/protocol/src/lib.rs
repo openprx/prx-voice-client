@@ -235,7 +235,7 @@ pub enum Event {
 pub mod prelude {
     pub use crate::mock::MockGateway;
     pub use crate::prx_voice_transport::{PrxVoiceConfig, PrxVoiceTransport};
-    pub use crate::transport::{Transport, TransportError, TransportState};
+    pub use crate::transport::{Transport, TransportError, TransportState, TtsAudioChunk};
     pub use crate::ws_transport::WsTransport;
     pub use crate::{Command, ContractVersion, DeviceInfo, DeviceKind, ErrorCode, Event};
 }

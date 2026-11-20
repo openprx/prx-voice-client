@@ -16,6 +16,29 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::AudioError;
+use crate::echo_gate::MicSink;
+use crate::vad_window::{IncrementalVad, SpeechSegment, VAD_SAMPLE_RATE, VadBackend};
+
+/// Audio before the unexamined region that each VAD pass resubmits. Covers
+/// the silence window and padding so a segment that started earlier is seen
+/// continuing.
+const VAD_CONTEXT_MS: u32 = 1_000;
+
+/// The Whisper VAD as a whole-buffer [`VadBackend`].
+struct WhisperVadBackend<'a> {
+    vad: &'a mut whisper_cpp_plus::WhisperVadProcessor,
+    params: &'a whisper_cpp_plus::VadParams,
+}
+
+impl VadBackend for WhisperVadBackend<'_> {
+    fn segments(&mut self, samples: &[f32]) -> Result<Vec<(f32, f32)>, AudioError> {
+        let segments = self
+            .vad
+            .segments_from_samples(samples, self.params)
+            .map_err(|e| AudioError::InitializationFailed(format!("VAD failed: {e}")))?;
+        Ok(segments.get_all_segments())
+    }
+}
 
 /// Result of a local ASR transcription.
 #[derive(Debug, Clone)]
@@ -72,6 +95,8 @@ pub struct WhisperAsr {
     n_threads: i32,
     /// Accumulated PCM f32 samples at 16 kHz mono.
     audio_buffer: Vec<f32>,
+    /// Carries VAD segments across passes so each pass only looks at new audio.
+    vad_state: IncrementalVad,
 }
 
 impl WhisperAsr {
@@ -120,6 +145,7 @@ impl WhisperAsr {
             language: config.language.clone(),
             n_threads: config.n_threads,
             audio_buffer: Vec::new(),
+            vad_state: IncrementalVad::new(VAD_CONTEXT_MS, config.min_silence_duration_ms.max(0) as u32),
         })
     }
 
@@ -225,32 +251,33 @@ impl WhisperAsr {
         false
     }
 
-    /// Run VAD on the buffered audio, then transcribe detected speech segments.
-    ///
-    /// Returns recognized text segments. Returns an empty vec if no speech
-    /// was detected or the buffer is too short.
-    pub fn detect_and_transcribe(&mut self) -> Result<Vec<AsrSegment>, AudioError> {
+    /// Samples currently buffered (16 kHz).
+    pub fn buffered_samples(&self) -> usize {
+        self.audio_buffer.len()
+    }
+
+    /// Run the VAD over the audio not yet examined and return all speech
+    /// segments of the buffer, in samples. Does not transcribe.
+    pub fn speech_segments(&mut self) -> Result<Vec<SpeechSegment>, AudioError> {
         if self.audio_buffer.len() < 1600 {
             // Less than 100ms — not enough audio.
             return Ok(Vec::new());
         }
+        // Earlier passes' segments are carried over; only new audio (plus a
+        // short context) goes to the VAD.
+        let mut backend = WhisperVadBackend {
+            vad: &mut self.vad,
+            params: &self.vad_params,
+        };
+        Ok(self.vad_state.examine(&mut backend, &self.audio_buffer)?.to_vec())
+    }
 
-        // Run VAD to find speech segments.
-        let vad_segments = self
-            .vad
-            .segments_from_samples(&self.audio_buffer, &self.vad_params)
-            .map_err(|e| AudioError::InitializationFailed(format!("VAD failed: {e}")))?;
-
-        let segment_ranges = vad_segments.get_all_segments();
-        if segment_ranges.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // Extract speech audio from VAD segments.
-        let speech_chunks = vad_segments.extract_audio_segments(&self.audio_buffer, 16000.0);
-
+    /// Transcribe the given segments of the buffer.
+    pub fn transcribe_segments(&self, segment_ranges: &[SpeechSegment]) -> Vec<AsrSegment> {
         let mut results = Vec::new();
-        for (i, chunk) in speech_chunks.iter().enumerate() {
+        for (i, &(start, end)) in segment_ranges.iter().enumerate() {
+            let len = self.audio_buffer.len();
+            let chunk = &self.audio_buffer[start.min(len)..end.min(len)];
             if chunk.len() < 1600 {
                 continue; // Skip very short segments.
             }
@@ -265,11 +292,10 @@ impl WhisperAsr {
                 Ok(result) => {
                     let text = result.text.trim().to_string();
                     if !text.is_empty() && !Self::is_hallucination(&text) {
-                        let (start, end) = segment_ranges[i];
                         results.push(AsrSegment {
                             text,
-                            start_ms: (start * 1000.0) as i64,
-                            end_ms: (end * 1000.0) as i64,
+                            start_ms: (start * 1000 / VAD_SAMPLE_RATE) as i64,
+                            end_ms: (end * 1000 / VAD_SAMPLE_RATE) as i64,
                         });
                     }
                 }
@@ -278,8 +304,16 @@ impl WhisperAsr {
                 }
             }
         }
+        results
+    }
 
-        Ok(results)
+    /// Run VAD on the buffered audio, then transcribe detected speech segments.
+    ///
+    /// Returns recognized text segments. Returns an empty vec if no speech
+    /// was detected or the buffer is too short.
+    pub fn detect_and_transcribe(&mut self) -> Result<Vec<AsrSegment>, AudioError> {
+        let ranges = self.speech_segments()?;
+        Ok(self.transcribe_segments(&ranges))
     }
 
     /// Transcribe all buffered audio without VAD (forced transcription).
@@ -308,11 +342,21 @@ impl WhisperAsr {
     /// Clear the audio buffer for the next turn.
     pub fn reset(&mut self) {
         self.audio_buffer.clear();
+        self.vad_state.reset();
     }
 
     /// Get a clone of the WhisperContext (for concurrent use).
     pub fn context(&self) -> Arc<whisper_cpp_plus::WhisperContext> {
         Arc::clone(&self.ctx)
+    }
+}
+
+impl MicSink for WhisperAsr {
+    fn push_frame(&mut self, frame: &crate::AudioFrame) {
+        WhisperAsr::push_frame(self, frame);
+    }
+    fn reset(&mut self) {
+        WhisperAsr::reset(self);
     }
 }
 

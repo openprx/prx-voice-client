@@ -68,6 +68,8 @@ pub struct UiSnapshot {
     pub network_status: NetworkStatus,
     /// Reconnect attempt count.
     pub reconnect_attempts: u32,
+    /// The microphone is paused while the assistant speaks (echo gate closed).
+    pub mic_paused: bool,
 }
 
 /// Interior state guarded by the mutex.
@@ -99,6 +101,8 @@ struct SharedStateInner {
     network_status: NetworkStatus,
     /// Reconnect attempt count.
     reconnect_attempts: u32,
+    /// The microphone is paused while the assistant speaks (echo gate closed).
+    mic_paused: bool,
 }
 
 /// Thread-safe shared state between the UI and async runtime.
@@ -127,6 +131,7 @@ impl SharedAppState {
                 error_recoverable: false,
                 network_status: NetworkStatus::default(),
                 reconnect_attempts: 0,
+                mic_paused: false,
             })),
         }
     }
@@ -186,6 +191,20 @@ impl SharedAppState {
         inner.transcript_lines.push(line);
     }
 
+    /// Replace the text of the latest user line (a turn extended by a
+    /// continuation); appends a user line when there is none.
+    pub fn replace_last_user_line(&self, text: String) {
+        let mut inner = self.inner.lock();
+        match inner.transcript_lines.iter_mut().rev().find(|l| l.role == "user") {
+            Some(line) => line.text = text,
+            None => inner.transcript_lines.push(TranscriptLine {
+                role: "user".into(),
+                text,
+                is_final: true,
+            }),
+        }
+    }
+
     /// Clear all transcript lines (e.g. when a session ends).
     pub fn clear_transcript(&self) {
         let mut inner = self.inner.lock();
@@ -224,6 +243,11 @@ impl SharedAppState {
         inner.reconnect_attempts = count;
     }
 
+    /// Record whether the microphone is paused by the echo gate.
+    pub fn set_mic_paused(&self, paused: bool) {
+        self.inner.lock().mic_paused = paused;
+    }
+
     /// Produce a read-only snapshot of all display-relevant state.
     ///
     /// The lock is held only for the duration of the clone, keeping the
@@ -260,6 +284,7 @@ impl SharedAppState {
             error_recoverable: inner.error_recoverable,
             network_status: inner.network_status.clone(),
             reconnect_attempts: inner.reconnect_attempts,
+            mic_paused: inner.mic_paused,
         }
     }
 }

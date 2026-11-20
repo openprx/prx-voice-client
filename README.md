@@ -110,4 +110,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ## License
 
-[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE)
+[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE). The bundled fonts (Hanken Grotesk, JetBrains Mono, Noto Sans SC) are licensed under the SIL Open Font License 1.1; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

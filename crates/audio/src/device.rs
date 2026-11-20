@@ -110,3 +110,30 @@ mod tests {
         let _output = default_output_device_name();
     }
 }
+
+/// Find an output device by name.
+///
+/// `name` may be a bare device name, a name fragment, or an id as produced by
+/// [`list_audio_devices`] (`"output:<name>"`). An exact name match wins over a
+/// substring match, and the match is case-sensitive.
+///
+/// # Errors
+/// [`AudioError::OutputDeviceUnavailable`] if no output device matches.
+pub fn find_output_device(name: &str) -> Result<cpal::Device, AudioError> {
+    let wanted = name.strip_prefix("output:").unwrap_or(name);
+    let host = cpal::default_host();
+    let devices = host
+        .output_devices()
+        .map_err(|e| AudioError::InitializationFailed(format!("enumerate outputs: {e}")))?;
+    let mut partial = None;
+    for device in devices {
+        let Ok(device_name) = device.name() else { continue };
+        if device_name == wanted {
+            return Ok(device);
+        }
+        if partial.is_none() && device_name.contains(wanted) {
+            partial = Some(device);
+        }
+    }
+    partial.ok_or(AudioError::OutputDeviceUnavailable)
+}

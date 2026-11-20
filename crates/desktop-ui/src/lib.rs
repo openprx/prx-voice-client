@@ -4,65 +4,40 @@
 //! - Left sidebar (narrow, ~200px) — navigation + status
 //! - Central stage (fills remaining space) — the ORB + state label + transcript
 //! - Right panel (slides in) — settings or history
+//!
+//! The look follows the RF design standard: see [`theme`] for the tokens and
+//! the egui style built from them, and [`widgets`] for the custom widgets.
 
+pub mod fonts;
+pub mod settings_view;
 pub mod shared;
+pub mod theme;
+pub mod tool_window;
+pub mod widgets;
 
 pub use shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
+pub use theme::{Scheme, Tokens};
 
-use egui::Color32;
-
-// ---------------------------------------------------------------------------
-// Color system (warm palette)
-// ---------------------------------------------------------------------------
-
-/// Orb colors mapped to session states.
-#[allow(dead_code)]
-struct OrbColors {
-    /// Purple for idle / default state.
-    idle: Color32,
-    /// Teal for listening / user speaking.
-    listening: Color32,
-    /// Amber for thinking / recognizing.
-    thinking: Color32,
-    /// Coral for assistant speaking.
-    speaking: Color32,
-}
-
-#[allow(dead_code)]
-const COLORS: OrbColors = OrbColors {
-    idle: Color32::from_rgb(167, 139, 250),
-    listening: Color32::from_rgb(94, 234, 212),
-    thinking: Color32::from_rgb(251, 191, 36),
-    speaking: Color32::from_rgb(248, 113, 113),
-};
-
-/// Deep background color for the central stage (kept for backward compat).
-#[allow(dead_code)]
-const BG_DEEP: Color32 = Color32::from_rgb(15, 14, 19);
-/// Warm background for sidebar and panels (kept for backward compat).
-#[allow(dead_code)]
-const BG_WARM: Color32 = Color32::from_rgb(19, 17, 26);
-/// Surface background for widgets (kept for backward compat).
-#[allow(dead_code)]
-const BG_SURFACE: Color32 = Color32::from_rgb(26, 23, 35);
-/// Elevated surface for active/hover elements.
-const BG_ELEVATED: Color32 = Color32::from_rgb(34, 30, 46);
-/// Primary text color (light lavender).
-const TEXT_PRIMARY: Color32 = Color32::from_rgb(237, 233, 246);
-/// Softer text color for secondary content.
-const TEXT_SOFT: Color32 = Color32::from_rgb(168, 158, 194);
-/// Dim text color for hints and labels.
-const TEXT_DIM: Color32 = Color32::from_rgb(88, 79, 110);
+use egui::{Color32, CornerRadius, FontId, StrokeKind};
+use tool_window::ToolKind;
+use theme::{hairline, layout, mix, radius, size, space};
+use widgets::{ButtonKind, Tone};
 
 // ---------------------------------------------------------------------------
 // Theme system
 // ---------------------------------------------------------------------------
 
 /// Color theme for the UI.
+///
+/// The RF theme ([`Theme::rf`]) is the default. Its colours come from the
+/// design tokens in [`theme`] and follow the system light/dark preference;
+/// the other built-in themes are dark colour variants that stay selectable.
 #[derive(Debug, Clone)]
 pub struct Theme {
     /// Human-readable theme name.
     pub name: &'static str,
+    /// Colour scheme in effect (always dark for the legacy colour themes).
+    pub scheme: Scheme,
     /// Deep background color.
     pub bg_warm: Color32,
     /// Elevated surface color for cards and panels.
@@ -86,10 +61,84 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Midnight Purple (default warm theme).
+    /// The RF theme (default) in the given scheme.
+    ///
+    /// The orb uses the standard's own colours: `primary` when idle, the
+    /// semantic `success` when listening, `warning` when thinking and the
+    /// first chart colour when speaking.
+    pub fn rf(scheme: Scheme) -> Self {
+        let tk = scheme.tokens();
+        Self {
+            name: theme::RF_THEME_NAME,
+            scheme,
+            bg_warm: tk.bg,
+            bg_elevated: tk.surface_white,
+            text_primary: tk.text,
+            text_soft: tk.secondary,
+            text_dim: tk.secondary,
+            accent: tk.primary,
+            orb_idle: tk.primary,
+            orb_listening: tk.success,
+            orb_thinking: tk.warning,
+            orb_speaking: tk.chart_1,
+        }
+    }
+
+    /// Whether this is the RF theme.
+    pub fn is_rf(&self) -> bool {
+        self.name == theme::RF_THEME_NAME
+    }
+
+    /// The design tokens this theme paints with.
+    ///
+    /// For the RF theme these are the standard's tokens of [`Self::scheme`];
+    /// the legacy colour themes derive an approximate token set from their
+    /// own colours so the same widgets work on every theme.
+    pub fn tokens(&self) -> Tokens {
+        if self.is_rf() {
+            self.scheme.tokens()
+        } else {
+            self.legacy_tokens()
+        }
+    }
+
+    fn legacy_tokens(&self) -> Tokens {
+        let mut tk = theme::DARK;
+        let (bg, raised, text) = (self.bg_warm, self.bg_elevated, self.text_primary);
+        tk.bg = bg;
+        tk.nav = mix(bg, Color32::BLACK, 0.25);
+        tk.rail = mix(bg, Color32::BLACK, 0.45);
+        tk.surface = raised;
+        tk.surface_white = raised;
+        tk.overlay = raised;
+        tk.input = bg;
+        tk.selected = mix(raised, text, 0.08);
+        tk.overlay_border = mix(raised, text, 0.12);
+        tk.line = mix(raised, text, 0.12);
+        tk.line_strong = mix(raised, text, 0.22);
+        tk.input_border = self.text_dim;
+        tk.control = self.text_dim;
+        tk.text = text;
+        tk.secondary = self.text_soft;
+        tk.primary = self.accent;
+        tk.on_primary = bg;
+        tk.focus = self.accent;
+        tk.success = self.orb_listening;
+        tk.success_bg = mix(raised, self.orb_listening, 0.15);
+        tk.warning = self.orb_thinking;
+        tk.warning_bg = mix(raised, self.orb_thinking, 0.15);
+        tk.danger = self.orb_speaking;
+        tk.danger_bg = mix(raised, self.orb_speaking, 0.15);
+        tk.on_danger = bg;
+        tk.chart_1 = self.orb_idle;
+        tk
+    }
+
+    /// Midnight Purple (formerly the default theme).
     pub fn midnight() -> Self {
         Self {
             name: "Midnight",
+            scheme: Scheme::Dark,
             bg_warm: Color32::from_rgb(19, 17, 26),
             bg_elevated: Color32::from_rgb(34, 30, 46),
             text_primary: Color32::from_rgb(237, 233, 246),
@@ -107,6 +156,7 @@ impl Theme {
     pub fn ocean() -> Self {
         Self {
             name: "Ocean",
+            scheme: Scheme::Dark,
             bg_warm: Color32::from_rgb(13, 17, 28),
             bg_elevated: Color32::from_rgb(22, 30, 48),
             text_primary: Color32::from_rgb(220, 233, 250),
@@ -124,6 +174,7 @@ impl Theme {
     pub fn rose() -> Self {
         Self {
             name: "Rose",
+            scheme: Scheme::Dark,
             bg_warm: Color32::from_rgb(24, 16, 20),
             bg_elevated: Color32::from_rgb(42, 28, 35),
             text_primary: Color32::from_rgb(248, 232, 238),
@@ -141,6 +192,7 @@ impl Theme {
     pub fn forest() -> Self {
         Self {
             name: "Forest",
+            scheme: Scheme::Dark,
             bg_warm: Color32::from_rgb(12, 20, 16),
             bg_elevated: Color32::from_rgb(24, 38, 30),
             text_primary: Color32::from_rgb(220, 243, 230),
@@ -158,6 +210,7 @@ impl Theme {
     pub fn ember() -> Self {
         Self {
             name: "Ember",
+            scheme: Scheme::Dark,
             bg_warm: Color32::from_rgb(22, 16, 10),
             bg_elevated: Color32::from_rgb(40, 30, 20),
             text_primary: Color32::from_rgb(250, 240, 225),
@@ -171,9 +224,10 @@ impl Theme {
         }
     }
 
-    /// All available built-in themes.
+    /// All available built-in themes. The RF theme comes first.
     pub fn all() -> Vec<Theme> {
         vec![
+            Self::rf(Scheme::Light),
             Self::midnight(),
             Self::ocean(),
             Self::rose(),
@@ -184,8 +238,10 @@ impl Theme {
 }
 
 impl Default for Theme {
+    /// The RF theme. Its scheme is resolved against the system preference on
+    /// the first rendered frame.
     fn default() -> Self {
-        Self::midnight()
+        Self::rf(Scheme::Light)
     }
 }
 
@@ -359,16 +415,14 @@ pub struct DesktopUiState {
     pub network_status: NetworkStatus,
     /// Number of reconnect attempts so far.
     pub reconnect_attempts: u32,
+    /// The microphone is paused while the assistant speaks (echo gate closed).
+    pub mic_paused: bool,
     /// Optional status bar message.
     pub status_message: Option<String>,
     /// Internal animation time tracker.
     anim_time: f64,
-    /// Whether the settings popup window is open (frameless mode).
-    pub show_settings_window: bool,
-    /// Whether the history popup window is open (frameless mode).
-    pub show_history_window: bool,
-    /// Whether the debug popup window is open (frameless mode).
-    pub show_debug_window: bool,
+    /// The settings, history and debug windows (native windows of their own).
+    pub windows: tool_window::ToolWindows,
     /// Current color theme.
     pub theme: Theme,
     /// Pending theme name to apply (set by settings, consumed by app loop).
@@ -395,12 +449,11 @@ impl DesktopUiState {
             error_message: None,
             error_recoverable: false,
             network_status: NetworkStatus::default(),
+            mic_paused: false,
             reconnect_attempts: 0,
             status_message: None,
             anim_time: 0.0,
-            show_settings_window: false,
-            show_history_window: false,
-            show_debug_window: false,
+            windows: tool_window::ToolWindows::default(),
             theme: Theme::default(),
             pending_theme: None,
         }
@@ -456,6 +509,7 @@ impl DesktopUiState {
         self.error_recoverable = snap.error_recoverable;
         self.network_status = snap.network_status;
         self.reconnect_attempts = snap.reconnect_attempts;
+        self.mic_paused = snap.mic_paused;
     }
 
     /// Flush any pending UI commands into the shared state for the runtime.
@@ -475,6 +529,7 @@ impl Default for DesktopUiState {
     }
 }
 
+
 // ---------------------------------------------------------------------------
 // Orb rendering
 // ---------------------------------------------------------------------------
@@ -487,29 +542,9 @@ pub fn render_orb(ui: &mut egui::Ui, state: &DesktopUiState, time: f64) -> egui:
     let available = ui.available_size();
     let center = egui::pos2(available.x / 2.0, available.y * 0.4);
     let base_radius: f32 = 80.0;
+    let tk = state.theme.tokens();
 
-    // Calculate breathing/pulsing based on state
-    let (orb_color, scale_anim) = match state.session_state.as_str() {
-        "Listening" | "UserSpeaking" => {
-            let s = 1.0 + 0.06 * (time * 2.5).sin() as f32;
-            (COLORS.listening, s)
-        }
-        "Recognizing" | "Thinking" => {
-            let s = 1.0
-                + 0.03 * (time * 1.5).sin() as f32
-                + 0.02 * (time * 2.3).cos() as f32;
-            (COLORS.thinking, s)
-        }
-        "AssistantSpeaking" => {
-            let s = 1.0 + 0.08 * (time * 4.0).sin() as f32;
-            (COLORS.speaking, s)
-        }
-        _ => {
-            let s = 1.0 + 0.03 * (time * 1.0).sin() as f32;
-            (COLORS.idle, s)
-        }
-    };
-
+    let (orb_color, scale_anim) = orb_animation(state, time);
     let radius = base_radius * scale_anim;
 
     // Allocate the clickable area first (requires &mut ui), then paint over it.
@@ -517,78 +552,80 @@ pub fn render_orb(ui: &mut egui::Ui, state: &DesktopUiState, time: f64) -> egui:
     let response = ui.allocate_rect(orb_rect, egui::Sense::click());
 
     let painter = ui.painter();
+    paint_orb(painter, &tk, center, radius, orb_color, time, response.hovered());
+    response
+}
 
-    // Outer glow (large, soft)
-    let glow_color =
-        Color32::from_rgba_premultiplied(orb_color.r(), orb_color.g(), orb_color.b(), 15);
-    painter.circle_filled(center, radius * 2.5, glow_color);
+/// Paint the orb: glow, two breathing rings, body, shimmer and hover ring.
+///
+/// Rings, shimmer and hover ring use the `text` token with a low alpha so
+/// they read on both schemes.
+fn paint_orb(
+    painter: &egui::Painter,
+    tk: &Tokens,
+    center: egui::Pos2,
+    radius: f32,
+    orb_color: Color32,
+    time: f64,
+    hovered: bool,
+) {
+    let with_alpha = |c: Color32, a: u8| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a);
+    let ring_alpha = (20.0 * (1.0 + (time * 0.8).sin() as f32) / 2.0) as u8;
 
-    // Rings
-    let ring_alpha = (25.0 * (1.0 - ((time * 0.8).sin() as f32 * 0.5 + 0.5))) as u8;
-    let ring_color = Color32::from_rgba_premultiplied(255, 255, 255, ring_alpha);
+    painter.circle_filled(center, radius * 2.2, with_alpha(orb_color, 20));
     painter.circle_stroke(
         center,
-        radius * 1.3,
-        egui::Stroke::new(1.0, ring_color),
+        radius * 1.35,
+        egui::Stroke::new(1.0_f32, with_alpha(tk.text, ring_alpha)),
     );
     painter.circle_stroke(
         center,
         radius * 1.6,
-        egui::Stroke::new(
-            0.5,
-            Color32::from_rgba_premultiplied(255, 255, 255, ring_alpha / 2),
-        ),
+        egui::Stroke::new(0.5_f32, with_alpha(tk.text, ring_alpha / 2)),
     );
-
-    // Main orb
     painter.circle_filled(center, radius, orb_color);
 
-    // Highlight (top-left shimmer)
-    let highlight_center = egui::pos2(center.x - radius * 0.25, center.y - radius * 0.25);
-    let highlight_color = Color32::from_rgba_premultiplied(255, 255, 255, 40);
-    painter.circle_filled(highlight_center, radius * 0.4, highlight_color);
+    // Highlight shimmer (top-left).
+    let hl = egui::pos2(center.x - radius * 0.2, center.y - radius * 0.2);
+    painter.circle_filled(hl, radius * 0.35, with_alpha(Color32::WHITE, 35));
 
-    // Hover effect
-    if response.hovered() {
+    if hovered {
         painter.circle_stroke(
             center,
-            radius + 2.0,
-            egui::Stroke::new(
-                1.5,
-                Color32::from_rgba_premultiplied(255, 255, 255, 30),
-            ),
+            radius + 3.0,
+            egui::Stroke::new(1.5_f32, with_alpha(tk.text, 60)),
         );
     }
-
-    response
 }
 
 // ---------------------------------------------------------------------------
 // Sidebar
 // ---------------------------------------------------------------------------
 
+/// Colour of the connection status dot for a network status.
+fn status_color(tk: &Tokens, status: &NetworkStatus) -> Color32 {
+    match status {
+        NetworkStatus::Connected => tk.success,
+        NetworkStatus::Disconnected => tk.control,
+        NetworkStatus::Connecting => tk.secondary,
+        NetworkStatus::Reconnecting => tk.warning,
+        NetworkStatus::Failed => tk.danger,
+    }
+}
+
 /// Render the left sidebar with brand, navigation, and status indicator.
 pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
+    let tk = theme::tokens_for(ui.ctx());
     ui.vertical(|ui| {
-        ui.add_space(12.0);
+        ui.add_space(space::S12);
 
         // Brand
         ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new("PRX")
-                    .size(16.0)
-                    .color(TEXT_PRIMARY)
-                    .strong(),
-            );
-            ui.label(
-                egui::RichText::new("voice")
-                    .size(14.0)
-                    .color(Color32::from_rgb(196, 181, 253))
-                    .italics(),
-            );
+            ui.label(widgets::text("PRX", size::SUBHEADING, tk.text));
+            ui.label(widgets::text("voice", size::BUTTON, tk.secondary));
         });
 
-        ui.add_space(20.0);
+        ui.add_space(space::S20);
 
         // Nav items
         let items = [
@@ -601,21 +638,7 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
         for (label, page) in &items {
             let is_active =
                 std::mem::discriminant(&state.current_page) == std::mem::discriminant(page);
-            let text_color = if is_active { TEXT_PRIMARY } else { TEXT_SOFT };
-
-            let resp = ui.add(
-                egui::Button::new(egui::RichText::new(label.as_str()).size(13.0).color(text_color))
-                    .fill(if is_active {
-                        BG_ELEVATED
-                    } else {
-                        Color32::TRANSPARENT
-                    })
-                    .stroke(egui::Stroke::NONE)
-                    .corner_radius(6.0)
-                    .min_size(egui::vec2(ui.available_width(), 32.0)),
-            );
-
-            if resp.clicked() {
+            if widgets::menu_item(ui, &tk, label, is_active).clicked() {
                 state.current_page = *page;
                 // Toggle panels
                 state.settings_open = matches!(page, Page::Settings);
@@ -629,18 +652,14 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
             ui.add_space(remaining);
         }
 
-        // Status indicator
+        // Status indicator: a dot and words (status is words first).
         ui.horizontal(|ui| {
-            let dot_color = match state.network_status {
-                NetworkStatus::Connected => Color32::from_rgb(45, 212, 191),
-                NetworkStatus::Disconnected => Color32::from_rgb(158, 158, 158),
-                NetworkStatus::Connecting => Color32::from_rgb(100, 181, 246),
-                NetworkStatus::Reconnecting => Color32::from_rgb(255, 152, 0),
-                NetworkStatus::Failed => Color32::from_rgb(244, 67, 54),
-            };
-            let (_, dot_rect) = ui.allocate_space(egui::vec2(6.0, 6.0));
-            ui.painter()
-                .circle_filled(dot_rect.center(), 3.0, dot_color);
+            let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 8.0));
+            ui.painter().circle_filled(
+                dot_rect.center(),
+                4.0,
+                status_color(&tk, &state.network_status),
+            );
 
             let status_text = match state.network_status {
                 NetworkStatus::Connected => prxvc_i18n::t("status.ready"),
@@ -649,7 +668,7 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
                 NetworkStatus::Reconnecting => prxvc_i18n::t("status.reconnecting"),
                 NetworkStatus::Failed => prxvc_i18n::t("status.failed"),
             };
-            ui.label(egui::RichText::new(status_text).size(11.0).color(TEXT_DIM));
+            ui.label(widgets::text(status_text, size::META, tk.secondary));
         });
     });
 }
@@ -658,24 +677,32 @@ pub fn render_sidebar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 // State info (below orb)
 // ---------------------------------------------------------------------------
 
+/// The hint line shown under the state label for a session state.
+fn state_hint(session_state: &str) -> String {
+    match session_state {
+        "" | "Idle" | "Completed" => prxvc_i18n::t("session.hint.idle"),
+        "Listening" => prxvc_i18n::t("session.hint.listening"),
+        "AssistantSpeaking" => prxvc_i18n::t("session.hint.speaking"),
+        _ => String::new(),
+    }
+}
+
 /// Render the state label and hint text below the orb.
 pub fn render_state_info(ui: &mut egui::Ui, state: &DesktopUiState) {
+    let tk = state.theme.tokens();
     ui.vertical_centered(|ui| {
-        // State label — large, italic
         let label = translate_state_human(&state.session_state);
-        ui.label(egui::RichText::new(label).size(22.0).color(TEXT_SOFT).italics());
+        ui.label(widgets::text(label, size::TITLE, tk.text));
 
-        ui.add_space(4.0);
+        ui.add_space(space::S4);
 
-        // Hint
-        let hint = match state.session_state.as_str() {
-            "" | "Idle" | "Completed" => prxvc_i18n::t("session.hint.idle"),
-            "Listening" => prxvc_i18n::t("session.hint.listening"),
-            "AssistantSpeaking" => prxvc_i18n::t("session.hint.speaking"),
-            _ => String::new(),
+        let hint = if state.mic_paused && state.session_state == "AssistantSpeaking" {
+            prxvc_i18n::t("session.hint.mic_paused")
+        } else {
+            state_hint(&state.session_state)
         };
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).size(12.0).color(TEXT_DIM));
+            ui.label(widgets::text(hint, size::META, tk.secondary));
         }
     });
 }
@@ -699,39 +726,46 @@ fn translate_state_human(state: &str) -> String {
 // Transcript panel
 // ---------------------------------------------------------------------------
 
+/// Paint one transcript line: a role word and the text. People and the
+/// assistant are told apart by the word, not by hue.
+fn transcript_line_ui(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    line: &TranscriptLine,
+    text_size: f32,
+    role_size: f32,
+) {
+    ui.horizontal_wrapped(|ui| {
+        let (role_text, role_color) = if line.role == "user" {
+            (prxvc_i18n::t("transcript.you"), tk.text)
+        } else {
+            (prxvc_i18n::t("transcript.ai"), tk.secondary)
+        };
+        ui.label(
+            egui::RichText::new(role_text)
+                .size(role_size)
+                .color(role_color)
+                .monospace(),
+        );
+        let text_color = if line.is_final { tk.text } else { tk.secondary };
+        ui.label(widgets::text(&line.text, text_size, text_color));
+    });
+}
+
 /// Render the scrollable transcript at the bottom of the central stage.
 pub fn render_transcript(ui: &mut egui::Ui, lines: &[TranscriptLine]) {
     if lines.is_empty() {
         return;
     }
+    let tk = theme::tokens_for(ui.ctx());
 
     egui::ScrollArea::vertical()
         .max_height(200.0)
         .stick_to_bottom(true)
         .show(ui, |ui| {
             for line in lines {
-                ui.horizontal(|ui| {
-                    let role_color = if line.role == "user" {
-                        Color32::from_rgb(94, 234, 212) // teal
-                    } else {
-                        Color32::from_rgb(252, 165, 165) // coral light
-                    };
-                    let role_text = if line.role == "user" { prxvc_i18n::t("transcript.you") } else { prxvc_i18n::t("transcript.ai") };
-                    ui.label(
-                        egui::RichText::new(role_text)
-                            .size(10.0)
-                            .color(role_color)
-                            .monospace(),
-                    );
-
-                    let text_color = if line.is_final {
-                        TEXT_PRIMARY
-                    } else {
-                        TEXT_SOFT
-                    };
-                    ui.label(egui::RichText::new(&line.text).size(14.0).color(text_color));
-                });
-                ui.add_space(4.0);
+                transcript_line_ui(ui, &tk, line, size::BUTTON, size::CAPTION);
+                ui.add_space(space::S4);
             }
         });
 }
@@ -745,37 +779,30 @@ pub fn render_controls(ui: &mut egui::Ui, state: &mut DesktopUiState) {
     if !state.session_active {
         return;
     }
+    let tk = state.theme.tokens();
 
     ui.horizontal_centered(|ui| {
         // Interrupt button
         if state.session_state == "AssistantSpeaking"
-            && ui
-                .add(
-                    egui::Button::new(
-                        egui::RichText::new(prxvc_i18n::t("session.interrupt"))
-                            .size(12.0)
-                            .color(Color32::from_rgb(251, 191, 36)),
-                    )
-                    .fill(BG_ELEVATED)
-                    .corner_radius(16.0),
-                )
-                .clicked()
+            && widgets::button(
+                ui,
+                &tk,
+                ButtonKind::Secondary,
+                &prxvc_i18n::t("session.interrupt"),
+            )
+            .clicked()
         {
             state.pending_commands.push("InterruptPlayback".into());
         }
 
-        // Stop button
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(prxvc_i18n::t("session.stop"))
-                        .size(12.0)
-                        .color(Color32::from_rgb(248, 113, 113)),
-                )
-                .fill(BG_ELEVATED)
-                .corner_radius(16.0),
-            )
-            .clicked()
+        // Stop button: a quiet destructive action.
+        if widgets::button(
+            ui,
+            &tk,
+            ButtonKind::DangerQuiet,
+            &prxvc_i18n::t("session.stop"),
+        )
+        .clicked()
         {
             state.pending_commands.push("StopSession".into());
         }
@@ -788,61 +815,22 @@ pub fn render_controls(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 
 /// Render the settings panel in the right sidebar.
 pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
+    let tk = theme::tokens_for(ui.ctx());
     ui.vertical(|ui| {
-        ui.label(
-            egui::RichText::new(prxvc_i18n::t("settings.title"))
-                .size(18.0)
-                .color(TEXT_PRIMARY)
-                .italics(),
-        );
-        ui.add_space(16.0);
-
-        // Language section
-        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.language")).size(10.0).color(TEXT_DIM));
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            if ui
-                .selectable_label(settings.language == "en", "English")
-                .clicked()
-            {
-                settings.language = "en".into();
-                prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-            }
-            if ui
-                .selectable_label(settings.language == "zh-CN", "\u{4e2d}\u{6587}")
-                .clicked()
-            {
-                settings.language = "zh-CN".into();
-                prxvc_i18n::set_locale(prxvc_i18n::Locale::ZhCn);
-            }
-        });
-
-        ui.add_space(16.0);
-        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.audio")).size(10.0).color(TEXT_DIM));
-        ui.add_space(4.0);
-        ui.checkbox(
-            &mut settings.auto_play,
-            egui::RichText::new(prxvc_i18n::t("settings.auto_play")).size(13.0).color(TEXT_SOFT),
-        );
-
-        ui.add_space(16.0);
-        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.privacy")).size(10.0).color(TEXT_DIM));
-        ui.add_space(4.0);
-        ui.checkbox(
-            &mut settings.save_history,
-            egui::RichText::new(prxvc_i18n::t("settings.save_history")).size(13.0).color(TEXT_SOFT),
-        );
-        ui.checkbox(
-            &mut settings.show_transcript,
-            egui::RichText::new(prxvc_i18n::t("settings.show_transcript")).size(13.0).color(TEXT_SOFT),
-        );
-
-        ui.add_space(16.0);
-        ui.label(egui::RichText::new(prxvc_i18n::t("settings.section.system")).size(10.0).color(TEXT_DIM));
-        ui.add_space(4.0);
-        ui.checkbox(
-            &mut settings.hotkey_enabled,
-            egui::RichText::new(prxvc_i18n::t("settings.hotkey")).size(13.0).color(TEXT_SOFT),
+        ui.label(widgets::text(
+            prxvc_i18n::t("settings.title"),
+            size::TITLE,
+            tk.text,
+        ));
+        ui.add_space(space::S16);
+        // The legacy panel has no theme state; a theme chosen here is dropped.
+        let mut ignored = None;
+        settings_view::render_settings_content(
+            ui,
+            &tk,
+            settings,
+            theme::RF_THEME_NAME,
+            &mut ignored,
         );
     });
 }
@@ -851,43 +839,45 @@ pub fn render_settings_panel(ui: &mut egui::Ui, settings: &mut UiSettings) {
 // History panel (right side)
 // ---------------------------------------------------------------------------
 
+/// History rows: title, a meta line, and the state as a chip.
+fn history_rows(ui: &mut egui::Ui, tk: &Tokens, entries: &[HistoryEntry]) {
+    if entries.is_empty() {
+        ui.vertical_centered(|ui| {
+            ui.add_space(space::S32);
+            ui.label(widgets::text(
+                prxvc_i18n::t("history.empty"),
+                size::SECONDARY,
+                tk.secondary,
+            ));
+        });
+        return;
+    }
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let count = entries.len();
+    for (i, entry) in entries.iter().enumerate() {
+        let meta = format!("{} \u{00b7} {}", entry.created_at, entry.duration);
+        widgets::setting_row(ui, tk, &entry.title, Some(&meta), 96.0, i + 1 == count, |ui| {
+            let tone = if entry.state == "Failed" {
+                Tone::Danger
+            } else {
+                Tone::Neutral
+            };
+            widgets::chip(ui, tk, tone, &entry.state);
+        });
+    }
+}
+
 /// Render the history panel in the right sidebar.
 pub fn render_history_panel(ui: &mut egui::Ui, entries: &[HistoryEntry]) {
+    let tk = theme::tokens_for(ui.ctx());
     ui.vertical(|ui| {
-        ui.label(
-            egui::RichText::new(prxvc_i18n::t("history.title"))
-                .size(18.0)
-                .color(TEXT_PRIMARY)
-                .italics(),
-        );
-        ui.add_space(16.0);
-
-        if entries.is_empty() {
-            ui.label(egui::RichText::new(prxvc_i18n::t("history.empty")).size(13.0).color(TEXT_DIM));
-            return;
-        }
-
-        for entry in entries {
-            let _resp = ui.add(
-                egui::Button::new(egui::RichText::new(&entry.title).size(13.0).color(TEXT_SOFT))
-                    .fill(Color32::TRANSPARENT)
-                    .corner_radius(6.0)
-                    .min_size(egui::vec2(ui.available_width(), 48.0)),
-            );
-            ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(&entry.created_at)
-                        .size(10.0)
-                        .color(TEXT_DIM),
-                );
-                ui.label(
-                    egui::RichText::new(&entry.duration)
-                        .size(10.0)
-                        .color(TEXT_DIM),
-                );
-            });
-            ui.add_space(2.0);
-        }
+        ui.label(widgets::text(
+            prxvc_i18n::t("history.title"),
+            size::TITLE,
+            tk.text,
+        ));
+        ui.add_space(space::S16);
+        history_rows(ui, &tk, entries);
     });
 }
 
@@ -897,25 +887,40 @@ pub fn render_history_panel(ui: &mut egui::Ui, entries: &[HistoryEntry]) {
 
 /// Render an error banner at the top of the screen if there is an active error.
 ///
-/// Recoverable errors show a retry button. Both include a close button.
+/// Shown as a danger tip bar. Recoverable errors show a retry button. Both
+/// include a close button.
 pub fn render_error_banner(ui: &mut egui::Ui, state: &mut DesktopUiState) {
     if let Some(ref error) = state.error_message {
         let error_text = error.clone();
+        let tk = state.theme.tokens();
 
-        ui.horizontal(|ui| {
-            let text_color = Color32::WHITE;
-            ui.colored_label(text_color, &error_text);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if state.error_recoverable
-                    && ui.button(prxvc_i18n::t("common.retry")).clicked()
-                {
-                    state.pending_commands.push("RetryConnection".into());
-                    state.error_message = None;
-                }
-                if ui.button(prxvc_i18n::t("common.close")).clicked() {
-                    state.error_message = None;
-                }
-            });
+        widgets::tip_bar(ui, &tk, Tone::Danger, &error_text, |ui| {
+            if state.error_recoverable
+                && widgets::button_with(
+                    ui,
+                    &tk,
+                    ButtonKind::Secondary,
+                    &prxvc_i18n::t("common.retry"),
+                    layout::CONTROL_HEIGHT_SMALL,
+                    true,
+                )
+                .clicked()
+            {
+                state.pending_commands.push("RetryConnection".into());
+                state.error_message = None;
+            }
+            if widgets::button_with(
+                ui,
+                &tk,
+                ButtonKind::Text,
+                &prxvc_i18n::t("common.close"),
+                layout::CONTROL_HEIGHT_SMALL,
+                true,
+            )
+            .clicked()
+            {
+                state.error_message = None;
+            }
         });
     }
 }
@@ -926,58 +931,57 @@ pub fn render_error_banner(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 
 /// Render the debug / diagnostics page.
 pub fn render_debug_page(ui: &mut egui::Ui, state: &DesktopUiState) {
-    ui.label(
-        egui::RichText::new(prxvc_i18n::t("debug.title"))
-            .size(18.0)
-            .color(TEXT_PRIMARY)
-            .italics(),
-    );
-    ui.add_space(8.0);
+    let tk = state.theme.tokens();
+    ui.label(widgets::text(
+        prxvc_i18n::t("debug.title"),
+        size::TITLE,
+        tk.text,
+    ));
+    ui.add_space(space::S8);
 
     ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(prxvc_i18n::t("debug.state_machine_label"))
-                .size(12.0)
-                .color(TEXT_DIM),
-        );
-        ui.label(
-            egui::RichText::new(&state.debug_state_info)
-                .size(12.0)
-                .color(TEXT_PRIMARY)
-                .strong(),
-        );
+        ui.label(widgets::text(
+            prxvc_i18n::t("debug.state_machine_label"),
+            size::META,
+            tk.secondary,
+        ));
+        ui.label(widgets::text(&state.debug_state_info, size::META, tk.text));
     });
 
-    ui.add_space(4.0);
+    ui.add_space(space::S4);
 
     ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(prxvc_i18n::t("debug.pending_commands_label"))
-                .size(12.0)
-                .color(TEXT_DIM),
-        );
-        ui.label(
-            egui::RichText::new(format!("{}", state.pending_commands.len()))
-                .size(12.0)
-                .color(TEXT_PRIMARY),
-        );
+        ui.label(widgets::text(
+            prxvc_i18n::t("debug.pending_commands_label"),
+            size::META,
+            tk.secondary,
+        ));
+        ui.label(widgets::text(
+            format!("{}", state.pending_commands.len()),
+            size::META,
+            tk.text,
+        ));
     });
 
-    ui.add_space(8.0);
-    ui.label(egui::RichText::new(prxvc_i18n::t("debug.recent_events")).size(12.0).color(TEXT_DIM));
+    ui.add_space(space::S8);
+    ui.label(widgets::text(
+        prxvc_i18n::t("debug.recent_events"),
+        size::META,
+        tk.secondary,
+    ));
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             if state.debug_events.is_empty() {
-                ui.label(
-                    egui::RichText::new(prxvc_i18n::t("debug.no_events_recorded"))
-                        .size(11.0)
-                        .color(TEXT_DIM),
-                );
+                ui.label(widgets::text(
+                    prxvc_i18n::t("debug.no_events_recorded"),
+                    size::META,
+                    tk.secondary,
+                ));
             } else {
                 for event in state.debug_events.iter().rev() {
-                    ui.label(egui::RichText::new(event).size(11.0).color(TEXT_SOFT));
+                    ui.label(widgets::text(event, size::META, tk.secondary));
                 }
             }
         });
@@ -1017,6 +1021,7 @@ pub fn render_session_panel(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 
 /// Render the horizontal navigation bar (legacy — for callers not using render_app).
 pub fn render_nav_bar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
+    let tk = state.theme.tokens();
     ui.horizontal(|ui| {
         let pages = [
             (Page::Session, prxvc_i18n::t("nav.session")),
@@ -1026,16 +1031,14 @@ pub fn render_nav_bar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
             (Page::About, prxvc_i18n::t("nav.about")),
         ];
 
-        for (page, label) in &pages {
-            let is_current = state.current_page == *page;
-            let text = if is_current {
-                egui::RichText::new(label.as_str()).strong().underline()
-            } else {
-                egui::RichText::new(label.as_str())
-            };
-            if ui.selectable_label(is_current, text).clicked() {
-                state.current_page = *page;
-            }
+        // Page tabs are a segmented control: the selected page is raised.
+        let labels: Vec<&str> = pages.iter().map(|(_, l)| l.as_str()).collect();
+        let selected = pages
+            .iter()
+            .position(|(p, _)| *p == state.current_page)
+            .unwrap_or(0);
+        if let Some(i) = widgets::segmented(ui, &tk, selected, &labels) {
+            state.current_page = pages[i].0;
         }
 
         // Network status indicator on the right
@@ -1047,16 +1050,12 @@ pub fn render_nav_bar(ui: &mut egui::Ui, state: &mut DesktopUiState) {
 
 /// Render a small network status indicator (legacy).
 pub fn render_network_indicator(ui: &mut egui::Ui, state: &DesktopUiState) {
-    let (color, label) = match state.network_status {
-        NetworkStatus::Connected => (Color32::from_rgb(76, 175, 80), "\u{25cf}"),
-        NetworkStatus::Disconnected => (Color32::from_rgb(158, 158, 158), "\u{25cb}"),
-        NetworkStatus::Connecting => (Color32::from_rgb(100, 181, 246), "\u{25d0}"),
-        NetworkStatus::Reconnecting => (Color32::from_rgb(255, 152, 0), "\u{25d0}"),
-        NetworkStatus::Failed => (Color32::from_rgb(244, 67, 54), "\u{2715}"),
-    };
+    let tk = state.theme.tokens();
+    let color = status_color(&tk, &state.network_status);
 
     ui.horizontal(|ui| {
-        ui.colored_label(color, label);
+        let (_, dot_rect) = ui.allocate_space(egui::vec2(8.0, 8.0));
+        ui.painter().circle_filled(dot_rect.center(), 4.0, color);
         let status_text = match state.network_status {
             NetworkStatus::Connected => prxvc_i18n::t("network.connected"),
             NetworkStatus::Disconnected => prxvc_i18n::t("network.disconnected"),
@@ -1067,7 +1066,7 @@ pub fn render_network_indicator(ui: &mut egui::Ui, state: &DesktopUiState) {
             ),
             NetworkStatus::Failed => prxvc_i18n::t("network.failed"),
         };
-        ui.small(status_text);
+        ui.label(widgets::text(status_text, size::META, tk.secondary));
     });
 }
 
@@ -1083,34 +1082,110 @@ pub fn render_settings_page(ui: &mut egui::Ui, settings: &mut UiSettings) {
 
 /// Render the about page with project information.
 pub fn render_about_page(ui: &mut egui::Ui) {
-    ui.label(
-        egui::RichText::new(prxvc_i18n::t("app.name"))
-            .size(18.0)
-            .color(TEXT_PRIMARY),
-    );
-    ui.add_space(8.0);
-    ui.label(
-        egui::RichText::new(format!("Version: {}", prxvc_i18n::t("app.version")))
-            .size(13.0)
-            .color(TEXT_SOFT),
-    );
-    ui.add_space(4.0);
-    ui.label(
-        egui::RichText::new(prxvc_i18n::t("app.description"))
-            .size(13.0)
-            .color(TEXT_SOFT),
-    );
-    ui.add_space(4.0);
-    ui.label(
-        egui::RichText::new(format!("License: {}", prxvc_i18n::t("app.license")))
-            .size(13.0)
-            .color(TEXT_DIM),
-    );
+    let tk = theme::tokens_for(ui.ctx());
+    ui.label(widgets::text(
+        prxvc_i18n::t("app.name"),
+        size::TITLE,
+        tk.text,
+    ));
+    ui.add_space(space::S8);
+    ui.label(widgets::text(
+        format!(
+            "{}: {}",
+            prxvc_i18n::t("app.version_label"),
+            prxvc_i18n::t("app.version")
+        ),
+        size::SECONDARY,
+        tk.secondary,
+    ));
+    ui.add_space(space::S4);
+    ui.label(widgets::text(
+        prxvc_i18n::t("app.description"),
+        size::SECONDARY,
+        tk.secondary,
+    ));
+    ui.add_space(space::S4);
+    ui.label(widgets::text(
+        format!(
+            "{}: {}",
+            prxvc_i18n::t("app.license_label"),
+            prxvc_i18n::t("app.license")
+        ),
+        size::SECONDARY,
+        tk.secondary,
+    ));
 }
 
 // ---------------------------------------------------------------------------
 // Main layout assembly — the new entry point
 // ---------------------------------------------------------------------------
+
+/// The state pill under the orb: the state label (14) and the hint (12) on a
+/// floating-layer surface so the text reads on any desktop behind the
+/// transparent window.
+struct StatusPill {
+    rect: egui::Rect,
+    label: std::sync::Arc<egui::Galley>,
+    hint: Option<std::sync::Arc<egui::Galley>>,
+}
+
+impl StatusPill {
+    const PAD_X: f32 = 12.0;
+    const PAD_Y: f32 = 8.0;
+
+    fn layout(
+        painter: &egui::Painter,
+        tk: &Tokens,
+        top_center: egui::Pos2,
+        label: &str,
+        hint: &str,
+        max_width: f32,
+    ) -> Self {
+        let wrap = (max_width - 2.0 * Self::PAD_X).max(60.0);
+        let label = painter.layout(
+            label.to_owned(),
+            FontId::new(size::BUTTON, fonts::medium()),
+            tk.text,
+            wrap,
+        );
+        let hint = (!hint.is_empty()).then(|| {
+            painter.layout(
+                hint.to_owned(),
+                FontId::proportional(size::META),
+                tk.secondary,
+                wrap,
+            )
+        });
+        let inner_w = hint
+            .as_ref()
+            .map_or(label.size().x, |h| h.size().x.max(label.size().x));
+        let inner_h = label.size().y + hint.as_ref().map_or(0.0, |h| h.size().y + space::S4);
+        let rect = egui::Rect::from_min_size(
+            egui::pos2(top_center.x - inner_w / 2.0 - Self::PAD_X, top_center.y),
+            egui::vec2(inner_w + 2.0 * Self::PAD_X, inner_h + 2.0 * Self::PAD_Y),
+        );
+        Self { rect, label, hint }
+    }
+
+    fn paint(self, painter: &egui::Painter, tk: &Tokens) {
+        painter.rect(
+            self.rect,
+            CornerRadius::same(radius::LG),
+            tk.overlay,
+            hairline(tk.overlay_border),
+            StrokeKind::Inside,
+        );
+        let cx = self.rect.center().x;
+        let mut y = self.rect.top() + Self::PAD_Y;
+        let label_h = self.label.size().y;
+        let label_w = self.label.size().x;
+        painter.galley(egui::pos2(cx - label_w / 2.0, y), self.label, tk.text);
+        y += label_h + space::S4;
+        if let Some(hint) = self.hint {
+            painter.galley(egui::pos2(cx - hint.size().x / 2.0, y), hint, tk.secondary);
+        }
+    }
+}
 
 /// Render the floating orb UI (frameless transparent mode).
 ///
@@ -1119,6 +1194,17 @@ pub fn render_about_page(ui: &mut egui::Ui) {
 pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
     let time = ctx.input(|i| i.time);
     state.anim_time = time;
+
+    // Style first, then resolve the RF scheme against what egui now uses
+    // (the system light/dark preference for the RF theme).
+    theme::ensure_installed(ctx, &state.theme);
+    if state.theme.is_rf() {
+        let scheme = Scheme::from_egui(ctx.theme());
+        if state.theme.scheme != scheme {
+            state.theme = Theme::rf(scheme);
+        }
+    }
+    let tk = state.theme.tokens();
 
     // Transparent background for central panel
     let frame = egui::Frame::NONE.fill(Color32::TRANSPARENT);
@@ -1133,142 +1219,94 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
             let base_radius = 40.0;
             let (orb_color, scale) = orb_animation(state, time);
             let radius = base_radius * scale;
-            let ring_alpha = (20.0 * (1.0 + (time * 0.8).sin() as f32) / 2.0) as u8;
             let label_pos = egui::pos2(center.x, center.y + radius + 16.0);
             let label_text = translate_state_human(&state.session_state);
+            let hint = state_hint(&state.session_state);
 
-            let hint = match state.session_state.as_str() {
-                "" | "Idle" | "Completed" => prxvc_i18n::t("session.hint.idle"),
-                "Listening" => prxvc_i18n::t("session.hint.listening"),
-                "AssistantSpeaking" => prxvc_i18n::t("session.hint.speaking"),
-                _ => String::new(),
-            };
+            let pill = StatusPill::layout(
+                ui.painter(),
+                &tk,
+                label_pos,
+                &label_text,
+                &hint,
+                rect.width() - 2.0 * space::S8,
+            );
+            let below_pill = pill.rect.bottom() + space::S8;
 
             // === ALLOCATE INTERACTIVE AREAS (requires &mut ui) ===
             let orb_rect = egui::Rect::from_center_size(center, egui::vec2(radius * 2.5, radius * 2.5));
             let orb_response = ui.allocate_rect(orb_rect, egui::Sense::click_and_drag());
 
-            // Transcript sub-UI (must be created before painting)
-            let has_transcript = !state.transcript_lines.is_empty();
-            if has_transcript {
-                let theme = &state.theme;
-                let transcript_top = label_pos.y + 40.0;
+            // End button (only when session active): a quiet destructive action.
+            let mut stop_clicked = false;
+            let controls_h = if state.session_active {
+                layout::CONTROL_HEIGHT_SMALL + space::S8
+            } else {
+                0.0
+            };
+            if state.session_active {
+                let btn_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.center().x - 80.0, below_pill),
+                    egui::vec2(160.0, layout::CONTROL_HEIGHT_SMALL),
+                );
+                ui.allocate_new_ui(
+                    egui::UiBuilder::new()
+                        .max_rect(btn_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Center)),
+                    |ui| {
+                        stop_clicked = widgets::button_with(
+                            ui,
+                            &tk,
+                            ButtonKind::DangerQuiet,
+                            &prxvc_i18n::t("session.stop"),
+                            layout::CONTROL_HEIGHT_SMALL,
+                            true,
+                        )
+                        .clicked();
+                    },
+                );
+            }
+
+            // Transcript card (must be created before painting)
+            if !state.transcript_lines.is_empty() {
+                let transcript_top = below_pill + controls_h;
                 let transcript_rect = egui::Rect::from_min_max(
                     egui::pos2(rect.left() + 20.0, transcript_top),
                     egui::pos2(rect.right() - 20.0, rect.bottom() - 10.0),
                 );
-
-                let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(transcript_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
-                egui::ScrollArea::vertical()
-                    .stick_to_bottom(true)
-                    .max_height(transcript_rect.height())
-                    .show(&mut child_ui, |ui| {
-                        for line in &state.transcript_lines {
-                            ui.horizontal(|ui| {
-                                let role_color = if line.role == "user" {
-                                    theme.orb_listening
-                                } else {
-                                    theme.orb_speaking
-                                };
-                                let role = if line.role == "user" { prxvc_i18n::t("transcript.you") } else { prxvc_i18n::t("transcript.ai") };
-                                ui.label(egui::RichText::new(role).size(8.0).color(role_color).monospace());
-                                let tc = if line.is_final { theme.text_primary } else { theme.text_soft };
-                                ui.label(egui::RichText::new(&line.text).size(11.0).color(tc));
-                            });
-                            ui.add_space(3.0);
-                        }
-                    });
+                if transcript_rect.height() > 24.0 && transcript_rect.width() > 24.0 {
+                    ui.painter().rect(
+                        transcript_rect,
+                        CornerRadius::same(radius::CARD),
+                        tk.surface_white,
+                        hairline(tk.line),
+                        StrokeKind::Inside,
+                    );
+                    let inner = transcript_rect.shrink(space::S8);
+                    let mut child_ui = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(inner)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+                    egui::ScrollArea::vertical()
+                        .stick_to_bottom(true)
+                        .max_height(inner.height())
+                        .show(&mut child_ui, |ui| {
+                            for line in &state.transcript_lines {
+                                transcript_line_ui(ui, &tk, line, size::META, size::CAPTION);
+                                ui.add_space(space::S4 - 1.0);
+                            }
+                        });
+                }
             }
-
-            // End button (only when session active)
-            let btn_resp = if state.session_active {
-                let ctrl_y = center.y + radius + 55.0
-                    + if has_transcript { 10.0 } else { 0.0 };
-                let ctrl_center = egui::pos2(center.x, ctrl_y.min(label_pos.y + 38.0));
-                let btn_rect = egui::Rect::from_center_size(ctrl_center, egui::vec2(48.0, 20.0));
-                Some((btn_rect, ui.allocate_rect(btn_rect, egui::Sense::click())))
-            } else {
-                None
-            };
 
             // === PAINT EVERYTHING (only needs &ui / painter, no more mutations) ===
             let painter = ui.painter();
-
-            // Glow
-            let glow = Color32::from_rgba_unmultiplied(orb_color.r(), orb_color.g(), orb_color.b(), 20);
-            painter.circle_filled(center, radius * 2.2, glow);
-
-            // Animated rings
-            painter.circle_stroke(
-                center,
-                radius * 1.35,
-                egui::Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, ring_alpha)),
-            );
-            painter.circle_stroke(
-                center,
-                radius * 1.6,
-                egui::Stroke::new(0.5, Color32::from_rgba_unmultiplied(255, 255, 255, ring_alpha / 2)),
-            );
-
-            // Main orb body
-            painter.circle_filled(center, radius, orb_color);
-
-            // Highlight shimmer (top-left)
-            let hl = egui::pos2(center.x - radius * 0.2, center.y - radius * 0.2);
-            painter.circle_filled(hl, radius * 0.35, Color32::from_rgba_unmultiplied(255, 255, 255, 35));
-
-            // Hover glow
+            paint_orb(painter, &tk, center, radius, orb_color, time, orb_response.hovered());
             if orb_response.hovered() {
-                painter.circle_stroke(
-                    center,
-                    radius + 3.0,
-                    egui::Stroke::new(1.5, Color32::from_rgba_unmultiplied(255, 255, 255, 25)),
-                );
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }
-
-            // State label
-            painter.text(
-                label_pos,
-                egui::Align2::CENTER_TOP,
-                &label_text,
-                egui::FontId::new(14.0, egui::FontFamily::Proportional),
-                state.theme.text_soft,
-            );
-
-            // Hint text
-            if !hint.is_empty() {
-                painter.text(
-                    egui::pos2(label_pos.x, label_pos.y + 20.0),
-                    egui::Align2::CENTER_TOP,
-                    &hint,
-                    egui::FontId::new(9.0, egui::FontFamily::Proportional),
-                    state.theme.text_dim,
-                );
-            }
-
-            // End button painting
-            if let Some((btn_rect, ref resp)) = btn_resp {
-                let sp = state.theme.orb_speaking;
-                let btn_fill = if resp.hovered() {
-                    Color32::from_rgba_unmultiplied(sp.r(), sp.g(), sp.b(), 30)
-                } else {
-                    Color32::from_rgba_unmultiplied(
-                        state.theme.bg_elevated.r(),
-                        state.theme.bg_elevated.g(),
-                        state.theme.bg_elevated.b(),
-                        200,
-                    )
-                };
-                painter.rect_filled(btn_rect, 12.0, btn_fill);
-                painter.text(
-                    btn_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &prxvc_i18n::t("session.stop"),
-                    egui::FontId::new(9.0, egui::FontFamily::Proportional),
-                    state.theme.orb_speaking,
-                );
-            }
+            pill.paint(painter, &tk);
 
             // === HANDLE INTERACTIONS (no borrow conflicts here) ===
 
@@ -1292,23 +1330,27 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
 
-            // Right-click context menu (themed)
+            // Right-click context menu: a floating menu of 38px items.
             orb_response.context_menu(|ui| {
-                let theme = &state.theme;
-                ui.set_min_width(140.0);
-                ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::TRANSPARENT;
-                ui.style_mut().visuals.widgets.hovered.bg_fill = theme.bg_elevated;
+                ui.set_min_width(180.0);
+                ui.spacing_mut().item_spacing.y = 0.0;
 
                 if state.session_active {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(prxvc_i18n::t("session.stop")).size(12.0).color(theme.orb_speaking)
-                    ).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE)).clicked() {
+                    if widgets::menu_item_colored(
+                        ui,
+                        &tk,
+                        &prxvc_i18n::t("session.stop"),
+                        false,
+                        tk.danger,
+                    )
+                    .clicked()
+                    {
                         state.pending_commands.push("StopSession".into());
                         ui.close_menu();
                     }
-                    ui.add_space(2.0);
+                    ui.add_space(space::S4);
                     ui.separator();
-                    ui.add_space(2.0);
+                    ui.add_space(space::S4);
                 }
 
                 let menu_items = [
@@ -1317,119 +1359,67 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
                     (prxvc_i18n::t("debug.title"), "debug"),
                 ];
                 for (label, key) in &menu_items {
-                    if ui.add(egui::Button::new(
-                        egui::RichText::new(label).size(12.0).color(theme.text_soft)
-                    ).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE)).clicked() {
+                    if widgets::menu_item(ui, &tk, label, false).clicked() {
                         match *key {
-                            "settings" => state.show_settings_window = true,
-                            "history" => state.show_history_window = true,
-                            "debug" => state.show_debug_window = true,
+                            "settings" => state.windows.request_open(ToolKind::Settings),
+                            "history" => state.windows.request_open(ToolKind::History),
+                            "debug" => state.windows.request_open(ToolKind::Debug),
                             _ => {}
                         }
                         ui.close_menu();
                     }
                 }
-                ui.add_space(2.0);
+                ui.add_space(space::S4);
                 ui.separator();
-                ui.add_space(2.0);
-                if ui.add(egui::Button::new(
-                    egui::RichText::new(prxvc_i18n::t("common.close")).size(12.0).color(theme.text_dim)
-                ).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE)).clicked() {
+                ui.add_space(space::S4);
+                if widgets::menu_item_colored(
+                    ui,
+                    &tk,
+                    &prxvc_i18n::t("common.close"),
+                    false,
+                    tk.secondary,
+                )
+                .clicked()
+                {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
 
             // End button click
-            if let Some((_, resp)) = btn_resp {
-                if resp.clicked() {
-                    state.pending_commands.push("StopSession".into());
-                }
+            if stop_clicked {
+                state.pending_commands.push("StopSession".into());
             }
         });
 
-    // === POPUP WINDOWS (Settings, History, Debug) ===
-    // Themed popup windows with custom title bars, rounded corners, and shadow.
+    // === TOOL WINDOWS (Settings, History, Debug) ===
+    // Each is a native window of its own (see `tool_window`); the orb window
+    // is not resized or moved by them.
+    let placement = tool_window::Placement::from_root(ctx);
 
-    let popup_frame = |theme: &Theme| {
-        egui::Frame::NONE
-            .fill(theme.bg_warm)
-            .corner_radius(10.0)
-            .inner_margin(3.0)
-            .shadow(egui::epaint::Shadow {
-                offset: [0, 2],
-                blur: 12,
-                spread: 0,
-                color: Color32::from_rgba_unmultiplied(0, 0, 0, 100),
-            })
-    };
-
-    if state.show_settings_window {
-        let theme = state.theme.clone();
-        egui::Window::new("##settings")
-            .default_size([240.0, 340.0])
-            .frame(popup_frame(&theme))
-            .title_bar(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(prxvc_i18n::t("settings.title")).size(13.0).color(theme.text_primary).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(12.0).color(theme.text_dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).frame(false)).clicked() {
-                            state.show_settings_window = false;
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.separator();
-                render_popup_settings(ui, &mut state.settings, &theme, &mut state.pending_theme);
-            });
+    let current_theme = state.theme.name;
+    {
+        let DesktopUiState { windows, settings, pending_theme, .. } = &mut *state;
+        tool_window::show(ctx, &tk, ToolKind::Settings, &mut windows.settings, placement, |ui| {
+            settings_view::render_settings_content(ui, &tk, settings, current_theme, pending_theme);
+        });
     }
 
-    if state.show_history_window {
-        let theme = state.theme.clone();
-        let history_entries = state.history_entries.clone();
-        egui::Window::new("##history")
-            .default_size([280.0, 360.0])
-            .frame(popup_frame(&theme))
-            .title_bar(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(prxvc_i18n::t("history.title")).size(13.0).color(theme.text_primary).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(12.0).color(theme.text_dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).frame(false)).clicked() {
-                            state.show_history_window = false;
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.separator();
-                render_popup_history(ui, &history_entries, &theme);
-            });
+    let history_entries = state.windows.history.is_open().then(|| state.history_entries.clone());
+    if let Some(entries) = history_entries {
+        tool_window::show(ctx, &tk, ToolKind::History, &mut state.windows.history, placement, |ui| {
+            history_rows(ui, &tk, &entries);
+        });
     }
 
-    if state.show_debug_window {
-        let theme = state.theme.clone();
-        let debug_state_info = state.debug_state_info.clone();
-        let debug_events = state.debug_events.clone();
-        egui::Window::new("##debug")
-            .default_size([320.0, 380.0])
-            .frame(popup_frame(&theme))
-            .title_bar(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(prxvc_i18n::t("debug.title")).size(13.0).color(theme.text_primary).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("\u{2715}").size(12.0).color(theme.text_dim)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).frame(false)).clicked() {
-                            state.show_debug_window = false;
-                        }
-                    });
-                });
-                ui.add_space(4.0);
-                ui.separator();
-                render_popup_debug(ui, &debug_state_info, &debug_events, &theme);
-            });
+    let debug_snapshot = state
+        .windows
+        .debug
+        .is_open()
+        .then(|| (state.debug_state_info.clone(), state.debug_events.clone()));
+    if let Some((info, events)) = debug_snapshot {
+        tool_window::show(ctx, &tk, ToolKind::Debug, &mut state.windows.debug, placement, |ui| {
+            debug_body(ui, &tk, &info, &events);
+        });
     }
 
     // Request continuous repaint for orb animation
@@ -1440,278 +1430,52 @@ pub fn render_app(ctx: &egui::Context, state: &mut DesktopUiState) {
 // Themed popup rendering helpers
 // ---------------------------------------------------------------------------
 
-/// Render a section header label for popup panels.
-fn render_section_header(ui: &mut egui::Ui, title: &str, theme: &Theme) {
-    ui.label(
-        egui::RichText::new(title)
-            .size(9.0)
-            .color(theme.text_dim)
-            .strong(),
-    );
-}
-
-/// Render a labeled toggle row (label on left, checkbox on right).
-fn render_toggle_row(ui: &mut egui::Ui, label: &str, value: &mut bool, theme: &Theme) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(12.0).color(theme.text_soft));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.checkbox(value, "");
-        });
-    });
-}
-
-/// Render the redesigned settings popup content.
-fn render_popup_settings(
-    ui: &mut egui::Ui,
-    settings: &mut UiSettings,
-    theme: &Theme,
-    pending_theme: &mut Option<String>,
-) {
-    ui.add_space(8.0);
-
-    // Section: Theme / Appearance
-    render_section_header(ui, &prxvc_i18n::t("settings.appearance"), theme);
-    ui.add_space(4.0);
-    ui.horizontal_wrapped(|ui| {
-        for available_theme in Theme::all() {
-            let is_selected = theme.name == available_theme.name;
-            let resp = ui.add(
-                egui::Button::new(
-                    egui::RichText::new(available_theme.name)
-                        .size(10.0)
-                        .color(if is_selected {
-                            available_theme.accent
-                        } else {
-                            theme.text_soft
-                        }),
-                )
-                .fill(if is_selected {
-                    available_theme.bg_elevated
-                } else {
-                    Color32::TRANSPARENT
-                })
-                .stroke(if is_selected {
-                    egui::Stroke::new(1.0, available_theme.accent)
-                } else {
-                    egui::Stroke::new(0.5, theme.text_dim)
-                })
-                .corner_radius(12.0)
-                .min_size(egui::vec2(0.0, 24.0)),
-            );
-            if resp.clicked() {
-                *pending_theme = Some(available_theme.name.to_owned());
-            }
-        }
-    });
-
-    ui.add_space(12.0);
-
-    // Section: Language
-    render_section_header(ui, &prxvc_i18n::t("settings.section.language"), theme);
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        let en_selected = settings.language == "en";
-        if ui
-            .add(egui::SelectableLabel::new(
-                en_selected,
-                egui::RichText::new("English")
-                    .size(12.0)
-                    .color(if en_selected {
-                        theme.accent
-                    } else {
-                        theme.text_soft
-                    }),
-            ))
-            .clicked()
-        {
-            settings.language = "en".into();
-            prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-        }
-        ui.add_space(4.0);
-        let zh_selected = settings.language == "zh-CN";
-        if ui
-            .add(egui::SelectableLabel::new(
-                zh_selected,
-                egui::RichText::new("\u{4e2d}\u{6587}")
-                    .size(12.0)
-                    .color(if zh_selected {
-                        theme.accent
-                    } else {
-                        theme.text_soft
-                    }),
-            ))
-            .clicked()
-        {
-            settings.language = "zh-CN".into();
-            prxvc_i18n::set_locale(prxvc_i18n::Locale::ZhCn);
-        }
-    });
-
-    ui.add_space(12.0);
-
-    // Section: Audio
-    render_section_header(ui, &prxvc_i18n::t("settings.section.audio"), theme);
-    ui.add_space(4.0);
-    render_toggle_row(ui, &prxvc_i18n::t("settings.auto_play"), &mut settings.auto_play, theme);
-
-    ui.add_space(12.0);
-
-    // Section: Privacy
-    render_section_header(ui, &prxvc_i18n::t("settings.section.privacy"), theme);
-    ui.add_space(4.0);
-    render_toggle_row(ui, &prxvc_i18n::t("settings.save_history"), &mut settings.save_history, theme);
-    render_toggle_row(ui, &prxvc_i18n::t("settings.show_transcript"), &mut settings.show_transcript, theme);
-
-    ui.add_space(12.0);
-
-    // Section: Connection
-    render_section_header(ui, &prxvc_i18n::t("settings.section.connection"), theme);
-    ui.add_space(4.0);
-    render_toggle_row(ui, &prxvc_i18n::t("settings.use_mock"), &mut settings.use_mock, theme);
-    if !settings.use_mock {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("URL:").size(11.0).color(theme.text_dim));
-            ui.add(
-                egui::TextEdit::singleline(&mut settings.server_url)
-                    .desired_width(150.0)
-                    .font(egui::TextStyle::Small),
-            );
-        });
-    }
-
-    ui.add_space(12.0);
-
-    // Section: System
-    render_section_header(ui, &prxvc_i18n::t("settings.section.system"), theme);
-    ui.add_space(4.0);
-    render_toggle_row(ui, &prxvc_i18n::t("settings.hotkey"), &mut settings.hotkey_enabled, theme);
-
-    ui.add_space(16.0);
-
-    // Version info
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new(format!("{} v{}", prxvc_i18n::t("app.name"), prxvc_i18n::t("app.version")))
-                .size(10.0)
-                .color(theme.text_dim),
-        );
-    });
-}
-
-/// Render the redesigned history popup content.
-fn render_popup_history(ui: &mut egui::Ui, entries: &[HistoryEntry], theme: &Theme) {
-    ui.add_space(8.0);
-
-    if entries.is_empty() {
-        ui.vertical_centered(|ui| {
-            ui.add_space(40.0);
-            ui.label(
-                egui::RichText::new(prxvc_i18n::t("history.empty"))
-                    .size(13.0)
-                    .color(theme.text_dim)
-                    .italics(),
-            );
-        });
-        return;
-    }
-
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        for entry in entries {
-            ui.add_space(2.0);
-            egui::Frame::NONE
-                .fill(theme.bg_elevated)
-                .corner_radius(8.0)
-                .inner_margin(10.0)
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(&entry.title)
-                            .size(12.0)
-                            .color(theme.text_primary),
-                    );
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(&entry.created_at)
-                                .size(9.0)
-                                .color(theme.text_dim),
-                        );
-                        ui.label(
-                            egui::RichText::new("\u{00b7}")
-                                .size(9.0)
-                                .color(theme.text_dim),
-                        );
-                        ui.label(
-                            egui::RichText::new(&entry.duration)
-                                .size(9.0)
-                                .color(theme.text_dim),
-                        );
-                        ui.label(
-                            egui::RichText::new("\u{00b7}")
-                                .size(9.0)
-                                .color(theme.text_dim),
-                        );
-                        let state_color = match entry.state.as_str() {
-                            "Completed" => theme.orb_idle,
-                            "Failed" => theme.orb_speaking,
-                            _ => theme.text_dim,
-                        };
-                        ui.label(
-                            egui::RichText::new(&entry.state)
-                                .size(9.0)
-                                .color(state_color),
-                        );
-                    });
-                });
-        }
-    });
-}
-
-/// Render the redesigned debug popup content.
-fn render_popup_debug(ui: &mut egui::Ui, state_info: &str, events: &[String], theme: &Theme) {
-    ui.add_space(8.0);
-
-    // State machine card
-    render_section_header(ui, "STATE MACHINE", theme);
-    ui.add_space(4.0);
+/// Debug dialog body: the state machine in a `surface` block, then events.
+fn debug_body(ui: &mut egui::Ui, tk: &Tokens, state_info: &str, events: &[String]) {
+    widgets::section_header(ui, tk, &prxvc_i18n::t("debug.state_machine"), true);
     egui::Frame::NONE
-        .fill(theme.bg_elevated)
-        .corner_radius(6.0)
-        .inner_margin(8.0)
+        .fill(tk.surface)
+        .corner_radius(CornerRadius::same(radius::MD))
+        .inner_margin(egui::Margin::same(12))
         .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(state_info)
-                    .size(11.0)
-                    .color(theme.accent)
-                    .monospace(),
+            ui.set_width(ui.available_width());
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(state_info)
+                        .size(size::SECONDARY)
+                        .color(tk.text)
+                        .monospace(),
+                )
+                .wrap(),
             );
         });
 
-    ui.add_space(12.0);
-
-    // Events
-    render_section_header(ui, &format!("EVENTS ({})", events.len()), theme);
-    ui.add_space(4.0);
-    egui::ScrollArea::vertical()
-        .max_height(200.0)
-        .show(ui, |ui| {
-            if events.is_empty() {
-                ui.label(
-                    egui::RichText::new(prxvc_i18n::t("debug.no_events_short"))
-                        .size(10.0)
-                        .color(theme.text_dim)
-                        .italics(),
-                );
-            } else {
-                for event in events.iter().rev().take(30) {
-                    ui.label(
-                        egui::RichText::new(event)
-                            .size(9.0)
-                            .color(theme.text_dim)
-                            .monospace(),
-                    );
-                    ui.add_space(1.0);
-                }
-            }
-        });
+    widgets::section_header(
+        ui,
+        tk,
+        &format!("{} ({})", prxvc_i18n::t("debug.events"), events.len()),
+        false,
+    );
+    if events.is_empty() {
+        ui.label(widgets::text(
+            prxvc_i18n::t("debug.no_events_short"),
+            size::SECONDARY,
+            tk.secondary,
+        ));
+    } else {
+        ui.spacing_mut().item_spacing.y = space::S4;
+        for event in events.iter().rev().take(30) {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(event)
+                        .size(size::META)
+                        .color(tk.secondary)
+                        .monospace(),
+                )
+                .wrap(),
+            );
+        }
+    }
 }
 
 /// Calculate orb color and breathing scale for the current session state.
@@ -1745,10 +1509,11 @@ fn orb_animation(state: &DesktopUiState, time: f64) -> (Color32, f32) {
 pub mod prelude {
     pub use crate::shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
     pub use crate::{
-        DesktopUiState, HistoryEntry, Page, SessionViewModel, Theme, TranscriptLine, UiSettings,
-        render_about_page, render_app, render_controls, render_debug_page, render_error_banner,
-        render_history_page, render_history_panel, render_nav_bar, render_network_indicator,
-        render_orb, render_session_panel, render_settings_page, render_settings_panel,
-        render_sidebar, render_state_info, render_transcript,
+        DesktopUiState, HistoryEntry, Page, Scheme, SessionViewModel, Theme, Tokens,
+        TranscriptLine, UiSettings, render_about_page, render_app, render_controls,
+        render_debug_page, render_error_banner, render_history_page, render_history_panel,
+        render_nav_bar, render_network_indicator, render_orb, render_session_panel,
+        render_settings_page, render_settings_panel, render_sidebar, render_state_info,
+        render_transcript,
     };
 }

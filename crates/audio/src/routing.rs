@@ -14,6 +14,7 @@
 //! [`AudioOutput`](crate::pipeline::AudioOutput) traits; they exist specifically
 //! for the per-app capture / virtual-mic injection the interpreter needs.
 
+use crate::output::OutputStats;
 use crate::{AudioError, AudioFrame, AudioState};
 
 /// Which process(es) an [`AppAudioSource`] should capture.
@@ -56,6 +57,30 @@ pub trait VirtualMicSink: Send {
 
     /// Enqueue a frame to be played into the virtual mic.
     fn write(&mut self, frame: &AudioFrame) -> Result<(), AudioError>;
+
+    /// Discard audio that has been written but not yet played.
+    fn flush(&mut self) -> Result<(), AudioError> {
+        Ok(())
+    }
+
+    /// Tell the sink that the current stream has no more audio for now.
+    fn end_stream(&mut self) {}
+
+    /// Whether everything written has been played (nothing is queued).
+    fn is_drained(&self) -> bool {
+        true
+    }
+
+    /// Block until [`is_drained`](Self::is_drained) or `timeout` passes.
+    fn wait_drained(&self, timeout: std::time::Duration) -> bool {
+        let _ = timeout;
+        self.is_drained()
+    }
+
+    /// Underrun / overrun counters.
+    fn stats(&self) -> OutputStats {
+        OutputStats::default()
+    }
 
     /// Current sink state.
     fn state(&self) -> AudioState;

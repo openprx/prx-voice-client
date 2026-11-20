@@ -27,13 +27,34 @@ impl Default for AppConfig {
     }
 }
 
+/// Default silence (ms) after speech that ends an utterance.
+pub const DEFAULT_END_SILENCE_MS: u32 = 800;
+/// Default window (ms) in which a new utterance continues the previous turn.
+pub const DEFAULT_MERGE_WINDOW_MS: u32 = 4_000;
+/// Default minimum speech duration (ms) for an utterance to become a turn.
+pub const DEFAULT_MIN_SPEECH_MS: u32 = 280;
+
 /// Audio-related settings.
+///
+/// Every field has a default, so a `config.toml` written before a field was
+/// added still loads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AudioConfig {
     pub sample_rate: u32,
     pub channels: u16,
     pub auto_play_reply: bool,
     pub echo_control: bool,
+    /// Silence after speech that ends an utterance, in milliseconds.
+    /// Natural pauses inside a sentence are shorter than this.
+    pub end_silence_ms: u32,
+    /// An utterance recognised within this many milliseconds after the
+    /// previous one was sent, before the assistant started answering, is a
+    /// continuation of it: one merged turn replaces the first.
+    pub merge_window_ms: u32,
+    /// Utterances with less speech than this (milliseconds) are not sent as
+    /// turns unless they continue the previous one.
+    pub min_speech_ms: u32,
 }
 
 impl Default for AudioConfig {
@@ -43,6 +64,9 @@ impl Default for AudioConfig {
             channels: 1,
             auto_play_reply: true,
             echo_control: true,
+            end_silence_ms: DEFAULT_END_SILENCE_MS,
+            merge_window_ms: DEFAULT_MERGE_WINDOW_MS,
+            min_speech_ms: DEFAULT_MIN_SPEECH_MS,
         }
     }
 }
@@ -66,7 +90,17 @@ impl Default for UiConfig {
 }
 
 /// Network / connectivity settings.
+///
+/// Every field has a default, so a `config.toml` written before a field was
+/// added still loads.
+///
+/// To run the desktop app against a real server set, in `[network]`:
+/// `use_mock = false`, `server_url = "http://host:3000"`, and the provider
+/// names the server should use (`asr_provider`, `agent_provider`,
+/// `tts_provider`, e.g. `"sherpa"`, `"ollama"`, `"sherpa"` for the local
+/// models) and `language`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NetworkConfig {
     pub connect_timeout_ms: u64,
     pub reconnect_attempts: u32,
@@ -75,6 +109,14 @@ pub struct NetworkConfig {
     pub server_url: String,
     /// Whether to use the mock gateway (offline) instead of a live server.
     pub use_mock: bool,
+    /// Session language requested from the server (e.g. `"zh-CN"`).
+    pub language: String,
+    /// Server-side ASR provider name (e.g. `"sherpa"`, `"mock"`).
+    pub asr_provider: String,
+    /// Server-side agent provider name (e.g. `"ollama"`, `"mock"`).
+    pub agent_provider: String,
+    /// Server-side TTS provider name (e.g. `"sherpa"`, `"mock"`).
+    pub tts_provider: String,
 }
 
 impl Default for NetworkConfig {
@@ -85,6 +127,10 @@ impl Default for NetworkConfig {
             reconnect_delay_ms: 1_000,
             server_url: "http://localhost:3000".to_owned(),
             use_mock: true,
+            language: "zh-CN".to_owned(),
+            asr_provider: "mock".to_owned(),
+            agent_provider: "mock".to_owned(),
+            tts_provider: "mock".to_owned(),
         }
     }
 }
@@ -360,11 +406,79 @@ mod tests {
     }
 
     #[test]
+    fn test_audio_config_loads_files_without_the_turn_fields() {
+        // A config.toml from before the endpointing fields existed: today's
+        // file without the three keys.
+        let current = toml::to_string_pretty(&AppConfig::default()).expect("serialize");
+        let old: String = current
+            .lines()
+            .filter(|l| {
+                !["end_silence_ms", "merge_window_ms", "min_speech_ms"]
+                    .iter()
+                    .any(|k| l.starts_with(k))
+            })
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert!(!old.contains("end_silence_ms"));
+        let cfg: AppConfig = toml::from_str(&old).expect("old file loads");
+        assert_eq!(cfg.audio.end_silence_ms, 800);
+        assert_eq!(cfg.audio.merge_window_ms, 4_000);
+        assert_eq!(cfg.audio.min_speech_ms, 280);
+        // A partial [audio] table also loads.
+        let partial: AudioConfig = toml::from_str("sample_rate = 8000\necho_control = false\n").expect("partial");
+        assert_eq!(partial.sample_rate, 8000);
+        assert!(!partial.echo_control);
+        assert_eq!(partial.end_silence_ms, 800);
+    }
+
+    #[test]
     fn test_network_config_defaults() {
         let cfg = NetworkConfig::default();
         assert_eq!(cfg.connect_timeout_ms, 5_000);
         assert_eq!(cfg.reconnect_attempts, 3);
         assert_eq!(cfg.reconnect_delay_ms, 1_000);
+        assert!(cfg.use_mock);
+        // The provider defaults are what the desktop app used to hard-code.
+        assert_eq!(cfg.language, "zh-CN");
+        assert_eq!(cfg.asr_provider, "mock");
+        assert_eq!(cfg.agent_provider, "mock");
+        assert_eq!(cfg.tts_provider, "mock");
+    }
+
+    #[test]
+    fn test_network_config_loads_files_without_the_provider_fields() {
+        // A config.toml from before the provider fields existed.
+        let old = "[network]\nconnect_timeout_ms = 1\nreconnect_attempts = 2\n\
+                   reconnect_delay_ms = 3\nserver_url = \"http://example:1\"\nuse_mock = false\n";
+        let parsed: NetworkConfig =
+            toml::from_str::<AppConfigWrapper>(old).expect("old file parses").network;
+        assert_eq!(parsed.server_url, "http://example:1");
+        assert!(!parsed.use_mock);
+        assert_eq!(parsed.asr_provider, "mock");
+        assert_eq!(parsed.language, "zh-CN");
+    }
+
+    #[test]
+    fn test_network_config_providers_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("prxvc-cfg-net-{}", std::process::id()));
+        let mgr = ConfigManager::new(dir.clone());
+        let mut cfg = AppConfig::default();
+        cfg.network.use_mock = false;
+        cfg.network.asr_provider = "sherpa".into();
+        cfg.network.agent_provider = "ollama".into();
+        cfg.network.tts_provider = "sherpa".into();
+        mgr.save(&cfg).expect("save");
+        let loaded = mgr.load().expect("load");
+        assert!(!loaded.network.use_mock);
+        assert_eq!(loaded.network.asr_provider, "sherpa");
+        assert_eq!(loaded.network.agent_provider, "ollama");
+        assert_eq!(loaded.network.tts_provider, "sherpa");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[derive(Deserialize)]
+    struct AppConfigWrapper {
+        network: NetworkConfig,
     }
 
     #[test]

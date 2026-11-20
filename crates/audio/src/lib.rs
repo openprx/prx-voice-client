@@ -10,10 +10,16 @@ pub mod core_audio_tap;
 pub mod cpal_input;
 pub mod cpal_output;
 pub mod device;
+pub mod echo_gate;
+pub mod endpoint;
 pub mod mock;
+pub mod output;
 pub mod pipeline;
+pub mod playback;
 pub mod resample;
 pub mod routing;
+pub mod turn_policy;
+pub mod vad_window;
 #[cfg(feature = "whisper")]
 pub mod whisper_asr;
 
@@ -171,7 +177,9 @@ pub mod prelude {
     pub use crate::blackhole_sink::BlackHoleSink;
     #[cfg(target_os = "macos")]
     pub use crate::core_audio_tap::{CoreAudioTap, CoreAudioTapSource, frame_peak_amplitude};
-    pub use crate::resample::{ASR_SAMPLE_RATE, MonoResampler16k, downmix_to_mono, mono_16k_frame};
+    pub use crate::resample::{
+        ASR_SAMPLE_RATE, MonoResampler, MonoResampler16k, downmix_to_mono, mono_16k_frame,
+    };
     pub use crate::routing::{AppAudioSource, ProcessFilter, VirtualMicSink};
     pub use crate::cpal_input::CpalAudioInput;
     pub use crate::cpal_output::CpalAudioOutput;

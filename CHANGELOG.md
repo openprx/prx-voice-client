@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   BlackHole virtual-mic backend (`prxvc-audio`)
 - `prxvc-adapters` crate: machine-translation and speech-synthesis adapters,
   including an OpenAI-compatible translator and a development tone synthesizer
+- RF design-standard theme (`prxvc-desktop-ui::theme`): colour, type, radius and
+  spacing tokens for light and dark, applied to egui globally; it is the default
+  theme and follows the system light/dark preference. The previous colour themes
+  stay selectable. Settings, history and debug dialogs are rebuilt on it with new
+  RF-styled widgets (switch, segmented control, select, buttons, text field)
+- Bundled UI fonts per the design standard: Hanken Grotesk (400, 500, 600),
+  JetBrains Mono (400, 600) and a GB2312 subset of Noto Sans SC (400, 600), as
+  named egui font families wired into the theme's text styles. The system CJK
+  font stays as a fallback. Licences in `THIRD_PARTY_NOTICES.md`;
+  `scripts/build-fonts.sh` reproduces the font files
+
+### Changed
+- Settings dialog regrouped into sections of one-setting rows (label and
+  description left, control right); section titles are now sentence case
 
 ## [0.1.0] - 2026-03-27
 

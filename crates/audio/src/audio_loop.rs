@@ -27,15 +27,49 @@ use crate::AudioError;
 #[cfg(feature = "whisper")]
 use crate::cpal_input::CpalAudioInput;
 #[cfg(feature = "whisper")]
+use crate::echo_gate::{EchoGateHandle, Routed, route_frame};
+#[cfg(feature = "whisper")]
+use crate::endpoint::{Endpoint, decide, speech_duration};
+#[cfg(feature = "whisper")]
+use crate::turn_policy::join_text;
+#[cfg(feature = "whisper")]
 use crate::pipeline::AudioInput;
 #[cfg(feature = "whisper")]
 use crate::whisper_asr::{WhisperAsr, WhisperAsrConfig};
+
+/// How often the VAD is consulted. The VAD is incremental, so a pass costs
+/// only the audio that arrived since the previous one; a short interval keeps
+/// the delay between the end of silence and the transcription small.
+#[cfg(feature = "whisper")]
+const VAD_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Least buffered audio worth running the VAD on.
+#[cfg(feature = "whisper")]
+const MIN_CHECK_AUDIO_SECS: f32 = 0.5;
 
 /// A recognized utterance from the audio processing loop.
 #[derive(Debug, Clone)]
 pub struct RecognizedUtterance {
     /// The recognized text.
     pub text: String,
+    /// Speech in the utterance according to the VAD segments (silence
+    /// between and around them excluded).
+    pub speech: std::time::Duration,
+}
+
+/// How the audio loop ends utterances.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoopConfig {
+    /// End-of-utterance decision parameters.
+    pub endpoint: crate::endpoint::EndpointConfig,
+}
+
+impl Default for LoopConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: crate::endpoint::EndpointConfig::from_end_silence_ms(800),
+        }
+    }
 }
 
 /// Controls and runs the audio capture + local ASR pipeline.
@@ -69,13 +103,17 @@ impl AudioProcessingLoop {
     /// 4. When speech ends, transcribes and sends text through `text_tx`
     ///
     /// The `session_id` is passed through for tagging but is not used by
-    /// the audio loop itself.
+    /// the audio loop itself. Microphone audio is discarded while `gate` is
+    /// closed (the assistant is speaking) and the recogniser starts afresh
+    /// when it reopens.
     #[cfg(feature = "whisper")]
     pub fn start(
         &mut self,
         asr_config: WhisperAsrConfig,
         session_id: uuid::Uuid,
         text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
+        gate: EchoGateHandle,
+        loop_config: LoopConfig,
     ) -> Result<(), AudioError> {
         if self.running.load(Ordering::Relaxed) {
             return Ok(()); // Already running.
@@ -87,7 +125,7 @@ impl AudioProcessingLoop {
         let handle = std::thread::Builder::new()
             .name("prxvc-audio-loop".into())
             .spawn(move || {
-                if let Err(e) = run_audio_loop(running.clone(), asr_config, session_id, text_tx) {
+                if let Err(e) = run_audio_loop(running.clone(), asr_config, session_id, text_tx, gate, loop_config) {
                     warn!(error = %e, "audio loop exited with error");
                 }
                 running.store(false, Ordering::Relaxed);
@@ -122,6 +160,8 @@ fn run_audio_loop(
     asr_config: WhisperAsrConfig,
     session_id: uuid::Uuid,
     text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
+    gate: EchoGateHandle,
+    loop_config: LoopConfig,
 ) -> Result<(), AudioError> {
     // Initialize Whisper ASR.
     let mut asr = WhisperAsr::new(&asr_config)?;
@@ -131,22 +171,28 @@ fn run_audio_loop(
     mic.start()?;
     info!("microphone started, listening for speech");
 
-    // Strategy: accumulate audio continuously, check VAD every ~2 seconds.
-    // When VAD finds speech segments, transcribe them immediately.
-    // When no speech for a while after speech was detected, do a forced
-    // transcription to catch anything VAD might have missed.
+    // Strategy: accumulate audio, run the (incremental) VAD every
+    // `VAD_CHECK_INTERVAL`, and finalise the utterance only when the VAD shows
+    // `end_silence` of silence after the last speech (or the utterance hits
+    // its maximum length). Nothing is transcribed while the speaker may still
+    // continue, so a pause inside a sentence does not split it.
     let mut last_vad_check = std::time::Instant::now();
-    let mut had_speech_ever = false;
-    let mut silence_since_speech = std::time::Instant::now();
-    let vad_check_interval = Duration::from_secs(2);
-    let silence_timeout = Duration::from_secs(3);
-    let max_buffer = Duration::from_secs(30);
+        let max_idle_buffer = Duration::from_secs(10);
 
     while running.load(Ordering::Relaxed) {
         // Read all available audio frames (non-blocking).
         let mut got_frame = false;
         while let Ok(Some(input_frame)) = mic.read_frame() {
-            asr.push_frame(&input_frame.frame);
+            // Frames captured while the assistant speaks (and shortly after)
+            // are dropped; on reopening the recogniser starts afresh (the
+            // gate resets it) and so do the timers.
+            match route_frame(&gate, std::time::Instant::now(), &input_frame.frame, &mut asr) {
+                Routed::Dropped => continue,
+                Routed::DeliveredAfterReset => {
+                    last_vad_check = std::time::Instant::now();
+                }
+                Routed::Delivered => {}
+            }
             got_frame = true;
         }
 
@@ -155,67 +201,46 @@ fn run_audio_loop(
             continue;
         }
 
-        let buffered = asr.buffered_duration_secs();
-
-        // Don't check VAD until we have at least 1 second of audio.
-        if buffered < 1.0 {
-            continue;
-        }
-
-        // Check VAD periodically (not every frame).
-        if last_vad_check.elapsed() < vad_check_interval {
-            // Prevent buffer from growing unbounded if we never detect speech.
-            if buffered > max_buffer.as_secs_f32() {
-                asr.reset();
-            }
+        // Don't check VAD until there is some audio to look at.
+        if asr.buffered_duration_secs() < MIN_CHECK_AUDIO_SECS
+            || last_vad_check.elapsed() < VAD_CHECK_INTERVAL
+        {
             continue;
         }
         last_vad_check = std::time::Instant::now();
 
-        // Run VAD + Whisper on accumulated audio.
-        match asr.detect_and_transcribe() {
-            Ok(segments) if !segments.is_empty() => {
-                had_speech_ever = true;
-                silence_since_speech = std::time::Instant::now();
-
-                for seg in &segments {
-                    info!(text = %seg.text, "local ASR recognized speech");
-                    let _ = text_tx.send(RecognizedUtterance {
-                        text: seg.text.clone(),
-                    });
-                }
-
-                // Reset buffer after successful transcription.
-                asr.reset();
-            }
-            Ok(_) => {
-                // No speech in this check.
-                if had_speech_ever && silence_since_speech.elapsed() > silence_timeout {
-                    // Silence timeout after speech — force transcribe remaining audio
-                    // in case VAD missed trailing speech.
-                    if buffered > 1.0 {
-                        if let Ok(text) = asr.transcribe_all() {
-                            let trimmed = text.trim();
-                            if !trimmed.is_empty() && trimmed != "[BLANK_AUDIO]" {
-                                info!(text = %trimmed, "local ASR tail transcription");
-                                let _ = text_tx.send(RecognizedUtterance {
-                                    text: trimmed.to_string(),
-                                });
-                            }
-                        }
-                    }
-                    asr.reset();
-                    had_speech_ever = false;
-                }
-
-                // Trim buffer if it gets too long without any speech.
-                if buffered > 10.0 && !had_speech_ever {
-                    asr.reset();
-                }
-            }
+        let segments = match asr.speech_segments() {
+            Ok(segments) => segments,
             Err(e) => {
-                warn!(error = %e, "VAD/transcription check failed");
+                warn!(error = %e, "VAD check failed");
                 // Don't reset on error — retry next interval.
+                continue;
+            }
+        };
+        match decide(&loop_config.endpoint, asr.buffered_samples(), &segments) {
+            Endpoint::NoSpeech => {
+                // Don't let silence accumulate without bound.
+                if asr.buffered_duration_secs() > max_idle_buffer.as_secs_f32() {
+                    asr.reset();
+                }
+            }
+            Endpoint::Continue => {}
+            Endpoint::Finalize(reason) => {
+                let speech = speech_duration(&segments);
+                let pieces = asr.transcribe_segments(&segments);
+                let text = pieces
+                    .iter()
+                    .fold(String::new(), |acc, seg| join_text(&acc, &seg.text));
+                info!(
+                    ?reason,
+                    speech_ms = speech.as_millis() as u64,
+                    text = %text,
+                    "local ASR utterance finalised"
+                );
+                if !text.is_empty() {
+                    let _ = text_tx.send(RecognizedUtterance { text, speech });
+                }
+                asr.reset();
             }
         }
     }

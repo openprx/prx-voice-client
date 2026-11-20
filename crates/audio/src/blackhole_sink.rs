@@ -6,16 +6,19 @@
 //! — i.e. the cloned-voice English for direction A.
 //!
 //! The user must install BlackHole and select it as the meeting app's mic. This
-//! sink only locates the device by name and streams f32 samples into it.
+//! sink locates the device by name, converts every frame to the device's rate
+//! and channel count (see [`crate::output`]) and streams f32 samples into it.
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 
+use crate::device::find_output_device;
+use crate::output::{OutputCore, OutputStats, PlaybackBuffer};
 use crate::routing::VirtualMicSink;
-use crate::{AudioError, AudioFormat, AudioFrame, AudioState};
+use crate::{AudioError, AudioFrame, AudioState};
 
 /// Default substring used to locate the BlackHole output device.
 pub const DEFAULT_BLACKHOLE_NAME: &str = "BlackHole";
@@ -34,9 +37,7 @@ pub struct BlackHoleSink {
     device_name: String,
     state: AudioState,
     stream: Option<SendStream>,
-    sample_rate: u32,
-    channels: u16,
-    buffer: Arc<parking_lot::Mutex<VecDeque<f32>>>,
+    core: OutputCore,
     is_running: Arc<AtomicBool>,
 }
 
@@ -46,84 +47,44 @@ impl BlackHoleSink {
         Self::with_device_name(DEFAULT_BLACKHOLE_NAME)
     }
 
-    /// Locate an output device whose name contains `name_substr` (case-sensitive).
+    /// Locate an output device by name: an exact name, a name fragment, or an
+    /// id from [`crate::device::list_audio_devices`]. An exact match wins over
+    /// a fragment match.
     ///
     /// # Errors
     /// [`AudioError::OutputDeviceUnavailable`] if no matching device is found.
     pub fn with_device_name(name_substr: &str) -> Result<Self, AudioError> {
-        let device = Self::find_device(name_substr)?;
+        let device = find_output_device(name_substr)?;
         let config = device
             .default_output_config()
             .map_err(|e| AudioError::InitializationFailed(format!("blackhole config: {e}")))?;
-        Ok(Self {
-            device_name: name_substr.to_owned(),
+        let core = OutputCore::with_default_capacity(config.sample_rate().0, config.channels())?;
+        Ok(Self::with_core(name_substr, core))
+    }
+
+    fn with_core(device_name: &str, core: OutputCore) -> Self {
+        Self {
+            device_name: device_name.to_owned(),
             state: AudioState::OutputClosed,
             stream: None,
-            sample_rate: config.sample_rate().0,
-            channels: config.channels(),
-            buffer: Arc::new(parking_lot::Mutex::new(VecDeque::new())),
+            core,
             is_running: Arc::new(AtomicBool::new(false)),
-        })
+        }
     }
 
     /// Sample rate negotiated with the BlackHole device (typically 48 kHz).
     pub fn sample_rate(&self) -> u32 {
-        self.sample_rate
+        self.core.device_rate()
     }
 
     /// Channel count of the BlackHole device (typically 2).
     pub fn channels(&self) -> u16 {
-        self.channels
+        self.core.device_channels()
     }
 
-    fn find_device(name_substr: &str) -> Result<cpal::Device, AudioError> {
-        let host = cpal::default_host();
-        let devices = host
-            .output_devices()
-            .map_err(|e| AudioError::InitializationFailed(format!("enumerate outputs: {e}")))?;
-        for device in devices {
-            if let Ok(name) = device.name() {
-                if name.contains(name_substr) {
-                    return Ok(device);
-                }
-            }
-        }
-        Err(AudioError::OutputDeviceUnavailable)
-    }
-
-    /// Decode a frame's samples to f32 and up-/down-mix to the device channel
-    /// count, returning interleaved samples ready for the device buffer.
-    fn frame_to_device_samples(&self, frame: &AudioFrame) -> Vec<f32> {
-        let src_channels = frame.channels.max(1) as usize;
-        let mono_or_interleaved: Vec<f32> = match frame.format {
-            AudioFormat::F32 => frame
-                .data
-                .chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                .collect(),
-            AudioFormat::I16 => frame
-                .data
-                .chunks_exact(2)
-                .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / i16::MAX as f32)
-                .collect(),
-            AudioFormat::U8 => frame.data.iter().map(|&b| (b as f32 - 128.0) / 128.0).collect(),
-        };
-
-        // Collapse to mono, then fan out to the device's channel count.
-        let dst_channels = self.channels.max(1) as usize;
-        let frames = mono_or_interleaved.len() / src_channels;
-        let mut out = Vec::with_capacity(frames * dst_channels);
-        for f in 0..frames {
-            let mut acc = 0.0f32;
-            for c in 0..src_channels {
-                acc += mono_or_interleaved[f * src_channels + c];
-            }
-            let mono = acc / src_channels as f32;
-            for _ in 0..dst_channels {
-                out.push(mono);
-            }
-        }
-        out
+    /// Shared handle to the playback queue.
+    pub fn buffer(&self) -> &Arc<PlaybackBuffer> {
+        self.core.buffer()
     }
 }
 
@@ -135,28 +96,23 @@ impl VirtualMicSink for BlackHoleSink {
                 to: AudioState::OutputPlaying.to_string(),
             });
         }
-        let device = Self::find_device(&self.device_name)?;
+        let device = find_output_device(&self.device_name)?;
         let config = cpal::StreamConfig {
-            channels: self.channels,
-            sample_rate: cpal::SampleRate(self.sample_rate),
+            channels: self.core.device_channels(),
+            sample_rate: cpal::SampleRate(self.core.device_rate()),
             buffer_size: cpal::BufferSize::Default,
         };
 
-        let buffer = Arc::clone(&self.buffer);
+        let buffer = Arc::clone(self.core.buffer());
         let is_running = Arc::clone(&self.is_running);
         is_running.store(true, Ordering::Release);
 
         let data_callback = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
             if !is_running.load(Ordering::Acquire) {
-                for s in data.iter_mut() {
-                    *s = 0.0;
-                }
+                data.fill(0.0);
                 return;
             }
-            let mut buf = buffer.lock();
-            for s in data.iter_mut() {
-                *s = buf.pop_front().unwrap_or(0.0);
-            }
+            buffer.pull(data);
         };
         let err_callback = |err: cpal::StreamError| {
             tracing::error!("blackhole sink stream error: {err}");
@@ -177,6 +133,7 @@ impl VirtualMicSink for BlackHoleSink {
     fn stop(&mut self) -> Result<(), AudioError> {
         self.is_running.store(false, Ordering::Release);
         self.stream = None;
+        self.core.flush();
         self.state = AudioState::OutputClosed;
         Ok(())
     }
@@ -188,9 +145,30 @@ impl VirtualMicSink for BlackHoleSink {
                 to: "writing".to_owned(),
             });
         }
-        let samples = self.frame_to_device_samples(frame);
-        self.buffer.lock().extend(samples);
+        self.core.write(frame)
+    }
+
+    fn flush(&mut self) -> Result<(), AudioError> {
+        self.core.flush();
         Ok(())
+    }
+
+    fn end_stream(&mut self) {
+        if let Err(e) = self.core.end_stream() {
+            tracing::warn!("resampler tail lost at end of stream: {e}");
+        }
+    }
+
+    fn is_drained(&self) -> bool {
+        self.core.buffer().is_drained()
+    }
+
+    fn wait_drained(&self, timeout: Duration) -> bool {
+        self.core.buffer().wait_drained(timeout)
+    }
+
+    fn stats(&self) -> OutputStats {
+        self.core.buffer().stats()
     }
 
     fn state(&self) -> AudioState {
@@ -201,5 +179,66 @@ impl VirtualMicSink for BlackHoleSink {
 impl Drop for BlackHoleSink {
     fn drop(&mut self) {
         self.is_running.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+impl BlackHoleSink {
+    /// A sink in the playing state with a given device format and no device
+    /// or stream behind it, for tests of the conversion path.
+    fn detached(device_rate: u32, device_channels: u16) -> Self {
+        let core = OutputCore::with_default_capacity(device_rate, device_channels)
+            .expect("valid device format");
+        let mut sink = Self::with_core(DEFAULT_BLACKHOLE_NAME, core);
+        sink.state = AudioState::OutputPlaying;
+        sink
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AudioFormat;
+
+    fn f32_tone(rate: u32, samples: usize) -> AudioFrame {
+        let mut data = Vec::with_capacity(samples * 4);
+        for i in 0..samples {
+            let v = (2.0 * std::f32::consts::PI * 440.0 * i as f32 / rate as f32).sin() * 0.5;
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        AudioFrame {
+            sequence_no: 0,
+            sample_rate: rate,
+            channels: 1,
+            format: AudioFormat::F32,
+            timestamp_ms: 0,
+            data,
+        }
+    }
+
+    #[test]
+    fn one_second_at_16k_and_24k_yields_48000_stereo_frames() {
+        for rate in [16_000u32, 24_000] {
+            let mut sink = BlackHoleSink::detached(48_000, 2);
+            sink.write(&f32_tone(rate, rate as usize)).unwrap();
+            // The resampler holds back its tail until the stream ends.
+            sink.end_stream();
+            assert_eq!(sink.buffer().buffered_samples(), 48_000 * 2, "{rate} Hz");
+        }
+    }
+
+    #[test]
+    fn flush_empties_the_queue_and_reports_drained() {
+        let mut sink = BlackHoleSink::detached(48_000, 2);
+        sink.write(&f32_tone(16_000, 16_000)).unwrap();
+        assert!(!sink.is_drained());
+        sink.flush().unwrap();
+        assert_eq!(sink.buffer().buffered_samples(), 0);
+        assert!(sink.is_drained());
+    }
+
+    #[test]
+    fn unknown_device_name_is_reported() {
+        assert!(BlackHoleSink::with_device_name("no such output device \u{1F50A}").is_err());
     }
 }

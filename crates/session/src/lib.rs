@@ -413,6 +413,8 @@ impl Session {
             | (SessionState::Recognizing, SessionState::Failed)
             // Thinking
             | (SessionState::Thinking, SessionState::AssistantSpeaking)
+            // A newer utterance replaces a turn whose reply never spoke.
+            | (SessionState::Thinking, SessionState::Listening)
             | (SessionState::Thinking, SessionState::Recovering)
             | (SessionState::Thinking, SessionState::Failed)
             // AssistantSpeaking
@@ -625,6 +627,23 @@ mod tests {
             assert_eq!(s.state, SessionState::Failed);
             assert!(s.ended_at.is_some());
         }
+    }
+
+    #[test]
+    fn test_thinking_can_return_to_listening_when_the_reply_never_speaks() {
+        let mut s = Session::new(test_config());
+        for to in [
+            SessionState::Starting,
+            SessionState::Listening,
+            SessionState::UserSpeaking,
+            SessionState::UserSpeechEnded,
+            SessionState::Recognizing,
+            SessionState::Thinking,
+            SessionState::Listening,
+        ] {
+            s.transition(to).expect("valid transition");
+        }
+        assert_eq!(s.state, SessionState::Listening);
     }
 
     #[test]

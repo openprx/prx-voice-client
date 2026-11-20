@@ -42,6 +42,21 @@ pub enum TransportState {
     Failed,
 }
 
+/// A chunk of assistant (TTS) audio delivered by a transport.
+///
+/// `session_id` is the engine's session ID (never the server's), `pcm16` is
+/// mono little-endian PCM16 with any session framing already removed, and
+/// `sample_rate` is the rate the server announced for the current reply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TtsAudioChunk {
+    /// Engine session the audio belongs to.
+    pub session_id: uuid::Uuid,
+    /// Sample rate of `pcm16` in Hz.
+    pub sample_rate: u32,
+    /// Mono PCM16 little-endian samples.
+    pub pcm16: Vec<u8>,
+}
+
 /// Async transport trait for communication with a backend.
 ///
 /// Implementors provide the mechanism to send commands, receive events, and
@@ -56,11 +71,28 @@ pub trait Transport: Send + Sync {
     /// Send a command to the backend.
     fn send_command(&mut self, command: &Command) -> Result<(), TransportError>;
 
+    /// Create a backend session that will be addressed by the engine's
+    /// `session_id` from now on.
+    ///
+    /// The default implementation forwards [`Command::CreateSession`], which
+    /// is enough for transports that do not own a separate session ID space.
+    fn create_session(&mut self, session_id: uuid::Uuid) -> Result<(), TransportError> {
+        let _ = session_id;
+        self.send_command(&Command::CreateSession)
+    }
+
     /// Send raw audio frame data for a given session.
     fn send_audio_data(&mut self, session_id: &str, data: &[u8]) -> Result<(), TransportError>;
 
     /// Poll for the next event (non-blocking, returns `None` if no event available).
     fn poll_event(&mut self) -> Result<Option<Event>, TransportError>;
+
+    /// Poll for the next chunk of assistant audio (non-blocking).
+    ///
+    /// Transports that carry no audio return `None`.
+    fn poll_audio(&mut self) -> Option<TtsAudioChunk> {
+        None
+    }
 
     /// Get the current transport state.
     fn state(&self) -> TransportState;
