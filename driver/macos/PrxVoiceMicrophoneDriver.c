@@ -26,6 +26,8 @@
 //
 // PrxVoiceMicrophoneDriver.c
 // Minimal CoreAudio AudioServerPlugIn virtual microphone driver for PRX Voice.
+// Size: over 800 lines on purpose; one responsibility (a single plug-in object model
+// with its two devices), kept in one file as in the original.
 //
 // Exposes two devices inside coreaudiod:
 //   1. "PRX Voice Microphone" (UID: "org.openprx.prx-voice-client.microphone")
