@@ -37,7 +37,7 @@ use super::map::{
     required_variant, routing_notice,
 };
 use super::paths::{IncomingPlan, OutgoingPlan, start_incoming, start_outgoing};
-use super::route::{current_route, gate_enabled};
+use crate::call_kit::route::{current_route, gate_enabled};
 
 /// How long a system consent prompt may wait for the user.
 const CONSENT_TIMEOUT: Duration = Duration::from_secs(30);

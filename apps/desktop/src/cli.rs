@@ -4,7 +4,10 @@
 //! data directories, reports where the process runs from and exits. Neither
 //! opens a window, creates a directory, reads credentials or touches an audio
 //! device, so both are safe to run from inside an application bundle in a
-//! script.
+//! script. `--check-call` adds what a translated call needs from this machine
+//! (consents as this process sees them, the driver, the audio devices, the
+//! models, the voices, the translation server); it reads the settings and the
+//! device list but changes nothing and raises no permission prompt.
 
 use std::path::Path;
 
@@ -16,6 +19,10 @@ pub(crate) enum Mode {
     Gui,
     Version,
     Check,
+    CheckCall,
+    /// A `--flag` this version does not know: report it and exit instead of opening the window,
+    /// so that a script written for a newer version cannot start the application by accident.
+    Unknown,
 }
 
 /// Choose the mode from the arguments after the program name. The first
@@ -25,6 +32,8 @@ pub(crate) fn parse(args: &[String]) -> Mode {
         match arg.as_str() {
             "--version" | "-V" => return Mode::Version,
             "--check" => return Mode::Check,
+            "--check-call" => return Mode::CheckCall,
+            other if other.starts_with("--") => return Mode::Unknown,
             _ => {}
         }
     }
@@ -116,7 +125,9 @@ mod tests {
         assert_eq!(parse(&args(&["--version"])), Mode::Version);
         assert_eq!(parse(&args(&["-V"])), Mode::Version);
         assert_eq!(parse(&args(&["--check"])), Mode::Check);
+        assert_eq!(parse(&args(&["--check-call"])), Mode::CheckCall);
         assert_eq!(parse(&args(&["-psn_0_12345"])), Mode::Gui);
+        assert_eq!(parse(&args(&["--no-such-flag"])), Mode::Unknown);
     }
 
     #[test]

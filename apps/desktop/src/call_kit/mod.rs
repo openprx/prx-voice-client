@@ -6,6 +6,8 @@
 //! * `params`: `call.*` and `[pipeline]` as pipeline parameters.
 //! * `problems`: registry problems as typed call issues.
 //! * `trace`: the sink for stage timestamps.
+//! * `route` (macOS): what the local output device is, and whether the echo gate applies.
+//! * `readiness` (macOS): what a first translated call needs from the machine, as report lines.
 
 #![allow(dead_code)] // the harness includes this tree and uses a different part of it
 
@@ -14,4 +16,8 @@ pub(crate) mod models;
 pub(crate) mod params;
 pub(crate) mod problems;
 pub(crate) mod providers;
+#[cfg(target_os = "macos")]
+pub(crate) mod readiness;
+#[cfg(target_os = "macos")]
+pub(crate) mod route;
 pub(crate) mod trace;

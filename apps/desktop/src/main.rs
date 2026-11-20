@@ -63,6 +63,17 @@ fn main() -> eframe::Result<()> {
             println!("{}", cli::check_report(bundle::current()));
             return Ok(());
         }
+        cli::Mode::CheckCall => {
+            println!("{}", cli::check_report(bundle::current()));
+            println!("{}", check_call_report());
+            return Ok(());
+        }
+        cli::Mode::Unknown => {
+            eprintln!(
+                "prxvc-desktop: unknown option (this version knows --version, --check, --check-call)"
+            );
+            std::process::exit(2);
+        }
         cli::Mode::Gui => {}
     }
 
@@ -84,6 +95,21 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(compose::build_app(cc)))),
     )
+}
+
+/// What a translated call needs from this machine, as the report lines of `--check-call`.
+#[cfg(target_os = "macos")]
+fn check_call_report() -> String {
+    use call_kit::readiness::{machine_lines, provider_lines, render};
+    let config = call_kit::config::load_current();
+    let mut lines = machine_lines(&config);
+    lines.extend(provider_lines(&config));
+    render(&lines)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn check_call_report() -> String {
+    "call mode needs macOS".to_owned()
 }
 
 /// Install logging, then record where the process runs from. A process

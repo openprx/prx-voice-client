@@ -5,10 +5,16 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+autobins = false
 
 [[bin]]
 name = "prxvc-desktop"
 path = "src/main.rs"
+
+# Development helpers for this machine (scripts/dev); not part of the product bundle.
+[[bin]]
+name = "prxvc-dev"
+path = "src/bin/prxvc_dev/main.rs"
 
 [dependencies]
 prxvc-audio = { workspace = true }

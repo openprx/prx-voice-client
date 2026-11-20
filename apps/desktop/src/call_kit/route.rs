@@ -15,7 +15,7 @@ use prxvc_session::call::OutputRoute;
 const HEADPHONE_WORDS: [&str; 5] = ["headphone", "headset", "airpods", "earbuds", "earphone"];
 
 /// The route of an output device from its connection type and name.
-pub(super) fn classify(transport: InputTransport, name: &str) -> OutputRoute {
+pub(crate) fn classify(transport: InputTransport, name: &str) -> OutputRoute {
     let lower = name.to_lowercase();
     if HEADPHONE_WORDS.iter().any(|w| lower.contains(w)) || transport == InputTransport::Bluetooth {
         return OutputRoute::Headphones;
@@ -27,7 +27,7 @@ pub(super) fn classify(transport: InputTransport, name: &str) -> OutputRoute {
 }
 
 /// The device the local output will play to: the configured one by name, else the system default.
-pub(super) fn output_entry(configured: &str) -> Option<DeviceEntry> {
+pub(crate) fn output_entry(configured: &str) -> Option<DeviceEntry> {
     let configured = configured.trim();
     if configured.is_empty() {
         return default_entry(DefaultKind::Output);
@@ -39,13 +39,13 @@ pub(super) fn output_entry(configured: &str) -> Option<DeviceEntry> {
 }
 
 /// The route of the local output now.
-pub(super) fn current_route(configured: &str) -> OutputRoute {
+pub(crate) fn current_route(configured: &str) -> OutputRoute {
     output_entry(configured).map_or(OutputRoute::Unknown, |d| classify(d.transport, &d.name))
 }
 
 /// Whether the half-duplex echo gate is on for `route` (design 6.3): always in `Always` mode,
 /// never in `Off`, and in `Auto` whenever the route is not known to be headphones.
-pub(super) fn gate_enabled(mode: EchoMode, route: OutputRoute) -> bool {
+pub(crate) fn gate_enabled(mode: EchoMode, route: OutputRoute) -> bool {
     match mode {
         EchoMode::Always => true,
         EchoMode::Off => false,

@@ -59,7 +59,7 @@ impl ProviderHost {
     }
 
     /// The registry of the configuration `config`, over the model store of its directories.
-    fn registry_for(
+    pub(crate) fn registry_for(
         config: &AppConfig,
         paths: Option<&AppPaths>,
     ) -> Result<Arc<ProviderRegistry>, HostFault> {
@@ -157,7 +157,7 @@ fn check_servers(directions: &[DirectionPlan]) -> Result<(), ProvidersFailure> {
 }
 
 /// Connect to a local or local-network server; a remote endpoint is judged by its first request.
-fn probe_server(spec: &MtSpec) -> Result<(), String> {
+pub(crate) fn probe_server(spec: &MtSpec) -> Result<(), String> {
     if spec.locality == Locality::Remote {
         return Ok(());
     }
