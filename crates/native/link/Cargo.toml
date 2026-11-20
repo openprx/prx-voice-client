@@ -1,0 +1,23 @@
+[package]
+name = "prxvc-native-link"
+description = "Link spike for the native runtimes: loads qwentts.cpp and transcribe.cpp in one process (CT-9)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+prxvc-qwentts-sys = { workspace = true, optional = true }
+prxvc-transcribe-sys = { workspace = true, optional = true }
+
+[features]
+# Each feature builds the vendored runtime (CMake, C++) and links it as a dynamic library.
+# `cargo test -p prxvc-native-link --features qwentts,transcribe` runs the symbol and load checks;
+# add `-- --ignored` for the tests that need the model files and the GPU (see README.md).
+qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]
+transcribe = ["dep:prxvc-transcribe-sys", "prxvc-transcribe-sys/transcribe"]
+
+[lints]
+workspace = true
