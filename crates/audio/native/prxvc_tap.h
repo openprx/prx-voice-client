@@ -93,9 +93,11 @@ typedef struct {
 //   ctx          : opaque pointer passed to prxvc_tap_create.
 //   buffer_count : number of valid entries in `buffers` (1..PRXVC_TAP_MAX_BUFFERS).
 //   buffers      : valid only for the duration of the call.
-//   host_time    : host time of the input data, 0 if unknown.
+//   host_time_ns : capture time of the first frame of the buffers in nanoseconds
+//                  of the Core Audio host clock (the clock behind
+//                  prxvc_tap_host_time_now_ns), 0 if the system gave none.
 typedef void (*PrxvcTapAudioCb)(void *ctx, uint32_t buffer_count,
-                                const PrxvcTapBuffer *buffers, uint64_t host_time);
+                                const PrxvcTapBuffer *buffers, uint64_t host_time_ns);
 
 // Create the process tap and its private aggregate device, without starting IO.
 // On success returns a handle and fills *format; on failure returns NULL and
@@ -123,6 +125,29 @@ int32_t prxvc_tap_bundle_form_available(void);
 // The user's answer for "System Audio Recording" (PRXVC_PERMISSION_*), from the
 // system's permission preflight. Does not prompt.
 int32_t prxvc_tap_permission_status(void);
+
+// Result of prxvc_tap_request_consent.
+enum {
+    PRXVC_CONSENT_GRANTED = 1,
+    PRXVC_CONSENT_REFUSED = 0,
+    PRXVC_CONSENT_NO_ANSWER = -1,   // no answer within the timeout
+    PRXVC_CONSENT_UNAVAILABLE = -2, // the system request function is missing
+};
+
+// Non-zero when the main bundle's Info.plist declares
+// NSAudioCaptureUsageDescription. Without it the system refuses the consent
+// request without showing a prompt and a tap delivers exact zeros.
+int32_t prxvc_tap_bundle_declares_audio_capture(void);
+
+// Ask the system to show the System Audio Recording prompt (PRXVC_CONSENT_*).
+// Blocks until the user answers or `timeout_ms` passes: never call it from the
+// UI thread. Shows a prompt only from a bundle that declares the usage key and
+// only while the status is undetermined.
+int32_t prxvc_tap_request_consent(int32_t timeout_ms);
+
+// The Core Audio host clock now, in nanoseconds (the clock of the host times
+// the tap callback reports).
+uint64_t prxvc_tap_host_time_now_ns(void);
 
 #ifdef __cplusplus
 }

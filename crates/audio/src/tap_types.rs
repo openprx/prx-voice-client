@@ -95,6 +95,40 @@ pub enum TapError {
          application, then start again"
     )]
     PermissionDenied,
+    /// The process does not run from an application bundle that declares
+    /// `NSAudioCaptureUsageDescription`, so macOS refuses to ask for consent
+    /// and a tap would deliver silence.
+    #[error(
+        "this process does not run from an application bundle that declares \
+         NSAudioCaptureUsageDescription, so macOS cannot ask for system audio recording \
+         permission: start PRX Voice from its application bundle"
+    )]
+    NotInAppBundle,
+    /// System audio recording has not been asked for yet; call
+    /// `request_capture_consent` (from a worker thread) before starting the tap.
+    #[error(
+        "system audio recording permission has not been requested yet: allow the \
+         system prompt for PRX Voice, then start again"
+    )]
+    ConsentUndetermined,
+    /// The system gave no answer to the permission request.
+    #[error("the system gave no answer to the system audio recording permission request: {reason}")]
+    ConsentNoAnswer {
+        /// Why there was no answer (timeout or missing system function).
+        reason: String,
+    },
+    /// The target plays audio but the tap has delivered only exact digital
+    /// zeros, even after one re-creation: permission is probably missing.
+    #[error(
+        "no signal from {target}: it is playing audio but the capture delivers only silence; \
+         open System Settings, Privacy & Security, Screen & System Audio Recording, allow \
+         \"System Audio Recording Only\" for PRX Voice (run from its application bundle), \
+         then start again"
+    )]
+    NoSignal {
+        /// The tapped application.
+        target: String,
+    },
     /// The target application has no audio process (it is not running).
     #[error("{target} is not running or has no audio process")]
     ProcessNotFound {
@@ -142,6 +176,24 @@ pub enum TapEvent {
         /// The failure.
         error: TapError,
     },
+    /// The target's output is running but the tap has delivered only exact
+    /// digital zeros for `silent_ms`: audio-capture consent is probably missing
+    /// or the tap is stale. The tap is rebuilt once after this event.
+    SilentWhilePlaying {
+        /// Milliseconds of exact zeros while the output ran.
+        silent_ms: u64,
+    },
+    /// The zeros persisted after the rebuild: capture is in an error state the
+    /// UI shows with the consent instructions (the error is
+    /// [`TapError::NoSignal`]). Reported once; [`TapEvent::SignalRestored`]
+    /// clears it.
+    NoSignal {
+        /// The typed error to show.
+        error: TapError,
+    },
+    /// Real audio arrived again after [`TapEvent::SilentWhilePlaying`] or
+    /// [`TapEvent::NoSignal`].
+    SignalRestored,
     /// Buffers whose layout differs from the validated format were dropped.
     FormatMismatch {
         /// Total dropped buffers so far.
@@ -158,6 +210,7 @@ pub struct TapCounters {
     pub(crate) overrun_slots: AtomicU64,
     pub(crate) overrun_frames: AtomicU64,
     pub(crate) bad_buffers: AtomicU64,
+    pub(crate) nonzero_callbacks: AtomicU64,
 }
 
 impl TapCounters {
@@ -169,6 +222,7 @@ impl TapCounters {
             overrun_slots: self.overrun_slots.load(Ordering::Relaxed),
             overrun_frames: self.overrun_frames.load(Ordering::Relaxed),
             bad_buffers: self.bad_buffers.load(Ordering::Relaxed),
+            nonzero_callbacks: self.nonzero_callbacks.load(Ordering::Relaxed),
         }
     }
 }
@@ -186,6 +240,8 @@ pub struct TapStats {
     pub overrun_frames: u64,
     /// Buffers dropped because their layout did not match the validated format.
     pub bad_buffers: u64,
+    /// Callbacks with at least one sample that is not exactly zero.
+    pub nonzero_callbacks: u64,
 }
 
 #[cfg(test)]
@@ -212,6 +268,15 @@ mod tests {
         assert_eq!(TapMuteMode::parse("muted"), Some(TapMuteMode::Muted));
         assert_eq!(TapMuteMode::parse("muted-when-tapped"), Some(TapMuteMode::MutedWhenTapped));
         assert_eq!(TapMuteMode::parse("mute"), None);
+    }
+
+    #[test]
+    fn consent_errors_tell_the_user_what_to_do() {
+        let bundle = TapError::NotInAppBundle.to_string();
+        assert!(bundle.contains("application bundle") && bundle.contains("NSAudioCaptureUsageDescription"));
+        let silent = TapError::NoSignal { target: "net.whatsapp.WhatsApp".into() }.to_string();
+        assert!(silent.contains("net.whatsapp.WhatsApp"));
+        assert!(silent.contains("System Settings") && silent.contains("System Audio Recording"));
     }
 
     #[test]

@@ -14,6 +14,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreAudio/CoreAudio.h>
 #import <CoreAudio/CATapDescription.h>
+#import <CoreAudio/HostTime.h>
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +131,16 @@ int32_t prxvc_tap_bundle_form_available(void) {
     return 0;
 }
 
+// Handle of the private TCC framework, or NULL when it cannot be loaded.
+static void *prxvc_tcc_handle(void) {
+    static void *handle;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        handle = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC", RTLD_NOW);
+    });
+    return handle;
+}
+
 // TCC's preflight for System Audio Recording: 0 granted, 1 denied. The symbol
 // is a private API of TCC.framework, looked up at run time; when it is absent
 // the answer is "unknown".
@@ -137,8 +148,7 @@ int32_t prxvc_tap_permission_status(void) {
     static int (*preflight)(CFStringRef, CFDictionaryRef);
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        void *handle = dlopen("/System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC",
-                              RTLD_NOW);
+        void *handle = prxvc_tcc_handle();
         if (handle != NULL) {
             preflight = (int (*)(CFStringRef, CFDictionaryRef))dlsym(handle, "TCCAccessPreflight");
         }
@@ -154,6 +164,42 @@ int32_t prxvc_tap_permission_status(void) {
     default:
         return PRXVC_PERMISSION_UNDETERMINED;
     }
+}
+
+int32_t prxvc_tap_bundle_declares_audio_capture(void) {
+    id value = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"NSAudioCaptureUsageDescription"];
+    return [value isKindOfClass:[NSString class]] && [(NSString *)value length] > 0;
+}
+
+// TCC's request for System Audio Recording (private TCCAccessRequest, the call
+// the reference application and the callcap probe use). The completion block
+// runs on a TCC queue; the semaphore and the answer live on the heap, so a
+// block that fires after the timeout is harmless.
+int32_t prxvc_tap_request_consent(int32_t timeout_ms) {
+    void *handle = prxvc_tcc_handle();
+    if (handle == NULL) {
+        return PRXVC_CONSENT_UNAVAILABLE;
+    }
+    void (*request)(CFStringRef, CFDictionaryRef, void (^)(Boolean)) =
+        (void (*)(CFStringRef, CFDictionaryRef, void (^)(Boolean)))dlsym(handle, "TCCAccessRequest");
+    if (request == NULL) {
+        return PRXVC_CONSENT_UNAVAILABLE;
+    }
+    __block int32_t answer = PRXVC_CONSENT_NO_ANSWER;
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    request(CFSTR("kTCCServiceAudioCapture"), NULL, ^(Boolean granted) {
+        answer = granted ? PRXVC_CONSENT_GRANTED : PRXVC_CONSENT_REFUSED;
+        dispatch_semaphore_signal(done);
+    });
+    int64_t wait_ns = (int64_t)(timeout_ms < 0 ? 0 : timeout_ms) * (int64_t)NSEC_PER_MSEC;
+    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, wait_ns)) != 0) {
+        return PRXVC_CONSENT_NO_ANSWER;
+    }
+    return answer;
+}
+
+uint64_t prxvc_tap_host_time_now_ns(void) {
+    return AudioConvertHostTimeToNanos(AudioGetCurrentHostTime());
 }
 
 // IO proc on the HAL IO thread: no allocation, no locks, no logging, no
@@ -180,7 +226,11 @@ static OSStatus prxvc_io_proc(AudioObjectID device, const AudioTimeStamp *now,
         bufs[i].byte_size = input->mBuffers[i].mDataByteSize;
         bufs[i].data = input->mBuffers[i].mData;
     }
-    tap->cb(tap->ctx, n, bufs, input_time != NULL ? input_time->mHostTime : 0);
+    uint64_t host_ns = 0;
+    if (input_time != NULL && (input_time->mFlags & kAudioTimeStampHostTimeValid) != 0) {
+        host_ns = AudioConvertHostTimeToNanos(input_time->mHostTime);
+    }
+    tap->cb(tap->ctx, n, bufs, host_ns);
     return noErr;
 }
 
@@ -248,6 +298,8 @@ PrxvcTap *prxvc_tap_create(const PrxvcTapConfig *config, PrxvcTapAudioCb cb, voi
         return NULL;
     }
     if (@available(macOS 14.4, *)) {
+        // Warm the host-clock conversion so the IO proc never initialises it.
+        (void)AudioConvertHostTimeToNanos(AudioGetCurrentHostTime());
         int used_bundle_form = 0;
         CATapDescription *desc = prxvc_make_description(config, &used_bundle_form, result);
         if (desc == nil) {

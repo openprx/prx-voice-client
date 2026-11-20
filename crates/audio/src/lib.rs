@@ -22,7 +22,8 @@
 //!
 //! * Every function or method that a device callback runs lives in a file
 //!   named `*_rt.rs` (today `cpal_input_rt.rs`, `cpal_output_rt.rs` and
-//!   `playback_buffer_rt.rs`).
+//!   `playback_buffer_rt.rs`, and for the process tap `tap_rt.rs`,
+//!   `tap_format_rt.rs` and `tap_ring_rt.rs`).
 //! * The closure handed to the device (`build_input_stream`,
 //!   `build_output_stream`) does nothing but call a function of an `_rt`
 //!   module, so no real-time logic hides in a non-`_rt` file.
@@ -37,9 +38,10 @@
 //! `vec!`, `Box::new`, `format!`, `tracing::`, a channel send, or another
 //! allocation (`Vec::with_capacity`, `.to_vec(`, `.to_string(`, `.collect(`),
 //! or when a registered device callback calls anything but an `_rt` function.
-//! The Core Audio process-tap callback (`core_audio_tap.rs`, `tap_ring.rs`)
-//! follows the same rules but predates the convention and is not covered by the
-//! check yet.
+//! The Core Audio process-tap callback is covered too: `tap_rt.rs` holds the IO
+//! callback, `tap_format_rt.rs` its per-cycle sample handling and
+//! `tap_ring_rt.rs` the producer side of the ring; `core_audio_tap.rs` only
+//! registers `on_buffers` from `tap_rt`, which the test checks.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -48,6 +50,7 @@ pub mod audio_loop;
 #[cfg(target_os = "macos")]
 pub mod blackhole_sink;
 pub mod buffer;
+pub mod call_activity;
 pub mod capture_reader;
 pub mod capture_source;
 #[cfg(target_os = "macos")]
@@ -76,11 +79,19 @@ pub mod resample;
 pub mod routing;
 pub mod stream_sink;
 pub mod tap_format;
+pub(crate) mod tap_format_rt;
+pub mod tap_host_time;
 pub mod tap_ring;
+pub(crate) mod tap_ring_rt;
+#[cfg(target_os = "macos")]
+pub(crate) mod tap_rt;
+#[cfg(target_os = "macos")]
+pub mod tap_consent;
 #[cfg(target_os = "macos")]
 mod tap_supervisor;
 pub mod tap_types;
 pub mod tap_watchdog;
+pub mod tap_zero_watchdog;
 pub mod turn_policy;
 pub mod vad_window;
 #[cfg(feature = "whisper")]

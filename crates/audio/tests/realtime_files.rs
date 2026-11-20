@@ -8,6 +8,9 @@
 //! 2. Every source file that registers a device callback
 //!    (`build_input_stream(` or `build_output_stream(`) must pass a closure
 //!    whose body is a single call of a function imported from a `*_rt` module.
+//! 3. The Core Audio process-tap IO callback: `core_audio_tap.rs` registers
+//!    `on_buffers` imported from a `*_rt` module and defines no `extern "C"`
+//!    callback itself, and the three tap `*_rt` files exist.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -202,6 +205,40 @@ fn registered_device_callbacks_only_call_real_time_functions() {
         "found {registrations} device callbacks, expected the input and the output one"
     );
     assert!(violations.is_empty(), "{}", violations.join("\n"));
+}
+
+/// Real-time files the process tap needs: its IO callback, the per-cycle sample
+/// handling and the producer side of its ring.
+const TAP_RT_FILES: &[&str] = &["tap_rt.rs", "tap_format_rt.rs", "tap_ring_rt.rs"];
+
+#[test]
+fn tap_callback_lives_in_real_time_files() {
+    let files = source_files();
+    for name in TAP_RT_FILES {
+        assert!(
+            files.iter().any(|p| p.file_name().is_some_and(|n| n == *name)),
+            "the process-tap real-time file {name} is missing"
+        );
+    }
+    let code = production_code(
+        &fs::read_to_string(src_dir().join("core_audio_tap.rs")).expect("readable source"),
+    );
+    assert!(
+        imported_rt_functions(&code).contains(&"on_buffers".to_owned()),
+        "core_audio_tap.rs must import the tap callback `on_buffers` from a `*_rt` module"
+    );
+    let register = code
+        .split("prxvc_tap_create(")
+        .nth(2)
+        .expect("the call of prxvc_tap_create after its declaration");
+    assert!(
+        register.split(')').next().is_some_and(|args| args.contains("on_buffers")),
+        "prxvc_tap_create must be given `on_buffers` as its callback"
+    );
+    assert!(
+        !code.contains("extern \"C\" fn "),
+        "core_audio_tap.rs must not define a native callback; it belongs in a `*_rt` file"
+    );
 }
 
 #[test]
