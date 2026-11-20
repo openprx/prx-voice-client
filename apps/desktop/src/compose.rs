@@ -42,6 +42,9 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     let shared = SharedAppState::new();
     shared.set_repaint_context(cc.egui_ctx.clone());
     shared.set_outside_app_bundle(cfg!(target_os = "macos") && crate::bundle::current().is_outside_bundle());
+    // First thing that touches audio: put the default input back if the last run
+    // ended in call mode without restoring it (pipeline-design PD-4.2.3).
+    crate::routing_recovery::recover_at_start(&shared);
     let handle = spawn_engine_thread(shared.clone(), config.clone());
 
     let hotkey_manager = match hotkey::HotkeyManager::new(cc.egui_ctx.clone()) {

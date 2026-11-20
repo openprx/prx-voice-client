@@ -13,6 +13,7 @@
 //! - `event_map`: engine events to shared UI state
 //! - `asr_session`: ASR and audio capture loop start-up
 //! - `persistence`: history, session save and settings write
+//! - `routing_recovery`: restores the system default input after a crash in call mode, at start
 //! - `diagnostics`: diagnostics export
 //! - `driver_install`: virtual microphone driver status, install, update and uninstall
 //! - `bundle`: whether the process runs from its macOS application bundle
@@ -35,6 +36,7 @@ mod hotkey;
 mod logging;
 mod persistence;
 mod playback;
+mod routing_recovery;
 mod settings;
 mod tray;
 
