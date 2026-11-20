@@ -14,6 +14,7 @@
 //! - `asr_session`: ASR and audio capture loop start-up
 //! - `persistence`: history, session save and settings write
 //! - `diagnostics`: diagnostics export
+//! - `driver_install`: virtual microphone driver status, install, update and uninstall
 //! - `bundle`: whether the process runs from its macOS application bundle
 //! - `cli`: `--version` and `--check`, which run without a window
 //! - `logging`: stderr or size-capped log file
@@ -27,6 +28,7 @@ mod commands;
 mod compose;
 mod config_load;
 mod diagnostics;
+mod driver_install;
 mod engine_loop;
 mod event_map;
 mod hotkey;

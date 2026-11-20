@@ -124,6 +124,10 @@ fn resolve_command(ctx: &mut CommandContext<'_>, cmd: &str) -> Option<Command> {
             export_diagnostics(shared);
             return None;
         }
+        "RefreshDriverStatus" | "InstallDriver" | "UninstallDriver" => {
+            crate::driver_install::handle_command(shared, cmd);
+            return None;
+        }
         _ => {
             tracing::debug!("unknown command: {cmd}");
             return None;

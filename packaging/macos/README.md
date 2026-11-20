@@ -26,12 +26,31 @@ PRX Voice.app/Contents/
     en.lproj/InfoPlist.strings    from packaging/macos/resources/
     zh-Hans.lproj/InfoPlist.strings
     LICENSE, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.md
+    NOTICE-PrxVoiceMicrophone-driver
+    Drivers/PrxVoiceMicrophone.driver   the virtual microphone driver (usb variant), payload only
   _CodeSignature/
 ```
 
 Native libraries that the app will load later belong in `Contents/Frameworks/`;
-the script signs everything found there (and in `PlugIns/`, `Library/`) before it
-signs the bundle.
+the script signs everything found there (and in `PlugIns/`, `Library/`,
+`Resources/Drivers/`) before it signs the bundle.
+
+## Virtual microphone driver payload
+
+`package-macos.sh` runs `driver/macos/build.sh --transport usb` (same
+`PRXVC_CODESIGN_IDENTITY` selection) and copies the signed driver bundle to
+`Contents/Resources/Drivers/PrxVoiceMicrophone.driver`, with its notice next to the licences
+(the driver bundle also carries `Contents/Resources/NOTICE`). The app does not load the driver; it
+copies it to `/Library/Audio/Plug-Ins/HAL/` on request (`apps/desktop/src/driver_install/`,
+administrator prompt) and compares bundled and installed version and variant first. Details,
+variants and the evidence for `usb`: `driver/macos/README.md`.
+
+- Signing order: `Resources/Drivers/*.driver` is signed (again, with the same identity) with the
+  other nested code, then the bundle. `codesign --verify --deep --strict` passes for the ad-hoc
+  bundle and for a bundle signed with the development identity `PRX Voice Development`.
+- The driver is arm64 only; a `--target x86_64-apple-darwin` bundle is built without it and the
+  script says so.
+- Version: `driver/macos/VERSION` (the app version is separate).
 
 ## Single sources of truth
 
