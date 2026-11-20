@@ -20,10 +20,9 @@ prxvc-ports = { workspace = true }
 # cancelled request drops its connection (`mt::openai_chat`).
 tokio = { workspace = true }
 
-# The TTS adapter needs only the workspace resampler. Default features stay on because
-# `prxvc-audio --no-default-features` does not build at present (`audio_loop.rs` names
-# `EchoGateHandle` outside its `whisper` gate); once it does, this line drops the recogniser.
-prxvc-audio = { workspace = true }
+# The TTS adapter needs only the workspace resampler, so the Whisper recogniser stays off here;
+# the `integration` feature turns it back on.
+prxvc-audio = { workspace = true, default-features = false }
 # Prepared-voice cache keys and the model fingerprint.
 sha2 = { workspace = true }
 # Lock and condition variable of the job queue.

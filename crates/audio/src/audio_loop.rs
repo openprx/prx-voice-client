@@ -24,8 +24,9 @@ use tracing::{info, warn};
 
 #[cfg(feature = "whisper")]
 use crate::AudioError;
+use crate::echo_gate::EchoGateHandle;
 #[cfg(feature = "whisper")]
-use crate::echo_gate::{EchoGateHandle, Routed, route_frame};
+use crate::echo_gate::{Routed, route_frame};
 #[cfg(feature = "whisper")]
 use crate::endpoint::{Endpoint, decide, speech_duration};
 #[cfg(feature = "whisper")]
