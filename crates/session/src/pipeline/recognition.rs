@@ -90,6 +90,9 @@ struct OpenSegment {
     committed_prefix: String,
     /// Text of a clause that was too short to commit, joining the next one.
     carry: String,
+    /// A unit of this round was committed from the stable prefix: the audio positions of the cuts
+    /// are not known, so what follows in the round is not given to the refine pass.
+    early_round: bool,
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
@@ -104,6 +107,7 @@ impl OpenSegment {
     }
 
     fn reset_round(&mut self) {
+        self.early_round = false;
         self.committed_bytes = 0;
         self.committed_prefix.clear();
         self.hyp = None;
@@ -296,6 +300,7 @@ impl RecognitionStage {
             committed_bytes: 0,
             committed_prefix: String::new(),
             carry: String::new(),
+            early_round: false,
             hyp: None,
             partial_seen: false,
             tail: String::new(),
@@ -347,12 +352,13 @@ impl RecognitionStage {
         open.revision += 1;
         let tail = committed_remainder(open, h, &self.stats, &self.tracer);
         let text = join_carry(&open.carry, tail.trim());
+        let refinable = !open.early_round;
         // The recogniser's round continues with the audio after the cut: it needs no reset.
         open.reset_round();
         let end = h.audio_end.min(self.now);
         let clause = open.clause();
         if !text.trim().is_empty() {
-            self.emit_commit(text, end, out);
+            self.emit_commit(text, end, refinable, out);
         }
         Stats::add(&self.stats.forced_cuts, 1);
         self.tracer.mark(clause, TraceStage::SegmentCut);
@@ -462,9 +468,6 @@ impl RecognitionStage {
     /// Not with a refine pass: it decodes the audio of a clause again and would not match a cut that
     /// the stable text chose.
     fn commit_early(&mut self, waited: Duration, out: &mut Out) {
-        if self.p.refines() {
-            return;
-        }
         let Some(open) = self.open.as_ref() else {
             return;
         };
@@ -479,7 +482,7 @@ impl RecognitionStage {
             waited,
         };
         if let Some(cut) = decide_early_cut(&self.p.commit, &input) {
-            self.commit_prefix(cut.end, out);
+            self.commit_prefix(cut.end, true, out);
         }
     }
 
@@ -501,12 +504,12 @@ impl RecognitionStage {
         let Some(cut) = self.open.as_ref().and_then(stable_cut) else {
             return false;
         };
-        self.commit_prefix(cut, out)
+        self.commit_prefix(cut, false, out)
     }
 
     /// Commit the hypothesis text up to byte `cut` as a clause, without ending the round.
     /// Returns whether a clause was committed.
-    fn commit_prefix(&mut self, cut: usize, out: &mut Out) -> bool {
+    fn commit_prefix(&mut self, cut: usize, early: bool, out: &mut Out) -> bool {
         let Some(open) = self.open.as_mut() else {
             return false;
         };
@@ -525,7 +528,9 @@ impl RecognitionStage {
         open.committed_bytes = cut;
         open.tail = hyp.text[cut..].to_owned();
         let end = hyp.audio_end.min(self.now);
-        self.emit_commit(text, end, out);
+        let refinable = !open.early_round && !early;
+        open.early_round |= early;
+        self.emit_commit(text, end, refinable, out);
         true
     }
 
@@ -544,6 +549,7 @@ impl RecognitionStage {
         };
         let tail = committed_remainder(open, &fin, &self.stats, &self.tracer);
         let text = join_carry(&open.carry, tail.trim());
+        let refinable = !open.early_round;
         self.asr.reset();
         open.reset_round();
         let end = self.segmenter.last_speech_end().min(self.now);
@@ -558,12 +564,13 @@ impl RecognitionStage {
             open.carry = text;
             return Ok(());
         }
-        self.emit_commit(text, end, out);
+        self.emit_commit(text, end, refinable, out);
         Ok(())
     }
 
-    fn emit_commit(&mut self, text: String, end: MonoTime, out: &mut Out) {
-        let two_pass = self.p.refines();
+    /// Emit a committed clause. With `refinable` and a refine pass configured, its audio goes along.
+    fn emit_commit(&mut self, text: String, end: MonoTime, refinable: bool, out: &mut Out) {
+        let two_pass = self.p.refines() && refinable;
         let pad = self.p.pad;
         let rate = self.reframer.rate;
         let Some(open) = self.open.as_mut() else {

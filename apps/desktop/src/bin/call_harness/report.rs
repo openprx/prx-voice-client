@@ -38,6 +38,8 @@ pub(crate) struct UtteranceRun {
     pub clauses_failed: u64,
     /// Clauses skipped to keep up (backlog or stale).
     pub clauses_skipped: u64,
+    /// Finals whose text disagreed with text already committed.
+    pub final_rewrites: u64,
     /// The pipeline's counters at the end, as text.
     pub counters: String,
     pub round_trip: Option<RoundTrip>,
@@ -52,6 +54,8 @@ pub(crate) fn figures(run: &UtteranceRun) -> Vec<(&'static str, f64)> {
     let mut out = Vec::new();
     let secs = |a: f64, b: f64| (b - a) / 1e9;
     let first = run.clauses.first();
+    out.push(("committed units per utterance (count)", run.clauses.len() as f64));
+    out.push(("clauses skipped per utterance (count)", run.clauses_skipped as f64));
     let at = |c: &ClauseTimeline, s| c.at(s).map(ns);
     if let Some(p) = run
         .clauses
@@ -171,13 +175,14 @@ pub(crate) fn table(runs: &[UtteranceRun]) -> String {
     let n = runs.len();
     let with = |f: fn(&UtteranceRun) -> bool| runs.iter().filter(|r| f(r)).count();
     out.push_str(&format!(
-        "| items with an output underrun | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n",
+        "| items with an output underrun | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n| items with a final that disagreed with committed text | {n} | {} | |\n",
         with(|r| r.underruns > 0),
         with(|r| r.runaway_synth > 0),
         with(|r| r.mt_suspect > 0),
         with(|r| r.clauses_failed > 0),
         with(|r| r.audio_seconds.iter().sum::<f64>() <= 0.0),
         with(|r| r.clauses_skipped > 0),
+        with(|r| r.final_rewrites > 0),
     ));
     out
 }

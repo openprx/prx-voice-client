@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -14,6 +14,12 @@
 //!   of the segment (`segment_end`); `punctuation` also commits the recogniser's stable text at
 //!   sentence-final and clause-level marks; `chunk` also commits it, with no mark, once it has the
 //!   configured minimum size. Without the option the configured value is used (default `chunk`).
+//! * `--subset NAME` takes `--count` utterances of one subset of the manifest instead (for example
+//!   `long_zh`, `pause_en`, `conv_en`); the set still names the language.
+//! * `--default-pipeline` replaces the saved `[pipeline]` section by the built-in defaults (a saved
+//!   `config.toml` keeps the values of the release that wrote it).
+//! * `--own-set DIR` takes the rows of `DIR/own.tsv` in the set's language (id, lang, voice, text;
+//!   `DIR/own/<id>.wav`); `--no-barge-in` sets `call.barge_in = false` for the run.
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
 //!   records it (by UID, no default device changed) and recognises the recording again: the round trip.
 //! * Every utterance runs at the pace of real time with 0.3 s of silence before and 2 s after.
@@ -64,6 +70,10 @@ struct Options {
     bench_asr: PathBuf,
     max_backlog_ms: Option<u32>,
     no_backlog_skip: bool,
+    subset: Option<String>,
+    default_pipeline: bool,
+    no_barge_in: bool,
+    own_set: Option<PathBuf>,
     own: String,
     peer: String,
 }
@@ -82,6 +92,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         bench_asr: PathBuf::from(DEFAULT_BENCH_ASR),
         max_backlog_ms: None,
         no_backlog_skip: false,
+        subset: None,
+        default_pipeline: false,
+        no_barge_in: false,
+        own_set: None,
         own: "zh".into(),
         peer: "en".into(),
     };
@@ -126,6 +140,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
                         .map_err(|_| "bad --max-backlog-ms")?,
                 )
             }
+            "--no-barge-in" => o.no_barge_in = true,
+            "--own-set" => o.own_set = Some(PathBuf::from(value(arg, &mut it)?)),
+            "--default-pipeline" => o.default_pipeline = true,
+            "--subset" => o.subset = Some(value(arg, &mut it)?),
             "--no-backlog-skip" => o.no_backlog_skip = true,
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
@@ -159,6 +177,29 @@ fn load_items(o: &Options) -> Result<Vec<Item>, String> {
             path: path.clone(),
         }]);
     }
+    if let Some(dir) = &o.own_set {
+        // `own.tsv`: id, lang, voice, text; one `own/<id>.wav` per row.
+        let path = dir.join("own.tsv");
+        let text =
+            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let items: Vec<Item> = text
+            .lines()
+            .skip(1)
+            .filter_map(|l| {
+                let f: Vec<&str> = l.split('\t').collect();
+                (f.len() >= 4 && f[1] == o.set).then(|| Item {
+                    id: f[0].to_owned(),
+                    reference: f[3].to_owned(),
+                    path: dir.join("own").join(format!("{}.wav", f[0])),
+                })
+            })
+            .take(o.count.max(1))
+            .collect();
+        if items.is_empty() {
+            return Err(format!("no {} rows in {}", o.set, path.display()));
+        }
+        return Ok(items);
+    }
     let manifest = o.bench_asr.join("data/manifest.tsv");
     let text =
         std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
@@ -185,6 +226,13 @@ fn load_items(o: &Options) -> Result<Vec<Item>, String> {
             })
             .collect()
     };
+    if let Some(subset) = &o.subset {
+        let items = take(subset, o.count);
+        if items.is_empty() {
+            return Err(format!("no utterances of subset {subset} in {}", manifest.display()));
+        }
+        return Ok(items);
+    }
     let (read, num) = match o.set.as_str() {
         "zh" => ("zh_read", "num_zh"),
         "en" => ("en_read", "num_en"),
@@ -209,12 +257,19 @@ fn lang_of(set: &str) -> Option<Lang> {
 fn execute(o: &Options) -> Result<bool, String> {
     let items = load_items(o)?;
     let mut config = load_current();
+    if o.default_pipeline {
+        // A saved file keeps the values of the release that wrote it: measure the shipped defaults.
+        config.pipeline = prxvc_config::PipelineConfig::default();
+    }
     if let Some(mode) = o.commit {
         config.pipeline.early_commit = mode.as_str().to_owned();
     }
     // The languages of the run, whatever the interface language derives them to.
     config.call.self_language.clone_from(&o.own);
     config.call.peer_language.clone_from(&o.peer);
+    if o.no_barge_in {
+        config.call.barge_in = false;
+    }
     if o.no_backlog_skip {
         config.pipeline.backlog_skipping = false;
     }
@@ -328,6 +383,21 @@ fn execute(o: &Options) -> Result<bool, String> {
                     r.audio_seconds.iter().sum::<f64>()
                 );
                 println!("    reference: {}", r.reference);
+                for c in &r.clauses {
+                    let text = |s| {
+                        c.texts
+                            .iter()
+                            .find(|(st, _)| *st == s)
+                            .map_or("", |(_, t)| t.as_str())
+                    };
+                    println!(
+                        "    unit {}.{}: {} => {}",
+                        c.clause.segment().seq(),
+                        c.clause.index(),
+                        text(prxvc_ports::TraceStage::ClauseCommitted),
+                        text(prxvc_ports::TraceStage::MtDone)
+                    );
+                }
                 println!("    counters: {}", r.counters);
                 for c in &r.clauses {
                     let stages: Vec<String> = c

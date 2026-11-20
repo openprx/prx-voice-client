@@ -109,16 +109,35 @@ pub fn decide_early_cut(p: &CommitParams, i: &EarlyInput<'_>) -> Option<EarlyCut
     let limit = i.stable - i.committed;
     // A mark directly after the last stable unit belongs to it.
     let marks = punctuation_after(region, limit).len();
-    if let Some(end) = last_clause_end_within(i.lang, region, limit + marks) {
-        return Some(EarlyCut {
-            end: i.committed + end,
-            reason: EarlyReason::Punctuation,
-        });
+    let mut upto = limit + marks;
+    while let Some(end) = last_clause_end_within(i.lang, region, upto) {
+        if !splits_number_series(region, end) {
+            return Some(EarlyCut {
+                end: i.committed + end,
+                reason: EarlyReason::Punctuation,
+            });
+        }
+        // A date and its year (`November 20th, 2026`) or a list of figures stay together: look for
+        // an earlier mark.
+        upto = region[..end].char_indices().next_back().map_or(0, |(at, _)| at);
     }
     if p.early != EarlyCommit::Chunk {
         return None;
     }
     chunk_cut(p, i, region, limit)
+}
+
+/// Whether the mark that ends `region[..end]` stands between two figures (`20th, 2026`, `3, 4`).
+fn splits_number_series(region: &str, end: usize) -> bool {
+    let before = region[..end]
+        .trim_end_matches(|c: char| !c.is_alphanumeric())
+        .rsplit(|c: char| !c.is_alphanumeric() && c != '.')
+        .next()
+        .unwrap_or("");
+    let after = region[end..].trim_start();
+    before.chars().any(|c| c.is_ascii_digit())
+        && region[..end].ends_with([',', '\u{FF0C}'])
+        && after.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
 fn chunk_cut(p: &CommitParams, i: &EarlyInput<'_>, region: &str, limit: usize) -> Option<EarlyCut> {
@@ -168,7 +187,7 @@ pub fn chunk_size(p: &CommitParams, lang: Lang) -> usize {
 }
 
 /// Extra stable characters a Chinese chunk may wait for a boundary that is likely to be a word boundary.
-const ZH_SLACK: usize = 3;
+const ZH_SLACK: usize = 4;
 
 /// Whether a cut after the first `k` units is likely to fall between Chinese words.
 fn is_soft_zh(all: &[Unit], k: usize) -> bool {
@@ -234,6 +253,23 @@ fn splits_chinese(all: &[Unit], k: usize) -> bool {
         return false;
     };
     if NUMERALS.contains(&prev) || DANGLING_ZH.contains(&prev) {
+        return true;
+    }
+    // A particle belongs to the word before it (`房间|的`).
+    if ch(k).is_some_and(|n| ATTACHED_PARTICLES.contains(&n)) {
+        return true;
+    }
+    // Two characters of one common word stay together (`早|上`, `参|加`).
+    if let (Some(a), Some(b)) = (ch(k - 1), ch(k)) {
+        let mut pair = String::new();
+        pair.push(a);
+        pair.push(b);
+        if COMPOUNDS_ZH.contains(&pair.as_str()) {
+            return true;
+        }
+    }
+    // A date goes on after its year and month (`二零二六年|十一月`).
+    if matches!(prev, '年' | '月') && ch(k).is_some_and(|n| NUMERALS.contains(&n)) {
         return true;
     }
     // A run of measure words after a number (`百万美元`) stays together.
@@ -343,6 +379,23 @@ const MEASURES: &[char] = &[
     '个', '年', '月', '日', '号', '点', '分', '秒', '时', '块', '元', '钱', '岁', '位', '次', '倍',
     '度', '件', '只', '条', '张', '本', '天', '周', '美', '欧', '英', '镑',
 ];
+
+/// Frequent two-character words: a cut between their characters splits the word.
+const COMPOUNDS_ZH: &[&str] = &[
+    "早上", "上午", "下午", "中午", "晚上", "今天", "明天", "昨天", "后天", "前天", "去年", "今年",
+    "明年", "这个", "那个", "什么", "因为", "所以", "但是", "如果", "可以", "已经", "现在", "时候",
+    "时间", "会议", "项目", "公司", "预算", "钥匙", "航班", "起飞", "房间", "电话", "号码", "账户",
+    "转账", "经理", "女士", "先生", "医生", "同学", "朋友", "孩子", "问题", "工作", "国家", "政府",
+    "美国", "中国", "北京", "上海", "国际", "开始", "结束", "告诉", "知道", "觉得", "需要", "应该",
+    "可能", "一起", "一定", "不是", "没有", "不能", "不会", "参加", "批准", "改期", "通知", "大家",
+    "我们", "你们", "他们", "她们", "自己", "一些", "一下", "这样", "那样", "为了", "关于", "对于",
+    "以及", "或者", "而且", "并且", "然后", "不过", "虽然", "还是", "就是", "只是", "星期", "周末",
+    "分钟", "小时", "交给", "发给", "给我", "改到", "转到", "前往", "离开", "回到", "到达", "到来",
+    "出发", "见面", "行官", "首席", "同意", "决定", "讨论", "安排", "确认", "取消", "收到", "联系",
+];
+
+/// Particles that attach to the word before them: a cut before one leaves it alone at the start of a unit.
+const ATTACHED_PARTICLES: &[char] = &['的', '地', '得', '了', '着', '过', '吗', '呢', '吧', '啊', '嘛'];
 
 /// Characters a Chinese phrase cannot end on.
 const DANGLING_ZH: &[char] = &[

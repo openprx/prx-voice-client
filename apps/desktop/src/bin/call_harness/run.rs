@@ -313,6 +313,7 @@ pub(crate) fn run_utterance(
         mt_suspect: counters.mt_suspect,
         clauses_failed: counters.clauses_failed,
         clauses_skipped: counters.skipped,
+        final_rewrites: counters.final_rewrites,
         counters: format!("{counters:?}"),
         round_trip,
     })

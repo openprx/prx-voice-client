@@ -417,3 +417,56 @@ fn units_of_one_segment_are_translated_and_spoken_in_order_whatever_each_takes()
     assert_eq!(rig.recorder.chunks_of(c1), 1);
     assert!(rig.stop().clean);
 }
+
+#[test]
+fn with_a_refine_pass_early_units_and_the_rest_of_their_round_keep_the_streaming_text() {
+    use prxvc_ports::fakes::{FakeRefineAsr, FakeTraceSink, FakeVadProvider, RefineScript};
+    use prxvc_ports::CancellationToken;
+    use prxvc_session::pipeline::{PipelineProviders, RecognitionMode};
+    use pipeline_rig::{Fakes, params};
+
+    let clock = ManualClock::new();
+    let (mt, tts) = providers(&clock);
+    let refine = FakeRefineAsr::new(
+        clock.clone(),
+        RefineScript::new("refined text", std::time::Duration::ZERO),
+    );
+    let fakes = Fakes {
+        vad: FakeVadProvider::new(one_utterance(10, 70)),
+        asr: prxvc_ports::fakes::FakeStreamingAsr::new(
+            clock.clone(),
+            script(growing(EN, 3, 6), EN),
+        ),
+        mt,
+        tts,
+    };
+    let providers = PipelineProviders {
+        vad: Arc::new(fakes.vad.clone()),
+        asr: Arc::new(fakes.asr.clone()),
+        refine: Some(Arc::new(refine.clone())),
+        mt: Arc::new(fakes.mt.clone()),
+        tts: Arc::new(fakes.tts.clone()),
+    };
+    let mut p = params(IN);
+    p.recognition_mode = RecognitionMode::TwoPass;
+    p.commit.early = EarlyCommit::Chunk;
+    let rig = Rig::launch_with_providers(
+        clock,
+        fakes,
+        providers,
+        p,
+        &CancellationToken::new(),
+        FakeTraceSink::new(false),
+    );
+    rig.wait_running();
+    rig.feed(10 + 70 + 25 + 25);
+    let run = Run { rig, dir: IN };
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        ["we should meet at the office", "tomorrow morning and then go home"],
+        "the clip of a cut chosen from text would not match the audio: no refine for them"
+    );
+    assert!(refine.audio_lens().is_empty());
+    assert!(run.rig.stop().clean);
+}

@@ -106,6 +106,17 @@ fn a_mark_after_the_stable_end_is_not_used_unless_it_trails_the_last_stable_unit
 }
 
 #[test]
+fn a_date_is_not_cut_from_its_year_at_the_comma() {
+    let p = params(EarlyCommit::Punctuation);
+    let text = "the meeting is on November 20th, 2026 at 3:15 p.m. in the main office";
+    let n = units(text).len() - 1;
+    assert_eq!(cut_of(&p, Lang::En, text, 0, n, ms(0)), None);
+    let text = "we met on Monday, and then on November 20th, 2026 at the office";
+    let cut = cut_of(&p, Lang::En, text, 0, units(text).len() - 1, ms(0)).expect("cut");
+    assert_eq!(&text[..cut.end], "we met on Monday,");
+}
+
+#[test]
 fn punctuation_mode_does_not_cut_without_a_mark() {
     let p = params(EarlyCommit::Punctuation);
     let text = "we should meet at the office tomorrow morning and then go home";
@@ -202,6 +213,11 @@ fn chinese_chunks_do_not_split_a_name_a_number_or_a_phrase_on_a_function_word() 
         ("明天上午我们要和王建国一起去机场接客人", "王建国"),
         ("这个项目的总预算大概是三点五百万美元左右", "三点五百万美元"),
         ("我们明天下午三点在公司楼下见面然后出发", "下午三点"),
+        ("会议定在二零二六年十一月二十日下午三点十五分开始", "二零二六年十一月二十日"),
+        ("我们的航班起飞时间是二零二六年十二月二日早上六点四十五分", "早上"),
+        ("我下周三下午三点不能参加会议请改到周四上午十点钟", "参加"),
+        ("请把一百零八号房间的钥匙交给李明不要给别人", "房间的"),
+        ("苹果公司的首席执行官是蒂姆库克先生他们说", "首席执行官"),
     ] {
         let at = text.find(whole).expect("token");
         for stable in 8..units(text).len() {
@@ -225,7 +241,7 @@ fn chinese_chunk_minimum_is_in_characters() {
     let p = params(EarlyCommit::Chunk);
     let text = "我们明天上午去机场接客人然后回公司开会";
     assert_eq!(cut_of(&p, Lang::Zh, text, 0, 7, ms(0)), None);
-    let cut = cut_of(&p, Lang::Zh, text, 0, 11, ms(0)).expect("cut");
+    let cut = cut_of(&p, Lang::Zh, text, 0, 15, ms(0)).expect("cut");
     assert!(text[..cut.end].chars().count() >= 8);
 }
 
