@@ -1,0 +1,334 @@
+//! The provider registry: the one place that constructs a provider from configuration
+//! (CS-2.2.1).
+//!
+//! Resolution (`resolve_*`) turns configuration, catalogue, model store, credentials and the
+//! network policy into typed specs and reports every problem; construction (`build_*`) turns a
+//! spec into a boxed port handle over an engine shared between the directions. Neither falls back
+//! to a mock or another provider: whatever cannot be served is an error value.
+
+use std::sync::Arc;
+
+use parking_lot::RwLock;
+use prxvc_adapters::mt::{OpenAiChatConfig, OpenAiChatMt};
+use prxvc_adapters::tts::qwentts::QwenTts;
+use prxvc_config::{AppConfig, NetworkPolicy};
+use prxvc_media::Lang;
+use prxvc_models::{Catalogue, HardwareInfo};
+use prxvc_ports::{RefineAsr, SpeechSynth, StreamingAsr, Translator, VadProvider};
+use sha2::{Digest, Sha256};
+
+use crate::credentials::CredentialReader;
+use crate::egress::{EgressSummary, summarize};
+use crate::engines::Engines;
+use crate::handles::{SharedAsr, SharedRefine, SharedSynth, SharedTranslator, SharedVad};
+use crate::keys::CallLanguages;
+use crate::model_source::ModelSource;
+use crate::plan::CallPlan;
+use crate::problem::{BuildError, Problem};
+use crate::recognition::{BuiltInRecognition, RecognitionLoader};
+use crate::resolve::{AsrNeeds, Resolver, VoiceChoice, VoiceDirs};
+use crate::runtime::BuiltRuntimes;
+use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec};
+use crate::tts_loader::{BuiltInTts, TtsLoader, check_capabilities, register_voice};
+
+/// The engines that are alive right now.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LiveEngines {
+    /// Synthesis engines.
+    pub tts: usize,
+    /// Translation clients.
+    pub mt: usize,
+    /// Streaming recognition engines.
+    pub asr: usize,
+    /// Refine-pass recognition engines.
+    pub refine: usize,
+    /// Voice activity detection engines.
+    pub vad: usize,
+}
+
+struct Snapshot {
+    cfg: Arc<AppConfig>,
+    policy: NetworkPolicy,
+}
+
+/// The provider registry. Cheap to share behind an `Arc`; every method takes `&self`.
+pub struct ProviderRegistry {
+    state: RwLock<Snapshot>,
+    catalogue: Arc<Catalogue>,
+    models: Arc<dyn ModelSource>,
+    creds: Arc<dyn CredentialReader>,
+    dirs: VoiceDirs,
+    hardware: HardwareInfo,
+    system_language: Option<Lang>,
+    tts_loader: Arc<dyn TtsLoader>,
+    recognition: Arc<dyn RecognitionLoader>,
+    tts: Engines<(String, String), QwenTts>,
+    mt: Engines<String, OpenAiChatMt>,
+    asr: Engines<String, Arc<dyn StreamingAsr>>,
+    refine: Engines<String, Arc<dyn RefineAsr>>,
+    vad: Engines<String, Arc<dyn VadProvider>>,
+}
+
+impl ProviderRegistry {
+    /// A registry over `config`, the catalogue, the model manager and the credential reader.
+    /// `dirs` locates voice profiles and presets.
+    pub fn new(
+        config: &AppConfig,
+        catalogue: Arc<Catalogue>,
+        models: Arc<dyn ModelSource>,
+        creds: Arc<dyn CredentialReader>,
+        dirs: VoiceDirs,
+    ) -> Self {
+        Self {
+            state: RwLock::new(Snapshot {
+                policy: NetworkPolicy::from_config(config),
+                cfg: Arc::new(config.clone()),
+            }),
+            catalogue,
+            models,
+            creds,
+            dirs,
+            hardware: HardwareInfo::detect(),
+            system_language: None,
+            tts_loader: Arc::new(BuiltInTts),
+            recognition: Arc::new(BuiltInRecognition),
+            tts: Engines::default(),
+            mt: Engines::default(),
+            asr: Engines::default(),
+            refine: Engines::default(),
+            vad: Engines::default(),
+        }
+    }
+
+    /// Use `hardware` for the catalogue's recommendations instead of the detected machine.
+    #[must_use]
+    pub fn with_hardware(mut self, hardware: HardwareInfo) -> Self {
+        self.hardware = hardware;
+        self
+    }
+
+    /// The language of the operating system, used when no call language is configured.
+    #[must_use]
+    pub fn with_system_language(mut self, lang: Option<Lang>) -> Self {
+        self.system_language = lang;
+        self
+    }
+
+    /// Replace the synthesis loader (the composition root, or a test).
+    #[must_use]
+    pub fn with_tts_loader(mut self, loader: Arc<dyn TtsLoader>) -> Self {
+        self.tts_loader = loader;
+        self
+    }
+
+    /// Replace the recognition loader: this is where the CT-11 adapters plug in.
+    #[must_use]
+    pub fn with_recognition_loader(mut self, loader: Arc<dyn RecognitionLoader>) -> Self {
+        self.recognition = loader;
+        self
+    }
+
+    /// Take a new configuration (after each settings update). Engines already built are kept by
+    /// the handles that hold them; the next `build_*` follows the new configuration.
+    pub fn reload(&self, config: &AppConfig) {
+        *self.state.write() = Snapshot {
+            policy: NetworkPolicy::from_config(config),
+            cfg: Arc::new(config.clone()),
+        };
+    }
+
+    fn built(&self) -> BuiltRuntimes {
+        BuiltRuntimes {
+            qwentts: self.tts_loader.available(),
+            transcribe: self.recognition.available(),
+        }
+    }
+
+    fn with_resolver<R>(&self, f: impl FnOnce(&Resolver<'_>) -> R) -> R {
+        let state = self.state.read();
+        let needs = if state.cfg.pipeline.recognition_mode == "segmented" {
+            AsrNeeds::SegmentedAllowed
+        } else {
+            AsrNeeds::Native
+        };
+        let built = self.built();
+        let resolver = Resolver {
+            cfg: &state.cfg,
+            catalogue: &self.catalogue,
+            models: self.models.as_ref(),
+            creds: self.creds.as_ref(),
+            policy: &state.policy,
+            hardware: &self.hardware,
+            dirs: &self.dirs,
+            built: &built,
+            asr_needs: needs,
+        };
+        f(&resolver)
+    }
+
+    // ---- resolution ------------------------------------------------------------------------
+
+    /// The two call languages from the configuration.
+    pub fn call_languages(&self) -> Result<CallLanguages, Vec<Problem>> {
+        self.with_resolver(|r| r.languages(self.system_language))
+    }
+
+    /// Resolve the voice activity detector.
+    pub fn resolve_vad(&self) -> Result<Resolved<LocalModelSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.vad())
+    }
+
+    /// Resolve streaming recognition of `lang`.
+    pub fn resolve_asr(&self, lang: Lang) -> Result<Resolved<LocalModelSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.asr(lang))
+    }
+
+    /// Resolve the refine pass for `lang`.
+    pub fn resolve_asr_refine(&self, lang: Lang) -> Result<Resolved<LocalModelSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.refine(lang))
+    }
+
+    /// Resolve translation from `source` to `target`.
+    pub fn resolve_mt(&self, source: Lang, target: Lang) -> Result<Resolved<MtSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.mt(source, target))
+    }
+
+    /// Resolve synthesis of `lang` with `voice`.
+    pub fn resolve_tts(
+        &self,
+        lang: Lang,
+        voice: &VoiceChoice,
+    ) -> Result<Resolved<TtsSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.tts(lang, voice))
+    }
+
+    /// Resolve everything a call needs, for both directions: the full set, or every problem.
+    pub fn resolve_call(&self) -> Result<CallPlan, Vec<Problem>> {
+        self.with_resolver(|r| r.call(self.system_language))
+    }
+
+    /// What leaves the machine under `plan`.
+    pub fn egress_summary(&self, plan: &CallPlan) -> EgressSummary {
+        summarize(plan)
+    }
+
+    // ---- construction ----------------------------------------------------------------------
+
+    /// Build the voice activity detector of `spec`.
+    pub fn build_vad(&self, spec: &LocalModelSpec) -> Result<Box<dyn VadProvider>, BuildError> {
+        let lease = self.vad.acquire(spec.id.as_str().to_owned(), || self.recognition.vad(spec))?;
+        lease.engine().descriptor().require_live()?;
+        Ok(Box::new(SharedVad { lease }))
+    }
+
+    /// Build the streaming recogniser of `spec`.
+    pub fn build_asr(&self, spec: &LocalModelSpec) -> Result<Box<dyn StreamingAsr>, BuildError> {
+        let lease = self.asr.acquire(spec.id.as_str().to_owned(), || self.recognition.asr(spec))?;
+        let descriptor = lease.engine().descriptor();
+        descriptor.require_live()?;
+        if let Some(lang) = spec.lang {
+            descriptor.require_lang(lang)?;
+        }
+        Ok(Box::new(SharedAsr { lease }))
+    }
+
+    /// Build the refine-pass recogniser of `spec`.
+    pub fn build_asr_refine(&self, spec: &LocalModelSpec) -> Result<Box<dyn RefineAsr>, BuildError> {
+        let lease = self
+            .refine
+            .acquire(spec.id.as_str().to_owned(), || self.recognition.refine(spec))?;
+        let descriptor = lease.engine().descriptor();
+        descriptor.require_live()?;
+        if let Some(lang) = spec.lang {
+            descriptor.require_lang(lang)?;
+        }
+        Ok(Box::new(SharedRefine { lease }))
+    }
+
+    /// Build the translator of `spec`. The offline policy is checked again first: a blocked
+    /// endpoint fails with [`BuildError::Blocked`] before anything is created, let alone
+    /// connected.
+    pub fn build_mt(&self, spec: &MtSpec) -> Result<Box<dyn Translator>, BuildError> {
+        if let Err(blocked) = self.state.read().policy.check(&spec.base_url) {
+            return Err(match blocked {
+                prxvc_config::Blocked::Offline { host } => BuildError::Blocked {
+                    provider: spec.id.clone(),
+                    host,
+                },
+                prxvc_config::Blocked::MalformedUrl { detail, .. } => BuildError::InvalidEndpoint {
+                    provider: spec.id.clone(),
+                    detail,
+                },
+            });
+        }
+        let lease = self.mt.acquire(mt_key(spec), || start_mt(spec))?;
+        let descriptor = lease.engine().descriptor();
+        descriptor.require_native()?;
+        descriptor.require_pair(spec.source, spec.target)?;
+        Ok(Box::new(SharedTranslator { lease }))
+    }
+
+    /// Build the synthesiser of `spec` with its voice registered. The engine is shared by every
+    /// spec with the same model: the first build loads and warms it up, the later ones only add
+    /// their voice.
+    pub fn build_tts(&self, spec: &TtsSpec) -> Result<Box<dyn SpeechSynth>, BuildError> {
+        if !self.tts_loader.available() {
+            return Err(BuildError::NotBuiltIn {
+                provider: spec.id.clone(),
+                runtime: spec.runtime.name().to_owned(),
+            });
+        }
+        let key = (spec.id.as_str().to_owned(), spec.fingerprint.clone());
+        let lease = self.tts.acquire(key, || {
+            let engine = self.tts_loader.load(spec)?;
+            check_capabilities(&engine, spec)?;
+            Ok(engine)
+        })?;
+        register_voice(lease.engine(), spec)?;
+        Ok(Box::new(SharedSynth { lease }))
+    }
+
+    /// The engines alive right now: handles keep them alive, dropping the last handle frees one.
+    pub fn live_engines(&self) -> LiveEngines {
+        LiveEngines {
+            tts: self.tts.live(),
+            mt: self.mt.live(),
+            asr: self.asr.live(),
+            refine: self.refine.live(),
+            vad: self.vad.live(),
+        }
+    }
+}
+
+fn mt_key(spec: &MtSpec) -> String {
+    let secret = spec
+        .secret
+        .as_ref()
+        .map(|s| format!("{:x}", Sha256::digest(s.expose().as_bytes())))
+        .unwrap_or_default();
+    format!(
+        "{}|{}|{}|{}|{}|{:?}|{}",
+        spec.id,
+        spec.base_url,
+        spec.model,
+        serde_json::Value::Object(spec.params.clone()),
+        spec.prompt_template,
+        spec.timeouts,
+        secret
+    )
+}
+
+fn start_mt(spec: &MtSpec) -> Result<OpenAiChatMt, BuildError> {
+    let mut cfg = OpenAiChatConfig::new(&spec.base_url, &spec.model)
+        .with_provider_id(spec.id.as_str())
+        .with_params(spec.params.clone())
+        .with_timeouts(spec.timeouts)
+        .with_template(spec.prompt_template);
+    if let Some(secret) = &spec.secret {
+        cfg = cfg.with_api_key(secret.expose());
+    }
+    OpenAiChatMt::new(cfg).map_err(|e| BuildError::Start {
+        provider: spec.id.clone(),
+        detail: e.to_string(),
+    })
+}

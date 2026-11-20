@@ -4238,6 +4238,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "prxvc-providers"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "prxvc-adapters",
+ "prxvc-config",
+ "prxvc-media",
+ "prxvc-models",
+ "prxvc-ports",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "prxvc-qwentts-sys"
 version = "0.1.0"
 

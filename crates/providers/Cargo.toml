@@ -1,0 +1,39 @@
+[package]
+name = "prxvc-providers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Provider registry of the call pipeline: resolves configured providers into typed specifications and builds them, fail loud."
+
+[features]
+default = []
+# The in-process cloned-voice synthesis engine (`qwentts.cpp`): builds the native runtime. Off by
+# default and additive (CS-7.5); without it a configured local TTS model is the typed problem
+# `RuntimeNotBuiltIn`.
+qwentts = ["prxvc-adapters/qwentts"]
+
+[dependencies]
+prxvc-adapters = { workspace = true }
+prxvc-models = { workspace = true }
+prxvc-config = { workspace = true }
+prxvc-ports = { workspace = true }
+prxvc-media = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+sha2 = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+# Fakes of the ports exist only for this crate's own tests (CS-2.2.5); a normal build of this
+# crate or of a crate that depends on it never enables the `fakes` feature through this edge.
+prxvc-ports = { workspace = true, features = ["fakes"] }
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
