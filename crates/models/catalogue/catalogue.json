@@ -234,27 +234,27 @@
       },
       "files": [
         {
-          "name": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "name": "qwen-talker-1.7b-base-Q8_0.gguf",
           "purpose": "model",
-          "size": 1847874400,
-          "sha256": "ac7931aeb2e7aad1a6ed6602d353a5679c9d096b18ce8204ac730a8408d572e1",
+          "size": 2079448256,
+          "sha256": "4b9a33a236908dd9435a42f7a396e38038329d053b704342a6413c08544c4fda",
           "source": {
             "kind": "huggingface",
-            "repo": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
-            "revision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
-            "path": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
+            "repo": "Serveurperso/Qwen3-TTS-GGUF",
+            "revision": "b7ee2e8c7459c3bea99da23e3d178125a7d1713c",
+            "path": "qwen-talker-1.7b-base-Q8_0.gguf"
           }
         },
         {
-          "name": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+          "name": "qwen-tokenizer-12hz-Q8_0.gguf",
           "purpose": "codec",
-          "size": 446422912,
-          "sha256": "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2",
+          "size": 291150624,
+          "sha256": "1883beeed99348fc35e23dd225e9082f93f6f8c109330a33d935baa8acdbfd94",
           "source": {
             "kind": "huggingface",
-            "repo": "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF",
-            "revision": "ca27d74bc954b73dadab5b71ca265d87fc861a7c",
-            "path": "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
+            "repo": "Serveurperso/Qwen3-TTS-GGUF",
+            "revision": "b7ee2e8c7459c3bea99da23e3d178125a7d1713c",
+            "path": "qwen-tokenizer-12hz-Q8_0.gguf"
           }
         }
       ],
@@ -270,6 +270,75 @@
           "badge": "recommended",
           "rank": 0,
           "min_memory_gb": 16,
+          "os": [
+            "macos"
+          ],
+          "arch": [
+            "aarch64"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "qwen3-tts-0.6b-base-q8",
+      "role": "tts",
+      "display_name": "Qwen3-TTS 0.6B",
+      "description": {
+        "en": "Faster voice for slower machines; can speak in your own voice.",
+        "zh-CN": "更快的语音，适合较慢的设备，可使用你自己的声音。"
+      },
+      "version_label": "Base Q8_0",
+      "languages": [
+        {
+          "kind": "lang",
+          "code": "zh"
+        },
+        {
+          "kind": "lang",
+          "code": "en"
+        }
+      ],
+      "runtime": {
+        "name": "qwentts.cpp"
+      },
+      "files": [
+        {
+          "name": "qwen-talker-0.6b-base-Q8_0.gguf",
+          "purpose": "model",
+          "size": 992615488,
+          "sha256": "d54dbaf10591421fa764ed630d764efa717ae40cd959bd48c66d4eb1af226426",
+          "source": {
+            "kind": "huggingface",
+            "repo": "Serveurperso/Qwen3-TTS-GGUF",
+            "revision": "b7ee2e8c7459c3bea99da23e3d178125a7d1713c",
+            "path": "qwen-talker-0.6b-base-Q8_0.gguf"
+          }
+        },
+        {
+          "name": "qwen-tokenizer-12hz-Q8_0.gguf",
+          "purpose": "codec",
+          "size": 291150624,
+          "sha256": "1883beeed99348fc35e23dd225e9082f93f6f8c109330a33d935baa8acdbfd94",
+          "source": {
+            "kind": "huggingface",
+            "repo": "Serveurperso/Qwen3-TTS-GGUF",
+            "revision": "b7ee2e8c7459c3bea99da23e3d178125a7d1713c",
+            "path": "qwen-tokenizer-12hz-Q8_0.gguf"
+          }
+        }
+      ],
+      "licence": {
+        "code": "MIT",
+        "weights": "Apache-2.0",
+        "weights_url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+      },
+      "memory_mb": 2600,
+      "streaming": "native",
+      "recommended_for": [
+        {
+          "badge": "fastest",
+          "rank": 1,
+          "min_memory_gb": 8,
           "os": [
             "macos"
           ],

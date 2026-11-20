@@ -20,14 +20,27 @@ prxvc-ports = { workspace = true }
 # cancelled request drops its connection (`mt::openai_chat`).
 tokio = { workspace = true }
 
-# Pulled in only by the `integration` feature (end-to-end example).
-# Path (not workspace-inherited) so we can disable default features here.
-prxvc-audio = { path = "../audio", default-features = false, optional = true }
+# The TTS adapter needs only the workspace resampler. Default features stay on because
+# `prxvc-audio --no-default-features` does not build at present (`audio_loop.rs` names
+# `EchoGateHandle` outside its `whisper` gate); once it does, this line drops the recogniser.
+prxvc-audio = { workspace = true }
+# Prepared-voice cache keys and the model fingerprint.
+sha2 = { workspace = true }
+# Lock and condition variable of the job queue.
+parking_lot = { workspace = true }
+# Raw bindings of the `qwentts` feature.
+prxvc-qwentts-sys = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
-integration = ["dep:prxvc-audio", "prxvc-audio/whisper"]
+integration = ["prxvc-audio/whisper"]
+# The in-process `qwentts.cpp` engine behind `tts::qwentts::QwenTts`: builds the vendored C++ runtime
+# (cmake, clang) and links it as a dynamic library. Off by default, additive (CS-7.5).
+qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

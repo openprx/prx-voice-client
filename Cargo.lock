@@ -4027,13 +4027,17 @@ checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
 name = "prxvc-adapters"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
  "prxvc-audio",
  "prxvc-media",
  "prxvc-ports",
+ "prxvc-qwentts-sys",
  "prxvc-session",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
