@@ -7,7 +7,8 @@ fn plist(version: &str, variant_key: Option<&str>) -> String {
         .map(|v| format!("<key>PrxTransportVariant</key><string>{v}</string>"))
         .unwrap_or_default();
     format!(
-        "<plist version=\"1.0\"><dict><key>CFBundleShortVersionString</key><string>{version}</string>\
+        "<plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.example.driver</string>\
+         <key>CFBundleShortVersionString</key><string>{version}</string>\
          <key>CFBundleVersion</key><string>100</string>{variant}</dict></plist>"
     )
 }
@@ -40,6 +41,7 @@ fn version_and_variant_come_from_the_plist() {
     let info = parse_bundle_info(plist("0.1.0-usb", Some("usb")).as_bytes()).unwrap();
     assert_eq!(info.version_string, "0.1.0-usb");
     assert_eq!(info.version, "0.1.0");
+    assert_eq!(info.identifier.as_deref(), Some("org.example.driver"));
     assert_eq!(info.variant, DriverVariant::Usb);
     assert_eq!(info.build.as_deref(), Some("100"));
 }
@@ -203,4 +205,11 @@ fn detect_at_distinguishes_missing_unreadable_and_installed() {
 fn the_expected_version_is_a_plain_triple() {
     assert_eq!(EXPECTED_DRIVER_VERSION.split('.').count(), 3);
     assert!(!EXPECTED_DRIVER_VERSION.contains('-'));
+}
+
+#[test]
+fn the_expected_version_is_the_one_in_the_driver_version_file() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../driver/macos/VERSION");
+    let file = std::fs::read_to_string(path).unwrap();
+    assert_eq!(EXPECTED_DRIVER_VERSION, file.trim());
 }

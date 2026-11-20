@@ -20,10 +20,10 @@ use crate::input_policy::{InputTransport, OWN_MIC_SINK_UID, OWN_MIC_UID};
 /// The driver version this app expects, as the part of the bundle's
 /// `CFBundleShortVersionString` before the `-<variant>` suffix.
 ///
-/// The one place to change when the driver sources change. The driver itself
-/// is brought into the repository by the driver-packaging work package, whose
-/// build must stamp its bundle with this value (`<this>-<variant>`).
-pub const EXPECTED_DRIVER_VERSION: &str = "0.1.0";
+/// Read at build time from `driver/macos/VERSION` (this crate's `build.rs`), the
+/// file the driver's own build stamps its bundle from, so the number is written
+/// in one place only.
+pub const EXPECTED_DRIVER_VERSION: &str = env!("PRXVC_DRIVER_VERSION");
 
 /// Where the installer puts the bundle.
 pub const DRIVER_BUNDLE_PATH: &str = "/Library/Audio/Plug-Ins/HAL/PrxVoiceMicrophone.driver";
@@ -90,6 +90,8 @@ pub struct BundleInfo {
     pub variant: DriverVariant,
     /// `CFBundleVersion`, when present.
     pub build: Option<String>,
+    /// `CFBundleIdentifier`, when present.
+    pub identifier: Option<String>,
 }
 
 /// The bundle on disk.
@@ -130,6 +132,7 @@ pub fn parse_bundle_info(plist: &[u8]) -> Result<BundleInfo, PlistError> {
         version,
         variant,
         build: strings.get("CFBundleVersion").map(str::to_owned),
+        identifier: strings.get("CFBundleIdentifier").map(str::to_owned),
     })
 }
 

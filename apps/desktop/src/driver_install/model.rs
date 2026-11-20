@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use prxvc_audio::driver_status::parse_bundle_info;
+
 /// File name of the driver bundle, both inside the app and in the HAL directory.
 pub(crate) const DRIVER_BUNDLE_NAME: &str = "PrxVoiceMicrophone.driver";
 /// `CFBundleIdentifier` of the driver; a bundle with another identifier is never installed.
@@ -10,8 +12,6 @@ pub(crate) const DRIVER_BUNDLE_ID: &str = "org.openprx.prx-voice-client.micropho
 pub(crate) const DRIVER_EXECUTABLE: &str = "PrxVoiceMicrophoneDriver";
 /// The system directory that holds audio server plug-ins.
 pub(crate) const HAL_DIR: &str = "/Library/Audio/Plug-Ins/HAL";
-/// Name of the visible input device, as `system_profiler` lists it.
-pub(crate) const DEVICE_NAME: &str = "PRX Voice Microphone";
 /// Where the bundled driver sits below `Contents/Resources`.
 pub(crate) const BUNDLED_SUBPATH: &str = "Drivers/PrxVoiceMicrophone.driver";
 
@@ -25,35 +25,9 @@ pub(crate) fn staging_path() -> PathBuf {
     Path::new(HAL_DIR).join(format!(".{DRIVER_BUNDLE_NAME}.staging"))
 }
 
-/// Transport type the driver reports to applications (`PrxTransportVariant`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Variant {
-    Virtual,
-    Usb,
-    Builtin,
-    Other,
-}
-
-impl Variant {
-    pub(crate) fn parse(text: &str) -> Option<Self> {
-        match text {
-            "virtual" => Some(Self::Virtual),
-            "usb" => Some(Self::Usb),
-            "builtin" => Some(Self::Builtin),
-            "other" => Some(Self::Other),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Virtual => "virtual",
-            Self::Usb => "usb",
-            Self::Builtin => "builtin",
-            Self::Other => "other",
-        }
-    }
-}
+/// Transport type the driver reports to applications (`PrxTransportVariant`); the type and
+/// the `Info.plist` reader are the ones of `prxvc-audio`.
+pub(crate) use prxvc_audio::driver_status::DriverVariant as Variant;
 
 /// What the `Info.plist` of a driver bundle says.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,38 +38,21 @@ pub(crate) struct DriverInfo {
     pub variant: Variant,
 }
 
-/// Why an `Info.plist` does not describe a driver bundle.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PlistError {
-    MissingKey(&'static str),
-    UnknownVariant(String),
-}
-
-/// The text of `<key>name</key><string>value</string>` in an XML property list.
-pub(crate) fn plist_string(xml: &str, key: &str) -> Option<String> {
-    let needle = format!("<key>{key}</key>");
-    let after = &xml[xml.find(&needle)? + needle.len()..];
-    let start = after.find("<string>")? + "<string>".len();
-    let end = after[start..].find("</string>")?;
-    let value = after[start..start + end].trim();
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
-/// Read identifier, version and variant from an XML `Info.plist`. A bundle built before
-/// variants existed has no `PrxTransportVariant` key and is a virtual one.
-pub(crate) fn parse_info(xml: &str) -> Result<DriverInfo, PlistError> {
-    let identifier = plist_string(xml, "CFBundleIdentifier")
-        .ok_or(PlistError::MissingKey("CFBundleIdentifier"))?;
-    let version = plist_string(xml, "CFBundleShortVersionString")
-        .ok_or(PlistError::MissingKey("CFBundleShortVersionString"))?;
-    let variant = match plist_string(xml, "PrxTransportVariant") {
-        None => Variant::Virtual,
-        Some(text) => Variant::parse(&text).ok_or(PlistError::UnknownVariant(text))?,
-    };
+/// Read identifier, version and variant from the bytes of an XML `Info.plist` with the
+/// reader of `prxvc-audio`. A bundle built before variants existed has no
+/// `PrxTransportVariant` key and is a virtual one.
+///
+/// # Errors
+/// The reason the bytes do not describe a driver bundle.
+pub(crate) fn parse_info(plist: &[u8]) -> Result<DriverInfo, String> {
+    let info = parse_bundle_info(plist).map_err(|e| e.to_string())?;
+    let identifier = info
+        .identifier
+        .ok_or_else(|| "CFBundleIdentifier is missing".to_owned())?;
     Ok(DriverInfo {
         identifier,
-        version,
-        variant,
+        version: info.version_string,
+        variant: info.variant,
     })
 }
 
@@ -293,7 +250,7 @@ mod tests {
     #[test]
     fn parses_identifier_version_and_variant() {
         assert_eq!(
-            parse_info(&plist("0.1.0-usb", Some("usb"))),
+            parse_info(plist("0.1.0-usb", Some("usb")).as_bytes()),
             Ok(info("0.1.0-usb", Variant::Usb))
         );
     }
@@ -301,35 +258,37 @@ mod tests {
     #[test]
     fn a_bundle_without_the_variant_key_is_virtual() {
         assert_eq!(
-            parse_info(&plist("0.1.0", None)),
+            parse_info(plist("0.1.0", None).as_bytes()),
             Ok(info("0.1.0", Variant::Virtual))
         );
     }
 
     #[test]
-    fn rejects_incomplete_or_unknown_plists() {
-        assert_eq!(
-            parse_info("<dict></dict>"),
-            Err(PlistError::MissingKey("CFBundleIdentifier"))
+    fn rejects_incomplete_plists_and_reads_an_unknown_variant_as_other() {
+        assert!(parse_info(b"<dict></dict>").is_err());
+        assert!(
+            parse_info(b"<dict><key>CFBundleShortVersionString</key><string>0.1.0</string></dict>")
+                .unwrap_err()
+                .contains("CFBundleIdentifier")
         );
         assert_eq!(
-            parse_info(&plist("0.1.0", Some("quantum"))),
-            Err(PlistError::UnknownVariant("quantum".into()))
+            parse_info(plist("0.1.0", Some("quantum")).as_bytes()),
+            Ok(info("0.1.0", Variant::Other))
         );
-        assert!(parse_info("<key>CFBundleIdentifier</key><string></string>").is_err());
+        assert!(parse_info(b"bplist00").is_err());
     }
 
     #[test]
-    fn variant_names_round_trip() {
-        for v in [
+    fn variant_names_are_the_driver_build_names() {
+        let names: Vec<_> = [
             Variant::Virtual,
             Variant::Usb,
-            Variant::Builtin,
+            Variant::BuiltIn,
             Variant::Other,
-        ] {
-            assert_eq!(Variant::parse(v.as_str()), Some(v));
-        }
-        assert_eq!(Variant::parse("USB"), None);
+        ]
+        .map(Variant::as_str)
+        .into();
+        assert_eq!(names, ["virtual", "usb", "builtin", "other"]);
     }
 
     #[test]

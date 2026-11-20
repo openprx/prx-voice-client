@@ -1,7 +1,7 @@
 //! The real macOS implementations of the driver operations' system access and admin prompt.
 //!
-//! `MacSystem` reads property lists, runs `codesign --verify` and asks `system_profiler`
-//! whether the device is listed. `OsascriptRunner` shows the system administrator prompt
+//! `MacSystem` reads property lists (through the `prxvc-audio` reader), runs `codesign --verify` and asks
+//! the audio device directory whether the microphone's UID is listed. `OsascriptRunner` shows the system administrator prompt
 //! through `osascript` and is reached only from the `InstallDriver` and `UninstallDriver`
 //! commands; no test calls it.
 
@@ -10,8 +10,11 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use prxvc_audio::device_directory::{find_by_uid, list_devices_with};
+use prxvc_audio::input_policy::OWN_MIC_UID;
+
 use super::command::ADMIN_WRAPPER_SCRIPT;
-use super::model::{DEVICE_NAME, parse_info};
+use super::model::parse_info;
 use super::ops::{BundleRead, PrivilegedRunner, RunOutput, SystemProbe};
 
 /// Read-only system queries.
@@ -20,8 +23,8 @@ pub(crate) struct MacSystem;
 /// Runs a shell command as root after the system password prompt.
 pub(crate) struct OsascriptRunner;
 
-/// The XML text of `<bundle>/Contents/Info.plist`; a binary plist is converted by `plutil`.
-fn read_plist_xml(bundle: &Path) -> io::Result<String> {
+/// The XML bytes of `<bundle>/Contents/Info.plist`; a binary plist is converted by `plutil`.
+fn read_plist_xml(bundle: &Path) -> io::Result<Vec<u8>> {
     let plist = bundle.join("Contents/Info.plist");
     let bytes = std::fs::read(&plist)?;
     if bytes.starts_with(b"bplist") {
@@ -34,16 +37,9 @@ fn read_plist_xml(bundle: &Path) -> io::Result<String> {
                 "plutil could not convert the property list",
             ));
         }
-        return String::from_utf8(out.stdout).map_err(io::Error::other);
+        return Ok(out.stdout);
     }
-    String::from_utf8(bytes).map_err(io::Error::other)
-}
-
-/// Whether `system_profiler SPAudioDataType` output lists the microphone as a device
-/// (a line that is exactly the device name and a colon).
-pub(crate) fn profiler_lists_device(output: &str) -> bool {
-    let wanted = format!("{DEVICE_NAME}:");
-    output.lines().any(|line| line.trim() == wanted)
+    Ok(bytes)
 }
 
 impl SystemProbe for MacSystem {
@@ -78,14 +74,9 @@ impl SystemProbe for MacSystem {
     }
 
     fn device_present(&self) -> Result<bool, String> {
-        let out = Command::new("/usr/sbin/system_profiler")
-            .arg("SPAudioDataType")
-            .output()
-            .map_err(|e| format!("cannot run system_profiler: {e}"))?;
-        if !out.status.success() {
-            return Err("system_profiler failed".to_owned());
-        }
-        Ok(profiler_lists_device(&String::from_utf8_lossy(&out.stdout)))
+        // The microphone is matched by its UID, never by its display name.
+        let devices = list_devices_with(&[OWN_MIC_UID]).map_err(|e| e.to_string())?;
+        Ok(find_by_uid(&devices, OWN_MIC_UID).is_some())
     }
 
     fn pause(&self, duration: Duration) {
@@ -174,16 +165,5 @@ mod tests {
             MacSystem.read_bundle(dir.path()),
             BundleRead::Info(_)
         ));
-    }
-
-    #[test]
-    fn profiler_output_parsing() {
-        let listed = "Audio:\n\n    Devices:\n\n        MacBook Pro Microphone:\n\n          Input Channels: 1\n\n        PRX Voice Microphone:\n\n          Input Channels: 1\n";
-        assert!(profiler_lists_device(listed));
-        assert!(!profiler_lists_device("        MacBook Pro Microphone:\n"));
-        assert!(!profiler_lists_device(
-            "        PRX Voice Microphone (Internal Sink):\n"
-        ));
-        assert!(!profiler_lists_device(""));
     }
 }

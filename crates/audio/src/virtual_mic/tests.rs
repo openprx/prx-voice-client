@@ -37,6 +37,7 @@ fn healthy_status(devices: &[DeviceEntry]) -> DriverStatus {
         version: "0.1.0".to_owned(),
         variant: DriverVariant::Usb,
         build: None,
+        identifier: None,
     });
     DriverStatus::assess(bundle, devices, "0.1.0")
 }
