@@ -4033,6 +4033,7 @@ dependencies = [
  "prxvc-ports",
  "prxvc-qwentts-sys",
  "prxvc-session",
+ "prxvc-transcribe-sys",
  "reqwest",
  "serde",
  "serde_json",

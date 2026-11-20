@@ -157,6 +157,24 @@ fn transcribe_struct_layouts_match_the_library() {
             size_of::<s::transcribe_stream_text>(),
             align_of::<s::transcribe_stream_text>(),
         ),
+        (
+            "vad_info",
+            s::TRANSCRIBE_ABI_VAD_INFO,
+            size_of::<s::transcribe_vad_info>(),
+            align_of::<s::transcribe_vad_info>(),
+        ),
+        (
+            "vad_session_params",
+            s::TRANSCRIBE_ABI_VAD_SESSION_PARAMS,
+            size_of::<s::transcribe_vad_session_params>(),
+            align_of::<s::transcribe_vad_session_params>(),
+        ),
+        (
+            "vad_result",
+            s::TRANSCRIBE_ABI_VAD_RESULT,
+            size_of::<s::transcribe_vad_result>(),
+            align_of::<s::transcribe_vad_result>(),
+        ),
     ];
     for (name, id, size, align) in cases {
         // SAFETY: both entries only read a static table.

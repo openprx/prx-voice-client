@@ -29,6 +29,8 @@ sha2 = { workspace = true }
 parking_lot = { workspace = true }
 # Raw bindings of the `qwentts` feature.
 prxvc-qwentts-sys = { workspace = true, optional = true }
+# Raw bindings of the `transcribe` feature.
+prxvc-transcribe-sys = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -37,9 +39,14 @@ integration = ["prxvc-audio/whisper"]
 # The in-process `qwentts.cpp` engine behind `tts::qwentts::QwenTts`: builds the vendored C++ runtime
 # (cmake, clang) and links it as a dynamic library. Off by default, additive (CS-7.5).
 qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]
+# The in-process `transcribe.cpp` runtime behind `vad::SileroVad` and `asr::QwenAsr`: builds the
+# vendored C++ runtime and links it as a second dynamic library. Off by default, additive (CS-7.5).
+transcribe = ["dep:prxvc-transcribe-sys", "prxvc-transcribe-sys/transcribe"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Scripted fakes of the ports, for the VAD stream tests.
+prxvc-ports = { workspace = true, features = ["fakes"] }
 
 [lints]
 workspace = true
