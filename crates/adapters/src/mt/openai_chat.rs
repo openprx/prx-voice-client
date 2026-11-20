@@ -34,6 +34,7 @@ use tokio::time::timeout;
 use super::assess::{AssessInput, assess};
 use super::config::{ConfigError, OpenAiChatConfig, Timeouts};
 use super::output::OutputFilter;
+use super::repetition::RepetitionGuard;
 use super::report::{MtFailure, MtObserver, MtReport, Stripped, Suspect};
 use super::sse::{SseEvent, SseParser};
 
@@ -183,6 +184,8 @@ impl Translator for OpenAiChatMt {
             started,
             first_token: None,
             deltas: 0,
+            guard: RepetitionGuard::new(),
+            suspect: None,
         }))
     }
 }
@@ -356,9 +359,17 @@ struct ChatStream {
     started: Instant,
     first_token: Option<Duration>,
     deltas: u32,
+    /// Watches the text as it arrives for a model that loops.
+    guard: RepetitionGuard,
+    /// Why the request was flagged, once it was (see [`MtStream::suspect`]).
+    suspect: Option<String>,
 }
 
 impl MtStream for ChatStream {
+    fn suspect(&self) -> Option<String> {
+        self.suspect.clone()
+    }
+
     fn next(&mut self, cancel: &CancellationToken) -> Option<Result<MtDelta, MtError>> {
         loop {
             match std::mem::replace(&mut self.state, State::Streaming) {
@@ -394,9 +405,15 @@ impl MtStream for ChatStream {
                     self.deltas = self.deltas.saturating_add(1);
                     self.first_token
                         .get_or_insert_with(|| at.saturating_duration_since(self.started));
+                    let looped = self.guard.push(&text);
                     let clean = self.filter.push(&text);
                     if !clean.is_empty() {
                         self.delivered.push_str(&clean);
+                    }
+                    if let Some(repetition) = looped {
+                        return Some(Ok(self.abort_loop(repetition.reason(), clean)));
+                    }
+                    if !clean.is_empty() {
                         return Some(Ok(MtDelta::Text(clean)));
                     }
                 }
@@ -469,6 +486,35 @@ impl ChatStream {
         } else {
             self.state = State::DonePending(done);
             Ok(MtDelta::Text(end.tail))
+        }
+    }
+
+    /// The model loops: stop the request now, flag it with `reason` and end the stream normally.
+    /// `last` is the clean text of the delta that showed the loop; it is delivered, the pipeline
+    /// reads the flag right after it and drops the request without speaking it.
+    fn abort_loop(&mut self, reason: String, last: String) -> MtDelta {
+        self.stop_task();
+        self.suspect = Some(reason);
+        self.report(MtReportParts {
+            failure: None,
+            suspects: vec![Suspect::Repetition],
+            stripped: Vec::new(),
+            text: self.delivered.clone(),
+            total: self.started.elapsed(),
+            prompt_tokens: 0,
+            completion_tokens: self.deltas,
+            malformed_lines: 0,
+        });
+        let done = MtDelta::Done {
+            prompt_tokens: 0,
+            completion_tokens: self.deltas,
+        };
+        if last.is_empty() {
+            self.state = State::Ended;
+            done
+        } else {
+            self.state = State::DonePending(done);
+            MtDelta::Text(last)
         }
     }
 

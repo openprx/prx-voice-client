@@ -6,6 +6,8 @@
 //! * `sse`: the incremental parser of the response stream.
 //! * `output`, `assess`: the structural clean-up of the model's output and the
 //!   cheap checks that detect output that is not a translation.
+//! * `repetition`: the incremental detector of a model that loops; it aborts the request early
+//!   and the stream reports why through `MtStream::suspect`.
 //! * `clause_split`: the splitter from translated token stream to clauses (lives in `prxvc-media`, re-exported here).
 //! * `report`: typed failures, quality flags and the observer that receives them.
 
@@ -14,6 +16,7 @@ pub mod config;
 pub mod openai_chat;
 pub mod output;
 pub mod prompt;
+pub mod repetition;
 pub mod report;
 pub mod sse;
 
@@ -23,5 +26,6 @@ pub use openai_chat::OpenAiChatMt;
 pub use output::OutputFilter;
 pub use prompt::{PromptLimits, PromptTemplate, UnknownTemplate};
 pub use prxvc_media::clause_split::{self, ClauseSplitter, SplitParams};
+pub use repetition::{Repetition, RepetitionGuard};
 pub use report::{MtFailure, MtObserver, MtReport, Stripped, Suspect};
 pub use sse::{SseEvent, SseParser};

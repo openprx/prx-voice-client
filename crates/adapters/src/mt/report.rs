@@ -83,6 +83,9 @@ pub enum Suspect {
     AnswerLike,
     /// A thinking tag is still in the output.
     ThinkResidue,
+    /// The model looped: the output was one short unit repeated many times in a row, or cycled
+    /// with a short period. The request was aborted as soon as the guard saw it.
+    Repetition,
 }
 
 /// A harmless wrapper that was removed from the output.

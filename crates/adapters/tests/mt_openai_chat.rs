@@ -623,3 +623,95 @@ fn requests_that_cannot_work_are_refused_before_any_request_is_sent() {
 fn configuration_errors_are_typed() {
     assert!(OpenAiChatMt::new(OpenAiChatConfig::new("ftp://x", "m")).is_err());
 }
+
+/// Tokens of an endless loop on one fragment, then the connection is held open: a client that
+/// does not abort would wait for the token cap.
+fn looping_server(prefix: &'static [&'static str], unit: &'static str) -> FakeServer {
+    FakeServer::start(move |_| {
+        let mut steps: Vec<Step> = prefix.iter().map(|t| sse_token(t)).collect();
+        steps.extend((0..400).map(|_| sse_token(unit)));
+        steps.push(Step::HoldUntilClosed);
+        Script::ok(steps)
+    })
+}
+
+#[test]
+fn a_model_that_loops_is_aborted_early_and_flagged_with_a_specific_reason() {
+    let server = looping_server(&["Good", ", let me ", "see this point"], "点");
+    let (mt, collector) = mt(&server);
+    let mut stream = mt.translate(req(0, "好的，我们看一下这一点")).unwrap();
+    let cancel = CancellationToken::new();
+    let mut text = String::new();
+    while let Some(item) = stream.next(&cancel) {
+        match item.expect("the stream ends normally") {
+            MtDelta::Text(t) => text.push_str(&t),
+            MtDelta::Done { .. } => {}
+        }
+        if stream.suspect().is_some() {
+            break;
+        }
+    }
+    let reason = stream.suspect().expect("the pipeline can read why");
+    assert!(
+        reason.starts_with("repetition: a unit of 1 character(s)"),
+        "{reason}"
+    );
+    assert!(!reason.contains('点'), "no call content in the reason");
+    // Early: far fewer than the 400 looped tokens arrived, and the request was abandoned.
+    assert!(text.matches('点').count() < 40, "{}", text.len());
+    assert!(
+        server.closed(LONG).is_some(),
+        "the connection was given up as soon as the loop was seen"
+    );
+    // The flag stays, and the stream ends in a protocol-conforming way.
+    assert!(stream.suspect().is_some());
+    while stream.next(&cancel).is_some() {}
+    assert!(stream.next(&cancel).is_none());
+    let report = collector.only();
+    assert_eq!(report.suspects, [Suspect::Repetition]);
+    assert!(report.failure.is_none(), "{:?}", report.failure);
+    assert!(report.is_suspect());
+}
+
+#[test]
+fn a_cycling_tail_is_flagged_with_a_period() {
+    let server = FakeServer::start(|_| {
+        let mut steps = vec![sse_token("We meet at three. ")];
+        steps.extend((0..40).map(|_| sse_token("Please confirm that you can come. ")));
+        steps.push(Step::HoldUntilClosed);
+        Script::ok(steps)
+    });
+    let (mt, collector) = mt(&server);
+    let mut stream = mt.translate(req(0, "我们三点见，请确认你能来")).unwrap();
+    let cancel = CancellationToken::new();
+    while stream.suspect().is_none() {
+        assert!(stream.next(&cancel).is_some(), "flagged before the end");
+    }
+    let reason = stream.suspect().unwrap();
+    assert!(reason.contains("cycles with a period of 34"), "{reason}");
+    assert!(collector.only().suspects.contains(&Suspect::Repetition));
+}
+
+#[test]
+fn legitimate_repetition_in_a_translation_passes_untouched() {
+    let server = FakeServer::start(|_| {
+        normal(&[
+            "Ha",
+            "ha",
+            "ha. No, ",
+            "no, no. ",
+            "It is 000000",
+            ", really",
+            "......",
+        ])
+    });
+    let (mt, collector) = mt(&server);
+    let mut stream = mt
+        .translate(req(0, "哈哈哈。不，不，不。真的是000000。"))
+        .unwrap();
+    let out = drain(&mut *stream, &CancellationToken::new());
+    assert_eq!(out.text, "Hahaha. No, no, no. It is 000000, really......");
+    assert!(out.error.is_none() && out.done.is_some());
+    assert!(stream.suspect().is_none());
+    assert!(!collector.only().suspects.contains(&Suspect::Repetition));
+}
