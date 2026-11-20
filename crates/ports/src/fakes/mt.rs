@@ -26,6 +26,8 @@ pub struct MtScript {
     pub fail_after: Option<(usize, MtError)>,
     /// Fail `translate` itself.
     pub open_error: Option<MtError>,
+    /// Flag the output as suspect (with this reason) once `Done` was delivered.
+    pub suspect: Option<String>,
 }
 
 impl MtScript {
@@ -39,7 +41,15 @@ impl MtScript {
             usage: (12, n),
             fail_after: None,
             open_error: None,
+            suspect: None,
         }
+    }
+
+    /// Flag the translation as suspect (with `reason`) once `Done` was delivered.
+    #[must_use]
+    pub fn flagged_suspect(mut self, reason: &str) -> Self {
+        self.suspect = Some(reason.to_owned());
+        self
     }
 
     /// Wait `delay` on the injected clock before every token.
@@ -78,10 +88,12 @@ impl MtScript {
             .collect();
         match &self.fail_after {
             Some((_, error)) => steps.push(step(Err(error.clone()))),
-            None => steps.push(step(Ok(MtDelta::Done {
-                prompt_tokens: self.usage.0,
-                completion_tokens: self.usage.1,
-            }))),
+            None => {
+                steps.push(step(Ok(MtDelta::Done {
+                    prompt_tokens: self.usage.0,
+                    completion_tokens: self.usage.1,
+                })));
+            }
         }
         steps
     }
@@ -184,15 +196,31 @@ impl Translator for FakeTranslator {
             |d: &MtDelta| matches!(d, MtDelta::Done { .. }),
             || MtError::Cancelled,
         );
-        Ok(Box::new(FakeMtStream(paced)))
+        Ok(Box::new(FakeMtStream {
+            paced,
+            will_flag: script.suspect.clone(),
+            flagged: None,
+        }))
     }
 }
 
-struct FakeMtStream(PacedStream<MtDelta, MtError>);
+struct FakeMtStream {
+    paced: PacedStream<MtDelta, MtError>,
+    will_flag: Option<String>,
+    flagged: Option<String>,
+}
 
 impl MtStream for FakeMtStream {
     fn next(&mut self, cancel: &CancellationToken) -> Option<Result<MtDelta, MtError>> {
-        self.0.next(cancel)
+        let item = self.paced.next(cancel);
+        if matches!(item, Some(Ok(MtDelta::Done { .. }))) {
+            self.flagged = self.will_flag.take();
+        }
+        item
+    }
+
+    fn suspect(&self) -> Option<String> {
+        self.flagged.clone()
     }
 }
 
@@ -421,5 +449,31 @@ mod tests {
                 .require_live()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn a_flagged_script_reports_the_reason_once_done_was_delivered() {
+        let mt = FakeTranslator::new(ManualClock::new())
+            .with_script("hi", MtScript::tokens(["Sure"]).flagged_suspect("refusal"));
+        let cancel = CancellationToken::new();
+        let mut s = mt
+            .translate(request(Direction::Outgoing, "hi"))
+            .expect("stream");
+        assert_eq!(s.suspect(), None);
+        let items = collect(s.as_mut(), &cancel);
+        assert!(matches!(items[1], Ok(MtDelta::Done { .. })));
+        assert_eq!(s.suspect().as_deref(), Some("refusal"));
+    }
+
+    #[test]
+    fn timeouts_with_and_without_a_phase_are_timeouts() {
+        assert!(MtError::Timeout.is_timeout());
+        assert!(
+            MtError::TimedOut {
+                phase: crate::mt::MtPhase::FirstToken
+            }
+            .is_timeout()
+        );
+        assert!(!MtError::Cancelled.is_timeout());
     }
 }

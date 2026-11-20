@@ -12,9 +12,15 @@ pub enum MtError {
     /// The request was cancelled through its token.
     #[error("translation cancelled")]
     Cancelled,
-    /// The provider did not answer in time.
+    /// The provider did not answer in time (the phase is not known).
     #[error("translation timed out")]
     Timeout,
+    /// The provider did not answer in time in a known phase of the request.
+    #[error("translation timed out ({phase})")]
+    TimedOut {
+        /// Where the request was waiting.
+        phase: MtPhase,
+    },
     /// The provider cannot be reached or has stopped working.
     #[error("translation unavailable: {reason}")]
     Unavailable {
@@ -37,6 +43,25 @@ impl MtError {
     pub fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled)
     }
+
+    /// Whether the provider ran out of time, with or without a known phase.
+    pub fn is_timeout(&self) -> bool {
+        matches!(self, Self::Timeout | Self::TimedOut { .. })
+    }
+}
+
+/// The phase of a translation request in which a timeout happened.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, thiserror::Error)]
+pub enum MtPhase {
+    /// Connecting to the provider or sending the request.
+    #[error("connect")]
+    Connect,
+    /// Waiting for the first translated token.
+    #[error("first token")]
+    FirstToken,
+    /// The stream stalled after it had started.
+    #[error("stream stalled")]
+    Stream,
 }
 
 /// One translation request: one committed source clause.
@@ -76,6 +101,18 @@ pub trait MtStream: Send {
     /// error. When `cancel` fires the next result is
     /// `Some(Err(MtError::Cancelled))` and the provider-side work is abandoned.
     fn next(&mut self, cancel: &CancellationToken) -> Option<Result<MtDelta, MtError>>;
+
+    /// Why the output so far does not look like a translation (empty, wrong
+    /// language, far too long, a refusal or an answer), or `None`.
+    ///
+    /// The pipeline asks after every delta and once more after `Done`. Once an
+    /// adapter has flagged a request it keeps returning the reason. A flagged
+    /// request is never spoken: the stream still ends normally, and the
+    /// pipeline applies the direction's failure policy. The default is "never
+    /// flagged", so adapters that cannot assess their output compile unchanged.
+    fn suspect(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A translation provider.

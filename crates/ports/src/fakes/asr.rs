@@ -27,6 +27,11 @@ pub struct AsrScript {
     pub fail_feed_at: Option<(usize, AsrError)>,
     /// Fail `finalize`.
     pub fail_finalize: Option<AsrError>,
+    /// What the stream says after the first, second, ... `reset`: the
+    /// partials (with stable prefix lengths) and the final text of each round.
+    /// A stream that was reset more often than there are rounds replays the
+    /// last one. Empty means every round plays the fields above.
+    pub later_rounds: Vec<(Vec<(String, usize)>, String)>,
 }
 
 impl AsrScript {
@@ -38,6 +43,39 @@ impl AsrScript {
             final_delay: Duration::ZERO,
             fail_feed_at: None,
             fail_finalize: None,
+            later_rounds: Vec::new(),
+        }
+    }
+
+    /// After the next `reset` (a new segment or clause) the stream plays these
+    /// partials and this final text.
+    #[must_use]
+    pub fn then_round(
+        mut self,
+        partials: impl IntoIterator<Item = (&'static str, usize)>,
+        final_text: &str,
+    ) -> Self {
+        self.later_rounds.push((
+            partials
+                .into_iter()
+                .map(|(t, n)| (t.to_owned(), n))
+                .collect(),
+            final_text.to_owned(),
+        ));
+        self
+    }
+
+    /// The partials and final text of round `round` (the number of resets so far).
+    fn round(&self, round: usize) -> (&[(String, usize)], &str) {
+        match round.checked_sub(1) {
+            None => (&self.partials, &self.final_text),
+            Some(k) => self
+                .later_rounds
+                .get(k)
+                .or(self.later_rounds.last())
+                .map_or((&self.partials, &self.final_text), |(p, f)| {
+                    (p.as_slice(), f.as_str())
+                }),
         }
     }
 
@@ -145,6 +183,7 @@ impl StreamingAsr for FakeStreamingAsr {
             request,
             fed: 0,
             revision: 0,
+            resets: 0,
             audio_end: MonoTime::ZERO,
         }))
     }
@@ -156,6 +195,7 @@ struct FakeAsrStream {
     request: String,
     fed: usize,
     revision: u32,
+    resets: usize,
     audio_end: MonoTime,
 }
 
@@ -171,7 +211,8 @@ impl AsrStream for FakeAsrStream {
             self.shared.log.record(&self.request, EventKind::Failed);
             return Err(error.clone());
         }
-        let Some((text, stable)) = self.script.partials.get(index) else {
+        let (partials, _) = self.script.round(self.resets);
+        let Some((text, stable)) = partials.get(index) else {
             return Ok(None);
         };
         self.revision += 1;
@@ -207,9 +248,10 @@ impl AsrStream for FakeAsrStream {
         }
         self.revision += 1;
         self.shared.log.record(&self.request, EventKind::Completed);
+        let final_text = self.script.round(self.resets).1.to_owned();
         Ok(AsrHypothesis {
-            text: self.script.final_text.clone(),
-            stable_prefix_len: self.script.final_text.len(),
+            stable_prefix_len: final_text.len(),
+            text: final_text,
             revision: self.revision,
             is_final: true,
             audio_end: self.audio_end,
@@ -219,6 +261,7 @@ impl AsrStream for FakeAsrStream {
     fn reset(&mut self) {
         self.fed = 0;
         self.revision = 0;
+        self.resets += 1;
     }
 }
 
@@ -594,5 +637,30 @@ mod tests {
             &CancellationToken::new(),
         );
         assert_eq!(r, Err(AsrError::Internal("decode".to_owned())));
+    }
+
+    #[test]
+    fn a_reset_moves_the_stream_to_the_next_scripted_round() {
+        let asr = FakeStreamingAsr::new(
+            ManualClock::new(),
+            AsrScript::new(["one"], "one final").then_round([("two", 3)], "two final"),
+        );
+        let mut s = asr.open(Lang::En, AsrContext::default()).expect("stream");
+        let cancel = CancellationToken::new();
+        let first = s
+            .feed(&[0.0], MonoTime::ZERO)
+            .expect("feed")
+            .expect("partial");
+        assert_eq!(first.text, "one");
+        assert_eq!(s.finalize(&cancel).expect("final").text, "one final");
+        s.reset();
+        let second = s
+            .feed(&[0.0], MonoTime::ZERO)
+            .expect("feed")
+            .expect("partial");
+        assert_eq!((second.text.as_str(), second.stable_prefix_len), ("two", 3));
+        assert_eq!(s.finalize(&cancel).expect("final").text, "two final");
+        s.reset();
+        assert_eq!(s.finalize(&cancel).expect("final").text, "two final");
     }
 }

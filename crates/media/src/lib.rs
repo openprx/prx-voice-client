@@ -10,9 +10,11 @@
 //!   and [`PcmChunk`] (audio produced by a synthesiser).
 //! * `lang`: [`Lang`], the languages the pipeline translates between.
 //! * `ids`: [`Direction`], [`SegmentId`] and [`ClauseId`].
+//! * `clause_split`: the incremental splitter from translated text to clauses.
 //! * `envelope`: [`Envelope`] and the [`RevisionTracker`] that drops late results.
 
 pub mod audio;
+pub mod clause_split;
 pub mod envelope;
 pub mod ids;
 pub mod lang;
@@ -20,6 +22,7 @@ pub mod rate;
 pub mod time;
 
 pub use audio::{AudioFrame, FrameError, PcmChunk};
+pub use clause_split::{ClauseSplitter, SplitParams, first_clause_end, trim_stray_start};
 pub use envelope::{Envelope, EnvelopeKey, RevisionTracker};
 pub use ids::{ClauseId, Direction, SegmentId};
 pub use lang::{Lang, UnknownLang};

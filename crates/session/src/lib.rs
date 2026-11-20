@@ -20,6 +20,10 @@
 //!   late results.
 //! * `commit_policy`: when text commits to a clause and to synthesis.
 //! * `interrupt`: what an interruption cancels (D-P5).
+//! * `backlog`: which queued clauses are skipped when a direction lags (3.4.3).
+//!
+//! The direction pipeline that runs these machines on threads is the module
+//! `pipeline`.
 //! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
 //! * `call` (layer L2): the call coordinator that owns these machines, with
 //!   its host seams, snapshot, commands and typed errors.
@@ -28,7 +32,9 @@ pub mod adapter;
 pub mod call;
 pub mod driver;
 pub mod interpret;
+pub mod pipeline;
 
+mod backlog;
 mod call_state;
 mod commit_policy;
 mod config;
@@ -48,6 +54,7 @@ mod session;
 mod state;
 mod turn;
 
+pub use backlog::{BacklogClause, BacklogDecision, SkippingChange, decide_backlog};
 pub use call_state::{
     CallAction, CallEvent, CallReason, CallReasons, CallRejection, CallState, ProviderProgress,
 };

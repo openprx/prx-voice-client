@@ -295,45 +295,89 @@ fn tts_commit_rules() {
         ..CommitParams::default()
     };
     let whole = CommitParams::default();
-    let t = |finished, text, tokens| TranslationProgress {
+    let en = |finished, text, tokens| TranslationProgress {
+        lang: Lang::En,
         finished,
         text,
         tokens_after_first_sentence: tokens,
     };
+    let zh = |finished, text, tokens| TranslationProgress {
+        lang: Lang::Zh,
+        finished,
+        text,
+        tokens_after_first_sentence: tokens,
+    };
+    let text = "Hello there. And then";
     assert_eq!(
-        decide_tts_commit(&whole, &t(false, "Hello. And then", 9)),
+        decide_tts_commit(&whole, &en(false, text, 9)),
         TtsCommit::Wait
     );
     assert_eq!(
-        decide_tts_commit(&whole, &t(true, "Hello. And then", 9)),
+        decide_tts_commit(&whole, &en(true, text, 9)),
         TtsCommit::Whole
     );
     assert_eq!(
-        decide_tts_commit(&whole, &t(true, "  ", 0)),
+        decide_tts_commit(&whole, &en(true, "  ", 0)),
         TtsCommit::Wait,
         "nothing to say"
     );
     assert_eq!(
-        decide_tts_commit(&split, &t(false, "Hello. And then", 3)),
+        decide_tts_commit(&split, &en(false, text, 3)),
         TtsCommit::Wait
     );
     assert_eq!(
-        decide_tts_commit(&split, &t(false, "Hello. And then", 4)),
-        TtsCommit::FirstSentence { end: 6 }
-    );
-    assert_eq!(
-        decide_tts_commit(&split, &t(false, "no mark yet and more", 9)),
-        TtsCommit::Wait
-    );
-    assert_eq!(
-        decide_tts_commit(&split, &t(false, "你好。然后", 5)),
+        decide_tts_commit(&split, &en(false, text, 4)),
         TtsCommit::FirstSentence {
-            end: "你好。".len()
+            end: "Hello there.".len()
         }
     );
     assert_eq!(
-        decide_tts_commit(&split, &t(true, "Hello. And", 1)),
+        decide_tts_commit(&split, &en(false, "no mark yet and more", 9)),
+        TtsCommit::Wait
+    );
+    assert_eq!(
+        decide_tts_commit(&split, &zh(false, "今天天气很好。然后", 5)),
+        TtsCommit::FirstSentence {
+            end: "今天天气很好。".len()
+        }
+    );
+    assert_eq!(
+        decide_tts_commit(&split, &en(true, "Hello there. And", 1)),
         TtsCommit::Whole
+    );
+}
+
+#[test]
+fn tts_commit_never_cuts_inside_numbers_or_abbreviations() {
+    let split = CommitParams {
+        split_target_clauses: true,
+        split_min_tokens_after: 0,
+        ..CommitParams::default()
+    };
+    let en = |text| TranslationProgress {
+        lang: Lang::En,
+        finished: false,
+        text,
+        tokens_after_first_sentence: 9,
+    };
+    for text in [
+        "The total is 3.5 dollars today",
+        "It costs 1,000 dollars today",
+        "We meet at 10:30 tomorrow morning",
+        "Dr. Smith will call you back",
+        "The U.S. market opened higher",
+    ] {
+        assert_eq!(
+            decide_tts_commit(&split, &en(text)),
+            TtsCommit::Wait,
+            "{text}"
+        );
+    }
+    assert_eq!(
+        decide_tts_commit(&split, &en("The total is 3.5 dollars. Then")),
+        TtsCommit::FirstSentence {
+            end: "The total is 3.5 dollars.".len()
+        }
     );
 }
 

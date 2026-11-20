@@ -8,22 +8,32 @@ use prxvc_media::{ClauseId, MonoTime};
 pub enum TraceStage {
     /// Speech began.
     SpeechStart,
-    /// A partial recognition result appeared.
+    /// A partial recognition result appeared (the first one of a clause).
     AsrPartial,
+    /// The silence that commits a clause was detected.
+    ClausePause,
+    /// The final source text of the clause is ready (streaming final or refine result).
+    AsrFinalReady,
     /// A clause was committed.
     ClauseCommitted,
     /// The refine pass finished.
     RefineDone,
+    /// The translation request was sent.
+    MtRequestSent,
     /// The first translated token arrived.
     MtFirstToken,
     /// Translation finished.
     MtDone,
+    /// The synthesis request was sent.
+    TtsRequestSent,
     /// The first synthesised chunk arrived.
     TtsFirstChunk,
     /// Synthesis finished.
     TtsDone,
     /// Playback of the clause began.
     PlayoutStart,
+    /// Playback of the clause ended.
+    PlayoutEnd,
     /// The clause was cancelled.
     Cancelled,
     /// The clause was skipped to keep up.

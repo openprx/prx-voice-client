@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use prxvc_media::{Lang, first_clause_end};
+
 /// Thresholds of the commit rules, shaped like the `[pipeline]` configuration keys.
 ///
 /// The crate does not depend on `prxvc-config`: the composition root fills
@@ -203,6 +205,14 @@ fn is_final_mark(c: char) -> bool {
     SENTENCE_FINAL.contains(&c)
 }
 
+/// The byte offset just after the last sentence-final mark of `text`, if it has one.
+pub(crate) fn last_sentence_end(text: &str) -> Option<usize> {
+    text.char_indices()
+        .filter(|(_, c)| is_final_mark(*c))
+        .map(|(at, c)| at + c.len_utf8())
+        .next_back()
+}
+
 fn ends_sentence(text: &str) -> bool {
     text.trim_end()
         .chars()
@@ -213,6 +223,8 @@ fn ends_sentence(text: &str) -> bool {
 /// The translation stream of one clause at one instant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TranslationProgress<'a> {
+    /// The language of `text` (the clause rule has language-specific minimum lengths).
+    pub lang: Lang,
     /// Whether the translation stream is complete.
     pub finished: bool,
     /// The translated text so far.
@@ -228,9 +240,12 @@ pub enum TtsCommit {
     Wait,
     /// Synthesise the complete translated clause.
     Whole,
-    /// Synthesise the first sentence now: the text up to `end` (a byte offset after the mark).
+    /// Synthesise the first clause now: the text up to `end`, a byte offset
+    /// after its closing mark. The clause is the one `prxvc_media::ClauseSplitter`
+    /// finds (a sentence or a clause-level piece; never inside `3.5`, `Dr.`
+    /// or `U.S.`).
     FirstSentence {
-        /// Byte offset just after the sentence-final mark.
+        /// Byte offset just after the mark that ends the first clause.
         end: usize,
     },
 }
@@ -239,8 +254,10 @@ pub enum TtsCommit {
 ///
 /// Uncommitted source text is never synthesised: this function only sees
 /// translations of committed clauses. Synthesis takes one complete clause,
-/// except with `split_target_clauses` where the first sentence goes as soon
-/// as a final mark has been followed by enough tokens.
+/// except with `split_target_clauses` where the first clause goes as soon as
+/// the clause rule of `prxvc_media::clause_split` finds its end and enough
+/// tokens have followed. That rule is the only one: there is no separate
+/// punctuation test here.
 pub fn decide_tts_commit(p: &CommitParams, t: &TranslationProgress<'_>) -> TtsCommit {
     if t.finished {
         return if t.text.trim().is_empty() {
@@ -252,10 +269,8 @@ pub fn decide_tts_commit(p: &CommitParams, t: &TranslationProgress<'_>) -> TtsCo
     if !p.split_target_clauses || t.tokens_after_first_sentence < p.split_min_tokens_after {
         return TtsCommit::Wait;
     }
-    match t.text.char_indices().find(|(_, c)| is_final_mark(*c)) {
-        Some((at, c)) => TtsCommit::FirstSentence {
-            end: at + c.len_utf8(),
-        },
+    match first_clause_end(t.lang, t.text) {
+        Some(end) => TtsCommit::FirstSentence { end },
         None => TtsCommit::Wait,
     }
 }
