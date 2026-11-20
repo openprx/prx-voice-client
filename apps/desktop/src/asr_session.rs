@@ -1,17 +1,28 @@
 //! ASR session start-up: locates the Whisper model files and starts the audio capture and recognition loop.
 
-use prxvc_audio::audio_loop::{AudioProcessingLoop, LoopConfig, RecognizedUtterance};
+use prxvc_audio::audio_loop::{AudioProcessingLoop, LoopConfig, LoopLinks, RecognizedUtterance};
+use prxvc_audio::input_supervisor::AudioLoopEvent;
 use prxvc_audio::echo_gate::EchoGateHandle;
 use prxvc_desktop_ui::SharedAppState;
 
 use crate::config_load::app_paths;
 use crate::event_map::push_error;
 
+/// Channels and settings the audio loop is started with.
+pub(crate) struct AudioWiring {
+    /// Recognized utterances go to the engine thread through this sender.
+    pub text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
+    /// Microphone changes go to the engine thread through this sender.
+    pub events_tx: std::sync::mpsc::Sender<AudioLoopEvent>,
+    /// Configured input device (UID or name); empty follows the policy defaults.
+    pub input_device: String,
+}
+
 /// Start the local audio capture + Whisper ASR loop for the active session.
 pub(crate) fn start_audio_loop(
     engine: &prxvc_core::engine::Engine,
     audio_loop: &mut AudioProcessingLoop,
-    asr_text_tx: &std::sync::mpsc::Sender<RecognizedUtterance>,
+    wiring: &AudioWiring,
     shared: &SharedAppState,
     gate: EchoGateHandle,
     loop_config: LoopConfig,
@@ -48,7 +59,12 @@ pub(crate) fn start_audio_loop(
             ..Default::default()
         };
 
-        if let Err(e) = audio_loop.start(asr_config, session_id, asr_text_tx.clone(), gate, loop_config) {
+        let links = LoopLinks {
+            text_tx: wiring.text_tx.clone(),
+            events_tx: wiring.events_tx.clone(),
+            gate,
+        };
+        if let Err(e) = audio_loop.start(asr_config, session_id, links, loop_config, wiring.input_device.clone()) {
             tracing::warn!(error = %e, "failed to start audio loop");
             push_error(shared, &format!("Audio: {e}"));
         }

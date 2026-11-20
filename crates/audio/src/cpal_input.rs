@@ -3,9 +3,11 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use uuid::Uuid;
 
+use crate::input_devices::find_cpal_input;
+use crate::input_policy::InputDevice;
 use crate::pipeline::AudioInput;
 use crate::{AudioError, AudioFormat, AudioFrame, AudioInputFrame, AudioState};
 
@@ -28,6 +30,7 @@ unsafe impl Send for SendStream {}
 pub struct CpalAudioInput {
     state: AudioState,
     session_id: Uuid,
+    device: InputDevice,
     stream: Option<SendStream>,
     sample_rate: u32,
     channels: u16,
@@ -37,15 +40,17 @@ pub struct CpalAudioInput {
 }
 
 impl CpalAudioInput {
-    /// Create a new cpal-backed audio input for the given session.
+    /// Create a cpal-backed audio input on an explicitly chosen device.
     ///
-    /// Returns an error if no default input device is available.
-    pub fn new(session_id: Uuid) -> Result<Self, AudioError> {
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or(AudioError::InputDeviceUnavailable)?;
-        let config = device
+    /// The device comes from the input-device policy
+    /// ([`crate::input_policy::choose_input`]); this type never opens "the
+    /// system default input".
+    ///
+    /// # Errors
+    /// [`AudioError::InputDeviceUnavailable`] if the device is no longer present.
+    pub fn open(session_id: Uuid, device: &InputDevice) -> Result<Self, AudioError> {
+        let cpal_device = find_cpal_input(device)?;
+        let config = cpal_device
             .default_input_config()
             .map_err(|e| AudioError::InitializationFailed(format!("input config: {}", e)))?;
 
@@ -55,6 +60,7 @@ impl CpalAudioInput {
         Ok(Self {
             state: AudioState::InputClosed,
             session_id,
+            device: device.clone(),
             stream: None,
             sample_rate,
             channels,
@@ -74,10 +80,7 @@ impl AudioInput for CpalAudioInput {
             });
         }
 
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or(AudioError::InputDeviceUnavailable)?;
+        let device = find_cpal_input(&self.device)?;
 
         let config = cpal::StreamConfig {
             channels: self.channels,

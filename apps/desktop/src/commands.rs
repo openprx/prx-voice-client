@@ -1,11 +1,11 @@
 //! UI command dispatch: maps command strings from the UI to engine commands and runs the follow-up work.
 
-use prxvc_audio::audio_loop::{AudioProcessingLoop, LoopConfig, RecognizedUtterance};
+use prxvc_audio::audio_loop::{AudioProcessingLoop, LoopConfig};
 use prxvc_core::engine::Engine;
 use prxvc_desktop_ui::{NetworkStatus, SharedAppState};
 use prxvc_protocol::Command;
 
-use crate::asr_session::start_audio_loop;
+use crate::asr_session::{AudioWiring, start_audio_loop};
 use crate::diagnostics::export_diagnostics;
 use crate::event_map::push_error;
 use crate::persistence::persist_session;
@@ -17,7 +17,7 @@ pub(crate) struct CommandContext<'a> {
     pub shared: &'a SharedAppState,
     pub storage: &'a Option<prxvc_storage::StorageManager>,
     pub audio_loop: &'a mut AudioProcessingLoop,
-    pub asr_text_tx: &'a std::sync::mpsc::Sender<RecognizedUtterance>,
+    pub audio_wiring: &'a AudioWiring,
     pub playback: &'a mut playback::PlaybackDriver,
     pub loop_config: LoopConfig,
 }
@@ -153,7 +153,7 @@ fn after_command(
         start_audio_loop(
             ctx.engine,
             ctx.audio_loop,
-            ctx.asr_text_tx,
+            ctx.audio_wiring,
             ctx.shared,
             ctx.playback.gate(),
             ctx.loop_config,

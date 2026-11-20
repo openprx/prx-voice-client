@@ -71,6 +71,8 @@ pub struct UiSnapshot {
     pub reconnect_attempts: u32,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     pub mic_paused: bool,
+    /// Name of the input device being captured; empty when none.
+    pub input_device: String,
 }
 
 /// Wakes the UI thread when another thread changes what the UI displays.
@@ -134,6 +136,8 @@ struct SharedStateInner {
     reconnect_attempts: u32,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     mic_paused: bool,
+    /// Name of the input device being captured; empty when none.
+    input_device: String,
 }
 
 /// Thread-safe shared state between the UI and async runtime.
@@ -164,6 +168,7 @@ impl SharedAppState {
                 network_status: NetworkStatus::default(),
                 reconnect_attempts: 0,
                 mic_paused: false,
+                input_device: String::new(),
             })),
             repaint: RepaintSignal::default(),
         }
@@ -342,6 +347,17 @@ impl SharedAppState {
         });
     }
 
+    /// Record the name of the input device being captured (empty when none).
+    pub fn set_input_device(&self, name: &str) {
+        self.mutate(|inner| {
+            let changed = inner.input_device != name;
+            if changed {
+                inner.input_device = name.to_owned();
+            }
+            changed
+        });
+    }
+
     /// Produce a read-only snapshot of all display-relevant state.
     ///
     /// The lock is held only for the duration of the clone, keeping the
@@ -379,6 +395,7 @@ impl SharedAppState {
             network_status: inner.network_status.clone(),
             reconnect_attempts: inner.reconnect_attempts,
             mic_paused: inner.mic_paused,
+            input_device: inner.input_device.clone(),
         }
     }
 }
@@ -439,6 +456,7 @@ mod tests {
             ("set_network_status", Box::new(|s| s.set_network_status(NetworkStatus::Failed))),
             ("set_reconnect_attempts", Box::new(|s| s.set_reconnect_attempts(3))),
             ("set_mic_paused", Box::new(|s| s.set_mic_paused(true))),
+            ("set_input_device", Box::new(|s| s.set_input_device("Built-in"))),
         ]
     }
 

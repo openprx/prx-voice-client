@@ -6,9 +6,11 @@ use prxvc_audio::turn_policy::{TurnAction, TurnPolicy};
 use prxvc_core::engine::Engine;
 use prxvc_desktop_ui::{EventSnapshot, NetworkStatus, SharedAppState, TranscriptLine};
 
+use crate::asr_session::AudioWiring;
+use prxvc_audio::input_supervisor::AudioLoopEvent;
 use crate::commands::{CommandContext, process_command};
 use crate::compose;
-use crate::event_map::handle_engine_event;
+use crate::event_map::{handle_audio_event, handle_engine_event};
 use crate::persistence::load_history_from_storage;
 use crate::playback::PlaybackDriver;
 
@@ -18,8 +20,9 @@ struct EngineLoop {
     shared: SharedAppState,
     storage: Option<prxvc_storage::StorageManager>,
     audio_loop: AudioProcessingLoop,
-    asr_text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
+    audio_wiring: AudioWiring,
     asr_text_rx: std::sync::mpsc::Receiver<RecognizedUtterance>,
+    audio_events_rx: std::sync::mpsc::Receiver<AudioLoopEvent>,
     playback: PlaybackDriver,
     loop_config: LoopConfig,
     turn_policy: TurnPolicy,
@@ -76,13 +79,19 @@ pub(crate) async fn run_engine_loop(shared: SharedAppState, config: prxvc_config
 
     // Audio processing loop (local Whisper ASR).
     let (asr_text_tx, asr_text_rx) = std::sync::mpsc::channel::<RecognizedUtterance>();
+    let (audio_events_tx, audio_events_rx) = std::sync::mpsc::channel::<AudioLoopEvent>();
     let mut state = EngineLoop {
         engine,
         shared,
         storage,
         audio_loop: AudioProcessingLoop::new(),
-        asr_text_tx,
+        audio_wiring: AudioWiring {
+            text_tx: asr_text_tx,
+            events_tx: audio_events_tx,
+            input_device: config.audio.input_device.clone(),
+        },
         asr_text_rx,
+        audio_events_rx,
         playback,
         loop_config: LoopConfig {
             endpoint: EndpointConfig::from_end_silence_ms(config.audio.end_silence_ms),
@@ -94,6 +103,7 @@ pub(crate) async fn run_engine_loop(shared: SharedAppState, config: prxvc_config
     // Main polling loop.
     loop {
         state.drain_commands();
+        state.relay_audio_events();
         state.relay_utterances();
 
         // 3. Play assistant speech the server has sent (honours auto_play).
@@ -120,11 +130,18 @@ impl EngineLoop {
                 shared: &self.shared,
                 storage: &self.storage,
                 audio_loop: &mut self.audio_loop,
-                asr_text_tx: &self.asr_text_tx,
+                audio_wiring: &self.audio_wiring,
                 playback: &mut self.playback,
                 loop_config: self.loop_config,
             };
             process_command(&mut ctx, cmd);
+        }
+    }
+
+    /// 1b. Report microphone changes (device chosen, switched, lost) to the UI.
+    fn relay_audio_events(&mut self) {
+        while let Ok(event) = self.audio_events_rx.try_recv() {
+            handle_audio_event(&event, &self.shared);
         }
     }
 

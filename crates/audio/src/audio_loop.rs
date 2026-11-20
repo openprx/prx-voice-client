@@ -25,15 +25,13 @@ use tracing::{info, warn};
 #[cfg(feature = "whisper")]
 use crate::AudioError;
 #[cfg(feature = "whisper")]
-use crate::cpal_input::CpalAudioInput;
-#[cfg(feature = "whisper")]
 use crate::echo_gate::{EchoGateHandle, Routed, route_frame};
 #[cfg(feature = "whisper")]
 use crate::endpoint::{Endpoint, decide, speech_duration};
 #[cfg(feature = "whisper")]
 use crate::turn_policy::join_text;
 #[cfg(feature = "whisper")]
-use crate::pipeline::AudioInput;
+use crate::input_supervisor::{InputSupervisor, PlatformInputBackend};
 #[cfg(feature = "whisper")]
 use crate::whisper_asr::{WhisperAsr, WhisperAsrConfig};
 
@@ -55,6 +53,16 @@ pub struct RecognizedUtterance {
     /// Speech in the utterance according to the VAD segments (silence
     /// between and around them excluded).
     pub speech: std::time::Duration,
+}
+
+/// Channels the audio loop talks to the application through.
+pub struct LoopLinks {
+    /// Recognized utterances.
+    pub text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
+    /// Microphone changes (device chosen, switched, lost).
+    pub events_tx: std::sync::mpsc::Sender<crate::input_supervisor::AudioLoopEvent>,
+    /// Closed while the assistant speaks; microphone audio is dropped then.
+    pub gate: EchoGateHandle,
 }
 
 /// How the audio loop ends utterances.
@@ -97,7 +105,8 @@ impl AudioProcessingLoop {
     /// Start the audio processing loop.
     ///
     /// Spawns a background thread that:
-    /// 1. Opens the microphone via `CpalAudioInput`
+    /// 1. Opens the microphone chosen by the input-device policy (never blindly
+    ///    the system default; `input_device` is the configured UID or name)
     /// 2. Accumulates audio frames
     /// 3. Periodically checks for speech via Whisper's VAD
     /// 4. When speech ends, transcribes and sends text through `text_tx`
@@ -111,9 +120,9 @@ impl AudioProcessingLoop {
         &mut self,
         asr_config: WhisperAsrConfig,
         session_id: uuid::Uuid,
-        text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
-        gate: EchoGateHandle,
+        links: LoopLinks,
         loop_config: LoopConfig,
+        input_device: String,
     ) -> Result<(), AudioError> {
         if self.running.load(Ordering::Relaxed) {
             return Ok(()); // Already running.
@@ -125,7 +134,7 @@ impl AudioProcessingLoop {
         let handle = std::thread::Builder::new()
             .name("prxvc-audio-loop".into())
             .spawn(move || {
-                if let Err(e) = run_audio_loop(running.clone(), asr_config, session_id, text_tx, gate, loop_config) {
+                if let Err(e) = run_audio_loop(running.clone(), asr_config, session_id, links, loop_config, &input_device) {
                     warn!(error = %e, "audio loop exited with error");
                 }
                 running.store(false, Ordering::Relaxed);
@@ -159,16 +168,17 @@ fn run_audio_loop(
     running: Arc<AtomicBool>,
     asr_config: WhisperAsrConfig,
     session_id: uuid::Uuid,
-    text_tx: std::sync::mpsc::Sender<RecognizedUtterance>,
-    gate: EchoGateHandle,
+    links: LoopLinks,
     loop_config: LoopConfig,
+    input_device: &str,
 ) -> Result<(), AudioError> {
+    let LoopLinks { text_tx, events_tx, gate } = links;
     // Initialize Whisper ASR.
     let mut asr = WhisperAsr::new(&asr_config)?;
 
-    // Initialize microphone input.
-    let mut mic = CpalAudioInput::new(session_id)?;
-    mic.start()?;
+    // Initialize microphone input on the device the policy chooses.
+    let mut mic = InputSupervisor::new(PlatformInputBackend, session_id, input_device, events_tx);
+    mic.start(std::time::Instant::now())?;
     info!("microphone started, listening for speech");
 
     // Strategy: accumulate audio, run the (incremental) VAD every
@@ -180,9 +190,15 @@ fn run_audio_loop(
         let max_idle_buffer = Duration::from_secs(10);
 
     while running.load(Ordering::Relaxed) {
+        // Follow device changes; audio buffered from the old device is stale.
+        if mic.tick(std::time::Instant::now()) {
+            asr.reset();
+            last_vad_check = std::time::Instant::now();
+        }
+
         // Read all available audio frames (non-blocking).
         let mut got_frame = false;
-        while let Ok(Some(input_frame)) = mic.read_frame() {
+        while let Some(input_frame) = mic.read_frame() {
             // Frames captured while the assistant speaks (and shortly after)
             // are dropped; on reopening the recogniser starts afresh (the
             // gate resets it) and so do the timers.
@@ -246,7 +262,7 @@ fn run_audio_loop(
     }
 
     // Cleanup.
-    mic.stop()?;
+    mic.stop();
     Ok(())
 }
 

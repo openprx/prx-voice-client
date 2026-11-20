@@ -6,12 +6,17 @@ pub mod audio_loop;
 pub mod blackhole_sink;
 pub mod buffer;
 #[cfg(target_os = "macos")]
+pub mod core_audio_devices;
+#[cfg(target_os = "macos")]
 pub mod core_audio_tap;
 pub mod cpal_input;
 pub mod cpal_output;
 pub mod device;
 pub mod echo_gate;
 pub mod endpoint;
+pub mod input_devices;
+pub mod input_policy;
+pub mod input_supervisor;
 pub mod mock;
 pub mod output;
 pub mod pipeline;
@@ -135,6 +140,8 @@ pub enum AudioError {
     InitializationFailed(String),
     #[error("invalid state transition: {from} -> {to}")]
     InvalidStateTransition { from: String, to: String },
+    #[error("{0}")]
+    InputPolicy(#[from] crate::input_policy::InputPolicyError),
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +189,7 @@ pub mod prelude {
     };
     pub use crate::routing::{AppAudioSource, ProcessFilter, VirtualMicSink};
     pub use crate::cpal_input::CpalAudioInput;
+    pub use crate::input_policy::{InputDevice, InputSelector, InputTransport, choose_input};
     pub use crate::cpal_output::CpalAudioOutput;
     pub use crate::device::{
         AudioDeviceInfo, default_input_device_name, default_output_device_name, list_audio_devices,

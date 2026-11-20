@@ -209,6 +209,7 @@ fn build_en_translations() -> HashMap<String, String> {
         ("settings.saved", "Settings saved"),
         // Debug
         ("debug.title", "Debug"),
+        ("debug.input_device", "Input device"),
         ("debug.state_machine", "State Machine"),
         ("debug.current_state", "Current State"),
         ("debug.events", "Recent Events"),
@@ -429,6 +430,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ("settings.saved", "\u{8bbe}\u{7f6e}\u{5df2}\u{4fdd}\u{5b58}"),
         // Debug
         ("debug.title", "\u{8c03}\u{8bd5}"),
+        ("debug.input_device", "\u{8f93}\u{5165}\u{8bbe}\u{5907}"),
         ("debug.state_machine", "\u{72b6}\u{6001}\u{673a}"),
         ("debug.current_state", "\u{5f53}\u{524d}\u{72b6}\u{6001}"),
         ("debug.events", "\u{6700}\u{8fd1}\u{4e8b}\u{4ef6}"),

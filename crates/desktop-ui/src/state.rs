@@ -168,6 +168,8 @@ pub struct DesktopUiState {
     pub reconnect_attempts: u32,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     pub mic_paused: bool,
+    /// Name of the input device being captured; empty when none.
+    pub input_device: String,
     /// Optional status bar message.
     pub status_message: Option<String>,
     /// Internal animation time tracker.
@@ -204,6 +206,7 @@ impl DesktopUiState {
             error_recoverable: false,
             network_status: NetworkStatus::default(),
             mic_paused: false,
+            input_device: String::new(),
             reconnect_attempts: 0,
             status_message: None,
             anim_time: 0.0,
@@ -255,6 +258,14 @@ impl DesktopUiState {
         } else {
             format!("{} (no active session)", snap.session_state)
         };
+        if !snap.input_device.is_empty() {
+            self.debug_state_info = format!(
+                "{}\n{}: {}",
+                self.debug_state_info,
+                prxvc_i18n::t("debug.input_device"),
+                snap.input_device
+            );
+        }
 
         // Status
         self.status_message = snap.status_message;
@@ -265,6 +276,7 @@ impl DesktopUiState {
         self.network_status = snap.network_status;
         self.reconnect_attempts = snap.reconnect_attempts;
         self.mic_paused = snap.mic_paused;
+        self.input_device = snap.input_device;
     }
 
     /// Flush any pending UI commands into the shared state for the runtime.

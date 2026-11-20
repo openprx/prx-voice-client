@@ -1,5 +1,6 @@
 //! Event mapping: translates engine events into [`SharedAppState`] updates the UI renders.
 
+use prxvc_audio::input_supervisor::AudioLoopEvent;
 use prxvc_desktop_ui::{EventSnapshot, NetworkStatus, SharedAppState, TranscriptLine};
 
 /// Map an [`Event`] from the engine to [`SharedAppState`] updates so the
@@ -82,4 +83,27 @@ pub(crate) fn push_error(shared: &SharedAppState, msg: &str) {
         detail: msg.to_owned(),
         timestamp: chrono::Utc::now().to_rfc3339(),
     });
+}
+
+/// Show a microphone change: update the displayed input device and record the
+/// change in the event log. A lost device is also surfaced as an error event.
+pub(crate) fn handle_audio_event(event: &AudioLoopEvent, shared: &SharedAppState) {
+    match event {
+        AudioLoopEvent::InputOpened { device, reason, previous } => {
+            shared.set_input_device(&device.name);
+            let from = previous.as_ref().map_or_else(String::new, |p| format!(" (was \"{}\")", p.name));
+            shared.push_event(EventSnapshot {
+                event_type: "InputDeviceChanged".into(),
+                detail: format!(
+                    "Input device: \"{}\" [{:?}, {:?}, reason {:?}]{from}",
+                    device.name, device.transport, device.uid, reason
+                ),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+        AudioLoopEvent::InputUnavailable { message } => {
+            shared.set_input_device("");
+            push_error(shared, &format!("Audio input: {message}"));
+        }
+    }
 }
