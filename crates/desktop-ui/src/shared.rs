@@ -73,6 +73,9 @@ pub struct UiSnapshot {
     pub mic_paused: bool,
     /// Name of the input device being captured; empty when none.
     pub input_device: String,
+    /// The app runs outside its macOS application bundle, so microphone and
+    /// audio-capture permissions are attributed to the launching application.
+    pub outside_app_bundle: bool,
 }
 
 /// Wakes the UI thread when another thread changes what the UI displays.
@@ -138,6 +141,8 @@ struct SharedStateInner {
     mic_paused: bool,
     /// Name of the input device being captured; empty when none.
     input_device: String,
+    /// The app runs outside its macOS application bundle.
+    outside_app_bundle: bool,
 }
 
 /// Thread-safe shared state between the UI and async runtime.
@@ -169,6 +174,7 @@ impl SharedAppState {
                 reconnect_attempts: 0,
                 mic_paused: false,
                 input_device: String::new(),
+                outside_app_bundle: false,
             })),
             repaint: RepaintSignal::default(),
         }
@@ -358,6 +364,16 @@ impl SharedAppState {
         });
     }
 
+    /// Record whether the app runs outside its macOS application bundle (set
+    /// once at start-up; the permissions view warns about it).
+    pub fn set_outside_app_bundle(&self, outside: bool) {
+        self.mutate(|inner| {
+            let changed = inner.outside_app_bundle != outside;
+            inner.outside_app_bundle = outside;
+            changed
+        });
+    }
+
     /// Produce a read-only snapshot of all display-relevant state.
     ///
     /// The lock is held only for the duration of the clone, keeping the
@@ -396,6 +412,7 @@ impl SharedAppState {
             reconnect_attempts: inner.reconnect_attempts,
             mic_paused: inner.mic_paused,
             input_device: inner.input_device.clone(),
+            outside_app_bundle: inner.outside_app_bundle,
         }
     }
 }
@@ -457,6 +474,7 @@ mod tests {
             ("set_reconnect_attempts", Box::new(|s| s.set_reconnect_attempts(3))),
             ("set_mic_paused", Box::new(|s| s.set_mic_paused(true))),
             ("set_input_device", Box::new(|s| s.set_input_device("Built-in"))),
+            ("set_outside_app_bundle", Box::new(|s| s.set_outside_app_bundle(true))),
         ]
     }
 
@@ -515,11 +533,20 @@ mod tests {
         shared.set_mic_paused(true);
         shared.set_network_status(NetworkStatus::Failed);
         shared.set_reconnect_attempts(3);
+        shared.set_outside_app_bundle(true);
         shared.set_session_id(Some("id".into()));
         shared.replace_last_user_line("b".into());
         shared.clear_error();
         shared.clear_error();
         assert_eq!(shared.repaint_signal().request_count(), before);
+    }
+
+    #[test]
+    fn outside_app_bundle_flag_reaches_the_snapshot() {
+        let shared = SharedAppState::new();
+        assert!(!shared.snapshot_for_ui().outside_app_bundle);
+        shared.set_outside_app_bundle(true);
+        assert!(shared.snapshot_for_ui().outside_app_bundle);
     }
 
     #[test]

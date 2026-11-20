@@ -14,10 +14,15 @@
 //! - `asr_session`: ASR and audio capture loop start-up
 //! - `persistence`: history, session save and settings write
 //! - `diagnostics`: diagnostics export
+//! - `bundle`: whether the process runs from its macOS application bundle
+//! - `cli`: `--version` and `--check`, which run without a window
+//! - `logging`: stderr or size-capped log file
 //! - `hotkey`, `tray`, `playback`, `settings`: platform and device helpers
 
 mod app;
 mod asr_session;
+mod bundle;
+mod cli;
 mod commands;
 mod compose;
 mod config_load;
@@ -25,6 +30,7 @@ mod diagnostics;
 mod engine_loop;
 mod event_map;
 mod hotkey;
+mod logging;
 mod persistence;
 mod playback;
 mod settings;
@@ -33,7 +39,20 @@ mod tray;
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
-    tracing_subscriber::fmt::init();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match cli::parse(&args) {
+        cli::Mode::Version => {
+            println!("{}", cli::version_line());
+            return Ok(());
+        }
+        cli::Mode::Check => {
+            println!("{}", cli::check_report(bundle::current()));
+            return Ok(());
+        }
+        cli::Mode::Gui => {}
+    }
+
+    init_logging();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -51,4 +70,32 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(compose::build_app(cc)))),
     )
+}
+
+/// Install logging, then record where the process runs from. A process
+/// outside an application bundle gets one clear warning, because macOS then
+/// attributes microphone and audio-capture permission to the launching
+/// application (and a tap started from a terminal delivers silence).
+fn init_logging() {
+    let logs_dir = prxvc_config::paths::AppPaths::resolve(&prxvc_config::AppConfig::default())
+        .ok()
+        .map(|p| p.logs_dir)
+        .filter(|dir| prxvc_config::paths::create_private_dir_all(dir).is_ok());
+    let log_file = logging::init(logs_dir.as_deref());
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        log_file = ?log_file,
+        "PRX Voice starting"
+    );
+    match bundle::current() {
+        bundle::BundleStatus::Bundled { identifier, app_dir } => {
+            tracing::info!(%identifier, app = %app_dir.display(), "running from the application bundle");
+        }
+        bundle::BundleStatus::Unbundled if cfg!(target_os = "macos") => tracing::warn!(
+            "running outside an application bundle: microphone and call-audio permissions go to the \
+             launching application, and call-audio capture will deliver silence; start PRX Voice from \
+             its .app (scripts/run-app.sh)"
+        ),
+        bundle::BundleStatus::Unbundled => {}
+    }
 }

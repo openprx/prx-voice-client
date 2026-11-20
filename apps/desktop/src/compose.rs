@@ -41,6 +41,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
 
     let shared = SharedAppState::new();
     shared.set_repaint_context(cc.egui_ctx.clone());
+    shared.set_outside_app_bundle(cfg!(target_os = "macos") && crate::bundle::current().is_outside_bundle());
     let handle = spawn_engine_thread(shared.clone(), config.clone());
 
     let hotkey_manager = match hotkey::HotkeyManager::new(cc.egui_ctx.clone()) {

@@ -250,9 +250,10 @@ fn run_audio_loop(
                 info!(
                     ?reason,
                     speech_ms = speech.as_millis() as u64,
-                    text = %text,
+                    text_chars = text.chars().count(),
                     "local ASR utterance finalised"
                 );
+                tracing::debug!(text = %text, "local ASR utterance text");
                 if !text.is_empty() {
                     let _ = text_tx.send(RecognizedUtterance { text, speech });
                 }

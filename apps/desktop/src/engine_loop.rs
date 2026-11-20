@@ -163,7 +163,7 @@ impl EngineLoop {
                 );
                 let TurnAction::Send { text, cancel_previous } = action else {
                     tracing::info!(
-                        text = %utterance.text,
+                        text_chars = utterance.text.chars().count(),
                         speech_ms = utterance.speech.as_millis() as u64,
                         "dropped utterance without enough content"
                     );
@@ -185,7 +185,8 @@ impl EngineLoop {
                         is_final: true,
                     });
                 }
-                tracing::info!(%text, merged = cancel_previous, "sending local ASR text to server");
+                tracing::info!(text_chars = text.chars().count(), merged = cancel_previous, "sending local ASR text to server");
+                tracing::debug!(%text, "text sent to the server");
                 let cmd = prxvc_protocol::Command::SendText { session_id: sid, text };
                 if let Err(e) = self.engine.process_command(cmd) {
                     tracing::warn!("SendText failed: {e}");
