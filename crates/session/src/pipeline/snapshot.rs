@@ -89,6 +89,8 @@ pub struct Counters {
     pub stable_violations: u64,
     /// Events the direction machine or the segment book refused.
     pub rejected_events: u64,
+    /// Segments the recogniser ended itself at its maximum length.
+    pub forced_cuts: u64,
     /// Clauses committed.
     pub clauses_committed: u64,
     /// Clauses played to the end.
@@ -138,6 +140,7 @@ pub(crate) struct Stats {
     pub(crate) hold_overflows: AtomicU64,
     pub(crate) stable_violations: AtomicU64,
     pub(crate) rejected_events: AtomicU64,
+    pub(crate) forced_cuts: AtomicU64,
     pub(crate) clauses_committed: AtomicU64,
     pub(crate) clauses_played: AtomicU64,
     pub(crate) clauses_failed: AtomicU64,
@@ -164,6 +167,7 @@ impl Stats {
             hold_overflows: get(&self.hold_overflows),
             stable_violations: get(&self.stable_violations),
             rejected_events: get(&self.rejected_events),
+            forced_cuts: get(&self.forced_cuts),
             clauses_committed: get(&self.clauses_committed),
             clauses_played: get(&self.clauses_played),
             clauses_failed: get(&self.clauses_failed),

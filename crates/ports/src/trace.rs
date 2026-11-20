@@ -16,6 +16,10 @@ pub enum TraceStage {
     AsrFinalReady,
     /// A clause was committed.
     ClauseCommitted,
+    /// The recogniser ended the segment itself at its maximum length; the speech goes on in a new
+    /// segment. Recorded against the clause the cut committed (or the first clause of the segment
+    /// that was cut when it committed none).
+    SegmentCut,
     /// The refine pass finished.
     RefineDone,
     /// The translation request was sent.

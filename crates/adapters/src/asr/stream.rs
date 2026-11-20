@@ -9,7 +9,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 
 use prxvc_media::{Lang, MonoTime, SampleRate};
-use prxvc_ports::{AsrContext, AsrError, AsrHypothesis, AsrStream, CancellationToken};
+use prxvc_ports::{AsrContext, AsrError, AsrHypothesis, AsrStream, CancellationToken, SegmentEnd};
 
 use super::core::{Core, Job, SlotShared};
 use super::stable::StablePrefix;
@@ -129,6 +129,7 @@ impl QwenStream {
             stable_prefix_len: s.stable_len,
             revision: self.revision,
             is_final: false,
+            ended_by: None,
             audio_end: self.audio_end(pass.samples),
         }))
     }
@@ -198,12 +199,15 @@ impl QwenStream {
         let audio_end = self.audio_end(head_samples);
         self.start_ts = Some(audio_end);
         self.last_emitted = None;
-        self.revision += 1;
+        let revision = self.revision + 1;
+        // The audio after the cut is the next segment: its revisions start again.
+        self.revision = 0;
         AsrHypothesis {
             text: s.text,
             stable_prefix_len: s.stable_len,
-            revision: self.revision,
+            revision,
             is_final: true,
+            ended_by: Some(SegmentEnd::MaxLength),
             audio_end,
         }
     }
@@ -341,6 +345,7 @@ impl AsrStream for QwenStream {
             text: s.text,
             revision: self.revision,
             is_final: true,
+            ended_by: Some(SegmentEnd::Requested),
             audio_end: self.audio_end(covered),
         })
     }

@@ -39,6 +39,20 @@ impl AsrError {
     }
 }
 
+/// Why a final hypothesis closed its segment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SegmentEnd {
+    /// The caller ended it: the result of [`AsrStream::finalize`] or of a refine call.
+    Requested,
+    /// The recogniser ended the segment itself because it reached its maximum length. Only
+    /// [`AsrStream::feed`] returns such a hypothesis. It is final for the audio before the cut;
+    /// the audio after the cut is already the start of the next segment of the same stream
+    /// (revisions restart at 1), so nothing is lost or repeated, and the caller does not call
+    /// [`AsrStream::reset`] for it.
+    MaxLength,
+}
+
 /// The recogniser's current reading of a segment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AsrHypothesis {
@@ -50,8 +64,11 @@ pub struct AsrHypothesis {
     /// Increases by one per hypothesis of a segment; the final repeats or
     /// exceeds the last partial's revision.
     pub revision: u32,
-    /// `true` for the result of [`AsrStream::finalize`].
+    /// `true` for the result of [`AsrStream::finalize`], and for the hypothesis with which the
+    /// recogniser ends a segment itself (see `ended_by`).
     pub is_final: bool,
+    /// Why the segment ended; `None` on a partial hypothesis, `Some` on every final one.
+    pub ended_by: Option<SegmentEnd>,
     /// The end of the audio this hypothesis covers.
     pub audio_end: MonoTime,
 }
@@ -68,7 +85,10 @@ pub struct AsrContext {
 /// One open recognition stream: audio goes in, hypotheses come out.
 pub trait AsrStream: Send {
     /// Feed audio; compute happens on the caller's thread. Returns a partial
-    /// hypothesis when the text changed.
+    /// hypothesis when the text changed, or, when the recogniser ends the
+    /// segment itself at its maximum length, the final hypothesis of that
+    /// segment (`is_final`, `ended_by == Some(SegmentEnd::MaxLength)`): the
+    /// rest of the audio then belongs to the next segment of the stream.
     fn feed(&mut self, audio: &[f32], ts: MonoTime) -> Result<Option<AsrHypothesis>, AsrError>;
 
     /// End of a clause or segment: the final hypothesis. Returns

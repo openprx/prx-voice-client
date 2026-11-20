@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use prxvc_media::{Clock, Lang, MonoTime, SampleRate, SystemClock};
 use prxvc_ports::{
     AsrContext, AsrError, AsrHypothesis, AsrStream, CancellationToken, ProviderDescriptor,
-    RefineAsr, StreamingAsr, StreamingKind,
+    RefineAsr, SegmentEnd, StreamingAsr, StreamingKind,
 };
 
 use super::core::{Core, Job};
@@ -306,6 +306,7 @@ impl RefineAsr for QwenAsr {
             text,
             revision: 1,
             is_final: true,
+            ended_by: Some(SegmentEnd::Requested),
             audio_end: MonoTime::ZERO.saturating_add(rate.duration_of(audio.len())),
         })
     }

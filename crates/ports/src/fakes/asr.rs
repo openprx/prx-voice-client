@@ -10,7 +10,9 @@ use prxvc_media::{Clock, Lang, MonoTime, SampleRate};
 use tokio_util::sync::CancellationToken;
 
 use super::log::{EventKind, EventLog};
-use crate::asr::{AsrContext, AsrError, AsrHypothesis, AsrStream, RefineAsr, StreamingAsr};
+use crate::asr::{
+    AsrContext, AsrError, AsrHypothesis, AsrStream, RefineAsr, SegmentEnd, StreamingAsr,
+};
 use crate::descriptor::{ProviderDescriptor, StreamingKind};
 
 /// What a fake recognition stream says.
@@ -32,6 +34,10 @@ pub struct AsrScript {
     /// A stream that was reset more often than there are rounds replays the
     /// last one. Empty means every round plays the fields above.
     pub later_rounds: Vec<(Vec<(String, usize)>, String)>,
+    /// The recogniser ends the first round's segment itself at this `feed` call (index) with this
+    /// final text (stable prefix: all of it, `ended_by` `MaxLength`). The stream then behaves as if
+    /// it had been reset: the next `feed` calls play the next round.
+    pub forced_end_at: Option<(usize, String)>,
 }
 
 impl AsrScript {
@@ -44,7 +50,17 @@ impl AsrScript {
             fail_feed_at: None,
             fail_finalize: None,
             later_rounds: Vec::new(),
+            forced_end_at: None,
         }
+    }
+
+    /// The recogniser ends the first round's segment itself at the `feed` call with index `index`: that call
+    /// returns a final hypothesis with `text` and `SegmentEnd::MaxLength`, and the stream goes on
+    /// with the next round (see [`AsrScript::then_round`]) without a `reset`.
+    #[must_use]
+    pub fn ending_at_max_length(mut self, index: usize, text: &str) -> Self {
+        self.forced_end_at = Some((index, text.to_owned()));
+        self
     }
 
     /// After the next `reset` (a new segment or clause) the stream plays these
@@ -212,6 +228,25 @@ impl AsrStream for FakeAsrStream {
             self.shared.log.record(&self.request, EventKind::Failed);
             return Err(error.clone());
         }
+        if let Some((at, text)) = &self.script.forced_end_at
+            && *at == index
+            && self.resets == 0
+        {
+            self.revision += 1;
+            let hyp = AsrHypothesis {
+                stable_prefix_len: text.len(),
+                text: text.clone(),
+                revision: self.revision,
+                is_final: true,
+                ended_by: Some(SegmentEnd::MaxLength),
+                audio_end: ts,
+            };
+            self.shared.log.record(&self.request, EventKind::Item);
+            self.fed = 0;
+            self.revision = 0;
+            self.resets += 1;
+            return Ok(Some(hyp));
+        }
         let (partials, _) = self.script.round(self.resets);
         let Some((text, stable)) = partials.get(index) else {
             return Ok(None);
@@ -223,6 +258,7 @@ impl AsrStream for FakeAsrStream {
             stable_prefix_len: (*stable).min(text.len()),
             revision: self.revision,
             is_final: false,
+            ended_by: None,
             audio_end: ts,
         }))
     }
@@ -255,6 +291,7 @@ impl AsrStream for FakeAsrStream {
             text: final_text,
             revision: self.revision,
             is_final: true,
+            ended_by: Some(SegmentEnd::Requested),
             audio_end: self.audio_end,
         })
     }
@@ -373,6 +410,7 @@ impl RefineAsr for FakeRefineAsr {
             stable_prefix_len: shared.script.text.len(),
             revision: 1,
             is_final: true,
+            ended_by: Some(SegmentEnd::Requested),
             audio_end: shared.clock.now(),
         })
     }
@@ -445,6 +483,37 @@ mod tests {
             .expect("feed")
             .expect("partial");
         assert_eq!(again.revision, 1);
+    }
+
+    #[test]
+    fn the_recogniser_can_end_a_segment_itself_and_the_stream_goes_on_with_the_next_round() {
+        use crate::asr::SegmentEnd;
+        let script = AsrScript::new(["a", "a b"], "a b c")
+            .ending_at_max_length(2, "a b c")
+            .then_round([("d", 0), ("d e", 0)], "d e f");
+        let asr = FakeStreamingAsr::new(ManualClock::new(), script);
+        let mut s = stream(&asr);
+        let p1 = s.feed(&[0.0], MonoTime::from_millis(1)).unwrap().unwrap();
+        s.feed(&[0.0], MonoTime::from_millis(2)).unwrap();
+        assert_eq!((p1.is_final, p1.ended_by), (false, None));
+        let cut = s.feed(&[0.0], MonoTime::from_millis(3)).unwrap().unwrap();
+        assert_eq!(
+            (cut.text.as_str(), cut.is_final, cut.ended_by),
+            ("a b c", true, Some(SegmentEnd::MaxLength))
+        );
+        assert_eq!(cut.stable_prefix_len, "a b c".len());
+        assert_eq!(cut.revision, 3);
+        // The next segment started by itself: revisions restart and the next round plays.
+        let next = s.feed(&[0.0], MonoTime::from_millis(4)).unwrap().unwrap();
+        assert_eq!(
+            (next.text.as_str(), next.revision, next.is_final),
+            ("d", 1, false)
+        );
+        let fin = s.finalize(&CancellationToken::new()).unwrap();
+        assert_eq!(
+            (fin.text.as_str(), fin.ended_by),
+            ("d e f", Some(SegmentEnd::Requested))
+        );
     }
 
     #[test]

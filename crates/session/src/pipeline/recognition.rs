@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use prxvc_media::{AudioFrame, ClauseId, Envelope, MonoTime, SampleRate, SegmentId};
-use prxvc_ports::{AsrError, AsrStream, CancellationToken, TraceStage, VadEngine};
+use prxvc_ports::{
+    AsrError, AsrHypothesis, AsrStream, CancellationToken, SegmentEnd, TraceStage, VadEngine,
+};
 
 use super::faults::{asr_failure, vad_failure};
 use super::messages::{ClauseSamples, Commit, RecognitionEvent, StageFailure};
@@ -256,8 +258,31 @@ impl RecognitionStage {
     }
 
     fn open_segment(&mut self, onset: MonoTime, out: &mut Out) -> Result<(), RecognitionFault> {
-        let Some(id) = SegmentId::new(self.p.direction, self.next_seq) else {
+        if !self.begin_segment(onset, VecDeque::new(), out) {
             return Ok(());
+        }
+        let backlog: Vec<(MonoTime, Duration, Vec<f32>)> = self
+            .preroll
+            .iter()
+            .filter(|(ts, d, _)| ts.saturating_add(*d) > onset)
+            .cloned()
+            .collect();
+        for (ts, _, samples) in backlog {
+            self.feed(ts, &samples, out)?;
+        }
+        Ok(())
+    }
+
+    /// Open the next segment of the direction at `onset` and announce it. `clips` is the audio the
+    /// refine pass may still need. Returns false when no segment id is left.
+    fn begin_segment(
+        &mut self,
+        onset: MonoTime,
+        clips: VecDeque<(MonoTime, Vec<f32>)>,
+        out: &mut Out,
+    ) -> bool {
+        let Some(id) = SegmentId::new(self.p.direction, self.next_seq) else {
+            return false;
         };
         self.next_seq += 1;
         let token = self.tree.open_segment(id);
@@ -277,21 +302,12 @@ impl RecognitionStage {
             tail_changed_at: self.now,
             first_partial_traced: false,
             pause_traced: false,
-            clips: VecDeque::new(),
+            clips,
         };
         self.tracer.mark(open.clause(), TraceStage::SpeechStart);
         out.push(Envelope::new(id, 0, onset, RecognitionEvent::SpeechStarted));
         self.open = Some(open);
-        let backlog: Vec<(MonoTime, Duration, Vec<f32>)> = self
-            .preroll
-            .iter()
-            .filter(|(ts, d, _)| ts.saturating_add(*d) > onset)
-            .cloned()
-            .collect();
-        for (ts, _, samples) in backlog {
-            self.feed(ts, &samples, out)?;
-        }
-        Ok(())
+        true
     }
 
     /// Give audio to the recogniser and take the hypothesis it returns.
@@ -312,9 +328,46 @@ impl RecognitionStage {
             trim_clips(&mut open.clips, keep, self.reframer.rate);
         }
         if let Some(h) = hyp {
-            self.on_hypothesis(h.text, h.stable_prefix_len, h.audio_end, out);
+            if h.ended_by == Some(SegmentEnd::MaxLength) {
+                self.on_forced_end(&h, out);
+            } else {
+                self.on_hypothesis(h.text, h.stable_prefix_len, h.audio_end, out);
+            }
         }
         Ok(())
+    }
+
+    /// The recogniser ended the segment itself at its maximum length: `h` is the final of the audio
+    /// before the cut and the audio after it is already the start of the recogniser's next segment.
+    /// The remainder of the cut part is committed as the last clause of the open segment, the
+    /// segment ends, and the speech that goes on opens a new segment with a new id at the cut.
+    fn on_forced_end(&mut self, h: &AsrHypothesis, out: &mut Out) {
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        open.revision += 1;
+        let tail = committed_remainder(open, &h.text, &self.stats);
+        let text = join_carry(&open.carry, tail.trim());
+        // The recogniser's round continues with the audio after the cut: it needs no reset.
+        open.reset_round();
+        let end = h.audio_end.min(self.now);
+        let clause = open.clause();
+        if !text.trim().is_empty() {
+            self.emit_commit(text, end, out);
+        }
+        Stats::add(&self.stats.forced_cuts, 1);
+        self.tracer.mark(clause, TraceStage::SegmentCut);
+        let Some(mut old) = self.open.take() else {
+            return;
+        };
+        out.push(Envelope::new(
+            old.id,
+            old.revision,
+            old.onset,
+            RecognitionEvent::EndSegment,
+        ));
+        let clips = std::mem::take(&mut old.clips);
+        self.begin_segment(end, clips, out);
     }
 
     fn on_hypothesis(&mut self, text: String, stable: usize, audio_end: MonoTime, out: &mut Out) {
@@ -465,12 +518,7 @@ impl RecognitionStage {
             }
             Err(e) => return Err(asr_fault(&e)),
         };
-        let tail = if fin.text.starts_with(&open.committed_prefix) {
-            &fin.text[open.committed_bytes..]
-        } else {
-            Stats::add(&self.stats.stable_violations, 1);
-            fin.text.as_str()
-        };
+        let tail = committed_remainder(open, &fin.text, &self.stats);
         let text = join_carry(&open.carry, tail.trim());
         self.asr.reset();
         open.reset_round();
@@ -547,6 +595,17 @@ impl RecognitionStage {
         self.asr.reset();
         self.segmenter.abandon();
         self.open = None;
+    }
+}
+
+/// The part of a final text that is not committed yet. Text already committed is never taken from
+/// the final again.
+fn committed_remainder(open: &OpenSegment, fin: &str, stats: &Stats) -> String {
+    if fin.starts_with(&open.committed_prefix) {
+        fin[open.committed_bytes..].to_owned()
+    } else {
+        Stats::add(&stats.stable_violations, 1);
+        fin.to_owned()
     }
 }
 

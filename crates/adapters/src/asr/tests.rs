@@ -117,7 +117,7 @@ fn partials_follow_the_cadence_and_skip_when_not_due() {
         .feed(&audio(100), MonoTime::ZERO)
         .unwrap()
         .expect("first partial");
-    assert_eq!((h.revision, h.is_final), (1, false));
+    assert_eq!((h.revision, h.is_final, h.ended_by), (1, false, None));
     assert_eq!(h.text, format!("len{}", 500 * MS));
     assert_eq!(f.engine.started(), f.base + 1);
     // 399 ms later: still not due.
@@ -380,13 +380,25 @@ fn the_maximum_segment_length_forces_an_endpoint_at_the_quietest_point() {
     assert_eq!(h.text, format!("len{head}"));
     assert_eq!(h.stable_prefix_len, h.text.len());
     assert_eq!(
+        h.ended_by,
+        Some(prxvc_ports::SegmentEnd::MaxLength),
+        "the port says the recogniser ended the segment itself"
+    );
+    assert_eq!(
         h.audio_end,
         MonoTime::ZERO.saturating_add(Duration::from_millis((head / MS) as u64))
     );
-    // The stream continues with the tail as the next segment; its revisions keep counting.
+    // The stream continues with the tail as the next segment: nothing lost, nothing repeated, and
+    // its revisions start again. The final of that segment was asked for.
     let last = s.finalize(&token()).unwrap();
     assert_eq!(last.text, format!("len{}", fed - head));
-    assert_eq!(last.revision, h.revision + 1);
+    assert_eq!(
+        head + (fed - head),
+        fed,
+        "the two texts cover all the audio"
+    );
+    assert_eq!(last.revision, 1);
+    assert_eq!(last.ended_by, Some(prxvc_ports::SegmentEnd::Requested));
 }
 
 #[test]
