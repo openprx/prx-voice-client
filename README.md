@@ -23,13 +23,20 @@ Users can wake AI at any time and engage in natural, multi-turn, interruptible r
 git clone https://github.com/openprx/prx-voice-client.git
 cd prx-voice-client
 
-# Build and run the desktop app
-cargo run -p prxvc-desktop
+# macOS: build and open the app bundle (debug, ad-hoc signed)
+scripts/run-app.sh
 
-# Or build a release binary
-cargo build -p prxvc-desktop --release
-./target/release/prxvc-desktop
+# macOS: release bundle in dist/ ("PRX Voice.app")
+scripts/package-macos.sh
+
+# Other platforms: build and run the bare binary
+cargo run -p prxvc-desktop
 ```
+
+On macOS use the bundle: microphone and call-audio permissions belong to the
+application bundle, and a binary started from a terminal gets its permissions
+attributed to the terminal (call-audio capture then delivers silence). See
+[packaging/macos/README.md](packaging/macos/README.md).
 
 See the [Installation Guide](docs/installation.md) for platform-specific prerequisites.
 
@@ -90,8 +97,11 @@ cargo check --workspace
 # Run tests
 cargo test --workspace
 
-# Run desktop app
+# Run desktop app (macOS: scripts/run-app.sh, inside a bundle)
 cargo run -p prxvc-desktop
+
+# macOS application bundle (release): dist/PRX Voice.app
+scripts/package-macos.sh
 
 # Lint
 cargo fmt --check

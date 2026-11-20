@@ -115,6 +115,11 @@ cargo test --workspace
 cargo run -p prxvc-desktop
 ```
 
+On macOS, build and open an application bundle instead (`scripts/run-app.sh`, or
+`scripts/package-macos.sh` for `dist/PRX Voice.app`). Permissions for the
+microphone and call audio belong to the bundle; a bare binary run from a terminal
+uses the terminal's permissions. See `packaging/macos/README.md`.
+
 ### Release Profiles
 
 | Profile | Optimized For | Command |
@@ -127,7 +132,10 @@ cargo run -p prxvc-desktop
 Pre-built binaries for macOS, Linux, and Windows are available on the
 [GitHub Releases](https://github.com/openprx/prx-voice-client/releases) page.
 
-Download the appropriate archive for your platform, extract it, and run the binary.
+Download the appropriate archive for your platform and extract it. On Linux and
+Windows run the binary. On macOS the archive holds `PRX Voice.app`, ad-hoc signed
+and not notarized: move it to Applications and allow it once under System
+Settings, Privacy & Security, "Open Anyway".
 
 ## iOS
 

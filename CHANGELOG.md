@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- macOS application bundle `PRX Voice.app` (`scripts/package-macos.sh`,
+  `scripts/run-app.sh`, `packaging/macos/`): bundle identifier
+  `org.openprx.prx-voice-client`, microphone and audio-capture usage strings
+  (English and Simplified Chinese), icon (placeholder), ad-hoc or Developer ID
+  signing, optional notarization. `prxvc-desktop --version` and `--check`.
+- File logging in the application log directory when not attached to a terminal
+  (size-capped, rotated); the app warns at start when it runs outside a bundle.
 - Bilingual consecutive-interpreting state machine and turn driver (`prxvc-session`)
 - macOS per-application audio capture via Core Audio process taps, 16 kHz mono
   resampling, and audio-routing traits (`AppAudioSource`, `VirtualMicSink`) with a
@@ -26,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/build-fonts.sh` reproduces the font files
 
 ### Changed
+- Recognised text is no longer logged at `info` (character counts only; the text
+  is logged at `debug`). The default log filter is `info` when `RUST_LOG` is unset.
 - Settings dialog regrouped into sections of one-setting rows (label and
   description left, control right); section titles are now sentence case
 
