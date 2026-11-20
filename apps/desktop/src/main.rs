@@ -19,6 +19,7 @@
 //! - `bundle`: whether the process runs from its macOS application bundle
 //! - `cli`: `--version` and `--check`, which run without a window
 //! - `logging`: stderr or size-capped log file
+//! - `native_libs`: which native runtime libraries are linked, for `--check`
 //! - `hotkey`, `tray`, `playback`, `settings`: platform and device helpers
 
 mod app;
@@ -34,6 +35,7 @@ mod engine_loop;
 mod event_map;
 mod hotkey;
 mod logging;
+mod native_libs;
 mod persistence;
 mod playback;
 mod routing_recovery;

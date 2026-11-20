@@ -31,9 +31,17 @@ PRX Voice.app/Contents/
   _CodeSignature/
 ```
 
-Native libraries that the app will load later belong in `Contents/Frameworks/`;
-the script signs everything found there (and in `PlugIns/`, `Library/`,
-`Resources/Drivers/`) before it signs the bundle.
+Native libraries belong in `Contents/Frameworks/`; the script signs everything found
+there (and in `PlugIns/`, `Library/`, `Resources/Drivers/`) before it signs the bundle.
+
+`--native` (or `PRXVC_NATIVE=1`; `scripts/run-app.sh --native` passes it on) builds with the
+native runtime cargo features (`PRXVC_NATIVE_FEATURES`, default `qwentts`), copies the dynamic
+libraries the executable links through `@rpath` from `target/<profile>/native-libs/` into
+`Contents/Frameworks/`, deletes the executable's absolute development rpath, adds
+`@executable_path/../Frameworks`, signs the libraries with the bundle's identity and then
+checks: only the bundle-relative rpath is left, each library is present and signed with the
+executable's identity, `codesign --verify --deep --strict` passes, and `--check` run from
+inside the bundle reports a `native:` line per loadable library. Default builds are unchanged.
 
 ## Virtual microphone driver payload
 
@@ -135,12 +143,18 @@ ad-hoc signature has no team. Checked on this machine: the ad-hoc bundle verifie
   meeting audio the same way with only the usage key and `audio-input`. This was not
   tested under the hardened runtime here (no Developer ID identity on this machine);
   the first Developer ID build must be checked with a real tap.
-- `com.apple.security.cs.disable-library-validation`: **not included, and avoidable.**
+- `com.apple.security.cs.disable-library-validation`: **not included, and avoidable**, except
+  for a self-signed development identity (see the last paragraph of this item).
   Libraries loaded later (model runtimes) are put in `Contents/Frameworks/` and signed
   by the script with the same identity, so library validation passes. The entitlement
   is needed only to `dlopen` a library signed by someone else or lying outside the
   bundle (for example downloaded into the data directory); do not do that. If a
   third-party binary must be loaded unchanged, re-sign it with our identity.
+  A self-signed development identity has no Team ID, and library validation refuses a library
+  whose Team ID does not match the process's, which two missing IDs do not (measured with
+  "PRX Voice Development": dyld reports "different Team IDs"). For such an identity only,
+  `package-macos.sh --native` signs the bundle with this entitlement added; an identity with
+  a Team ID (Developer ID) keeps the entitlements file as it is.
 - `allow-jit`, `allow-unsigned-executable-memory`: not included; nothing in the app
   generates code at run time as far as the sources show. Confirm with the first
   hardened-runtime build.

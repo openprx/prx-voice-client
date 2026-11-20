@@ -219,18 +219,13 @@ accuracy one, not a linking one.
   `@executable_path/../Frameworks`. Development builds get an absolute rpath into
   `target/<profile>/build/prxvc-*-sys-*/out` from the build script of the crate that links the `-sys` crate
   (`link/build.rs` is the pattern: `cargo:rustc-link-arg=-Wl,-rpath,$DEP_PRXVC_QWENTTS_LIB_DIR`).
-- **Change to `scripts/package-macos.sh` (not made here).** After the `cargo build` step: take the libraries
-  from `$bin_dir/$profile/native-libs/` (`bin_dir` already covers `--target`), copy them into
-  `$contents/Frameworks/`, then on the copied executable run `install_name_tool -delete_rpath` for every
-  `LC_RPATH` that is not `@`-relative and `install_name_tool -add_rpath @executable_path/../Frameworks`
-  (the application crate may instead emit that rpath itself with `cargo:rustc-link-arg-bins` and skip the
-  development one when `PRXVC_BUNDLE=1`). Both must happen before the existing signing section, because
-  `install_name_tool` invalidates a signature. Add `codesign --verify` of each library and an
-  `otool -L` check that no path points outside the bundle or the system. The notices step copies the updated
-  `THIRD_PARTY_NOTICES.md` (already does).
-  Checked here on a scratch bundle layout (executable in `Contents/MacOS`, libraries in `Contents/Frameworks`,
-  rpath rewritten as above, ad-hoc signed): the concurrent test ran from inside it with identical output.
-- **Signing.** Each library must be signed with the same identity as the executable (Developer ID with
+- **Implemented (2026-11-20).** `apps/desktop` has the feature `qwentts` (forwarding to `prxvc-adapters/qwentts`; no
+  `transcribe` feature exists in the adapters yet) and a `build.rs` that emits the development rpath
+  (`target/<profile>/native-libs`, derived from `OUT_DIR`, because `DEP_*` variables reach direct dependents only)
+  only with the feature on. `scripts/package-macos.sh --native` (or `PRXVC_NATIVE=1`; `scripts/run-app.sh --native`)
+  copies the libraries the executable links through `@rpath`, rewrites the rpath, signs them before the bundle and
+  checks rpath, signatures, dependencies and `--check` (which prints a `native:` line per loadable library).
+- **Signing.** (A self-signed identity has no Team ID and needs `disable-library-validation`; the script adds it for that case only, see `packaging/macos/README.md`.) Each library must be signed with the same identity as the executable (Developer ID with
   `--timestamp --options runtime`, as the script does for nested code). Under the hardened runtime, library
   validation rejects a library with a different Team ID: measured here, an executable signed
   `--options runtime` ad hoc next to ad-hoc libraries fails at launch with `not valid for use in process: mapping

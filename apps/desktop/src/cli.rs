@@ -52,6 +52,7 @@ pub(crate) fn check_report(status: &BundleStatus) -> String {
         .unwrap_or_else(|e| format!("unknown ({e})"));
     out.push(format!("executable:  {exe}"));
     out.push(format!("working dir: {cwd}"));
+    out.extend(crate::native_libs::report_lines());
     match status {
         BundleStatus::Bundled {
             identifier,

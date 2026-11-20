@@ -2,12 +2,16 @@
 # Build "PRX Voice.app" from prxvc-desktop. Plain shell plus the tools of the
 # Command Line Tools (cargo, plutil, codesign, iconutil, sips, ditto); no Xcode.
 #
-# Usage: scripts/package-macos.sh [--debug] [--target TRIPLE] [--skip-build] [--zip]
+# Usage: scripts/package-macos.sh [--debug] [--target TRIPLE] [--skip-build] [--zip] [--native]
 #
 #   --debug        debug build, bundle in dist/debug/ (default: release, in dist/)
 #   --target T     cargo target triple (default: the host architecture)
 #   --skip-build   reuse the binary already built for this profile and target
 #   --zip          also write dist/PRX-Voice-<version>-<arch>.zip (ditto, keeps signature)
+#   --native       build with the native runtime features (cargo features in PRXVC_NATIVE_FEATURES,
+#                  default "qwentts"), put the dynamic libraries the executable links into
+#                  Contents/Frameworks, replace the development rpath by @executable_path/../Frameworks
+#                  and sign them with the executable's identity. Default builds are unchanged.
 #
 # Environment:
 #   PRXVC_CODESIGN_IDENTITY   signing identity (e.g. "Developer ID Application: Name (TEAMID)").
@@ -16,6 +20,9 @@
 #                             bundle is notarized and stapled. Alternatively set
 #                             PRXVC_NOTARY_KEY (path to the .p8), PRXVC_NOTARY_KEY_ID and
 #                             PRXVC_NOTARY_ISSUER. Never run unless set.
+#
+#   PRXVC_NATIVE              1 is the same as --native.
+#   PRXVC_NATIVE_FEATURES     cargo features for --native (default: qwentts).
 #
 # See packaging/macos/README.md.
 set -euo pipefail
@@ -35,13 +42,16 @@ profile=release
 target=""
 skip_build=0
 make_zip=0
+native="${PRXVC_NATIVE:-0}"
+native_features="${PRXVC_NATIVE_FEATURES:-qwentts}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --debug) profile=debug ;;
     --target) target="${2:?--target needs a triple}"; shift ;;
     --skip-build) skip_build=1 ;;
     --zip) make_zip=1 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    --native) native=1 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
   shift
@@ -65,6 +75,7 @@ bundle_id="$(sed -n 's/^pub const APP_ID: .*= ("\([^"]*\)", "\([^"]*\)", "\([^"]
 # when --target is given.
 cargo_args=(build --locked -p "$PACKAGE")
 [ "$profile" = release ] && cargo_args+=(--release)
+[ "$native" = 1 ] && cargo_args+=(--features "$native_features")
 bin_dir="target"
 if [ -n "$target" ]; then
   cargo_args+=(--target "$target")
@@ -85,6 +96,27 @@ rm -rf "$bundle"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 
 cp "$binary" "$contents/MacOS/$EXECUTABLE"
+
+# Native runtime libraries (--native): the ones the executable links through @rpath, copied from
+# target/<profile>/native-libs into Contents/Frameworks. The development rpath of the build (an
+# absolute path into target/) is deleted and replaced by the bundle-relative one. Done before signing:
+# install_name_tool invalidates the linker's signature.
+exe_in_bundle="$contents/MacOS/$EXECUTABLE"
+rpath_libs() { otool -L "$1" | sed -n 's|^[[:space:]]*@rpath/\([^ ]*\.dylib\) .*|\1|p'; }
+if [ "$native" = 1 ]; then
+  libs="$(rpath_libs "$exe_in_bundle")"
+  [ -n "$libs" ] || die "--native: the executable links no @rpath library (features: $native_features)"
+  mkdir -p "$contents/Frameworks"
+  while IFS= read -r lib; do
+    src="$bin_dir/$profile/native-libs/$lib"
+    [ -f "$src" ] || die "--native: $src not found (the build did not produce $lib)"
+    cp "$src" "$contents/Frameworks/$lib"
+  done <<<"$libs"
+  while IFS= read -r rp; do
+    case "$rp" in /*) install_name_tool -delete_rpath "$rp" "$exe_in_bundle" ;; esac
+  done < <(otool -l "$exe_in_bundle" | sed -n 's|^ *path \(.*\) (offset [0-9]*)$|\1|p')
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$exe_in_bundle"
+fi
 
 # Info.plist from the template.
 sed -e "s|@EXECUTABLE@|$EXECUTABLE|g" \
@@ -151,14 +183,52 @@ for dir in Frameworks PlugIns Library Resources/Drivers; do
       find "$contents/$dir" \( -name '*.dylib' -o -name '*.framework' -o -name '*.driver' -o -name '*.bundle' \) -prune)
   fi
 done
+# Library validation (hardened runtime) accepts a library only when it has the same Team ID as the
+# executable. A self-signed development identity has no Team ID, so nested libraries would be refused at
+# load; for that case only, the bundle also carries disable-library-validation. A Developer ID identity
+# has a team and keeps the stricter entitlements.
+if [ "$identity" != "-" ] && [ -d "$contents/Frameworks" ]; then
+  first_lib="$(find "$contents/Frameworks" -name '*.dylib' -prune | sed -n 1p)"
+  lib_info="$(codesign -dvv "$first_lib" 2>&1 || true)"
+  if [ -n "$first_lib" ] && [[ "$lib_info" == *$'\nTeamIdentifier=not set'* ]]; then
+    echo "note: identity has no Team ID; adding disable-library-validation so the bundled libraries load"
+    cp "$entitlements" "$work/entitlements.plist"
+    /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$work/entitlements.plist"
+    entitlements="$work/entitlements.plist"
+  fi
+fi
 sign --entitlements "$entitlements" "$bundle"
 codesign --verify --deep --strict "$bundle"
+
+# Native libraries: resolved through the bundle-relative rpath only, present, signed like the executable.
+if [ "$native" = 1 ]; then
+  rpaths="$(otool -l "$exe_in_bundle" | sed -n 's|^ *path \(.*\) (offset [0-9]*)$|\1|p')"
+  [ "$rpaths" = "@executable_path/../Frameworks" ] || die "unexpected LC_RPATH entries: $rpaths"
+  authority() { codesign -dvv "$1" 2>&1 | sed -n 's/^Authority=//p;s/^Signature=\(adhoc\)$/\1/p' | sed -n 1p; }
+  exe_authority="$(authority "$exe_in_bundle")"
+  while IFS= read -r lib; do
+    [ -f "$contents/Frameworks/$lib" ] || die "$lib is not in Contents/Frameworks"
+    codesign --verify --strict "$contents/Frameworks/$lib" || die "$lib is not validly signed"
+    [ "$(authority "$contents/Frameworks/$lib")" = "$exe_authority" ] \
+      || die "$lib is signed with a different identity than the executable"
+    deps="$(otool -L "$contents/Frameworks/$lib" | sed -n '2,$p' | grep -v -e '@rpath/' -e '/System/Library/' -e '/usr/lib/' || true)"
+    [ -z "$deps" ] || die "$lib depends on a library outside the system and @rpath: $deps"
+  done <<<"$(rpath_libs "$exe_in_bundle")"
+  echo "native libraries in Contents/Frameworks (resolved through @rpath):"
+  rpath_libs "$exe_in_bundle" | sed 's/^/  /'
+  echo "  signature: $exe_authority"
+fi
 
 # Smoke check from inside the bundle: no window, no audio device.
 check="$("$contents/MacOS/$EXECUTABLE" --check)"
 expected="$(printf '%s\n' "$check" | sed -n 's/^expected bundle identifier: //p')"
 [ "$expected" = "$bundle_id" ] || die "bundle identifier $bundle_id differs from the code's APP_ID ($expected)"
 printf '%s\n' "$check" | grep -q "^bundle: .*($bundle_id)" || die "the executable does not see its bundle"
+if [ "$native" = 1 ]; then
+  native_lines="$(printf '%s\n' "$check" | grep '^native: ' || true)"
+  printf '%s\n' "$native_lines"
+  case "$native_lines" in ""|*"native: "*none*) die "--check reports no loadable native library" ;; esac
+fi
 
 echo "built $bundle (version $version, build $build_number, id $bundle_id, signed: $([ "$identity" = - ] && echo ad-hoc || echo "$identity"))"
 

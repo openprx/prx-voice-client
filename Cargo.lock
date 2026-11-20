@@ -4102,6 +4102,7 @@ dependencies = [
  "egui",
  "global-hotkey",
  "parking_lot",
+ "prxvc-adapters",
  "prxvc-audio",
  "prxvc-config",
  "prxvc-core",
