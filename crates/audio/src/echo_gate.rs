@@ -203,7 +203,7 @@ impl EchoGateHandle {
 /// Receiver of microphone audio (the local recogniser).
 pub trait MicSink {
     /// Accept captured audio.
-    fn push_frame(&mut self, frame: &crate::AudioFrame);
+    fn push_frame(&mut self, frame: &prxvc_media::AudioFrame);
     /// Forget everything accumulated so far.
     fn reset(&mut self);
 }
@@ -233,7 +233,7 @@ impl Routed {
 pub fn route_frame(
     gate: &EchoGateHandle,
     now: Instant,
-    frame: &crate::AudioFrame,
+    frame: &prxvc_media::AudioFrame,
     sink: &mut impl MicSink,
 ) -> Routed {
     match gate.poll(now) {
@@ -255,7 +255,7 @@ pub fn route_frame(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AudioFormat, AudioFrame};
+    use prxvc_media::{AudioFrame, MonoTime, SampleRate};
 
     const HOLD: Duration = Duration::from_millis(300);
 
@@ -372,7 +372,7 @@ mod tests {
 
     impl MicSink for Recorder {
         fn push_frame(&mut self, frame: &AudioFrame) {
-            self.samples += frame.data.len() / 4;
+            self.samples += frame.len();
         }
         fn reset(&mut self) {
             self.held_at_reset.push(self.samples);
@@ -382,14 +382,7 @@ mod tests {
     }
 
     fn frame() -> AudioFrame {
-        AudioFrame {
-            sequence_no: 0,
-            sample_rate: 16_000,
-            channels: 1,
-            format: AudioFormat::F32,
-            timestamp_ms: 0,
-            data: vec![0; 160 * 4],
-        }
+        AudioFrame::new(vec![0.0; 160], SampleRate::HZ_16000, MonoTime::ZERO, 0).unwrap()
     }
 
     #[test]

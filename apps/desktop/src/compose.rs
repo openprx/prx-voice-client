@@ -202,8 +202,8 @@ pub(crate) fn build_engine(config: &prxvc_config::AppConfig) -> (Engine, &'stati
 /// (headphones).
 pub(crate) fn build_playback(config: &prxvc_config::AppConfig) -> playback::PlaybackDriver {
     let player = AssistantPlayer::new(Box::new(|| {
-        Ok(Box::new(prxvc_audio::cpal_output::CpalAudioOutput::new()?)
-            as Box<dyn prxvc_audio::pipeline::AudioOutput>)
+        Ok(Box::new(prxvc_audio::cpal_output::open_default()?)
+            as Box<dyn prxvc_audio::stream_sink::StreamSink>)
     }));
     let gate = EchoGateHandle::new(EchoGate::new(config.audio.echo_control, DEFAULT_HOLD_OFF));
     playback::PlaybackDriver::new(player, gate)

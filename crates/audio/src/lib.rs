@@ -1,3 +1,46 @@
+//! Audio endpoints of the desktop client: capture and playback devices behind the `AudioSource` and `AudioSink` ports, plus the local speech helpers around them.
+//!
+//! # Endpoints
+//!
+//! * Capture: [`capture_source::CaptureSource`] implements
+//!   [`prxvc_ports::AudioSource`]. [`cpal_input::open`] builds one on a
+//!   microphone; [`core_audio_tap::CoreAudioTapSource`] (macOS) captures one
+//!   application's output.
+//! * Playback: [`playback_sink::PlaybackSink`] implements
+//!   [`prxvc_ports::AudioSink`] and [`stream_sink::StreamSink`] (end of stream
+//!   and the drain signal). [`cpal_output::open_default`] and
+//!   [`cpal_output::open_named`] build one on an output device.
+//!
+//! Frames are the `prxvc-media` types: mono `f32`, a sample rate, a monotonic
+//! timestamp and a sequence number.
+//!
+//! # Real-time convention
+//!
+//! Code that runs on a device callback (an audio thread) must not allocate,
+//! lock, log, block or send on a channel (code standard CS-4.1.1). Such code
+//! is kept apart from the rest so that this can be checked by a text search:
+//!
+//! * Every function or method that a device callback runs lives in a file
+//!   named `*_rt.rs` (today `cpal_input_rt.rs`, `cpal_output_rt.rs` and
+//!   `playback_buffer_rt.rs`).
+//! * The closure handed to the device (`build_input_stream`,
+//!   `build_output_stream`) does nothing but call a function of an `_rt`
+//!   module, so no real-time logic hides in a non-`_rt` file.
+//! * Constructors and anything that allocates (the rings, the buffers) live in
+//!   ordinary files; an `_rt` file only moves values it was given.
+//! * The stream error callbacks are not audio-thread callbacks (cpal reports
+//!   stream errors from its own thread); they stay in the ordinary files and
+//!   may log.
+//!
+//! The test `tests/realtime_files.rs` fails when an `_rt` file (outside its
+//! `#[cfg(test)]` section) mentions `Mutex`, `RwLock`, `lock(`, `Vec::new`,
+//! `vec!`, `Box::new`, `format!`, `tracing::`, a channel send, or another
+//! allocation (`Vec::with_capacity`, `.to_vec(`, `.to_string(`, `.collect(`),
+//! or when a registered device callback calls anything but an `_rt` function.
+//! The Core Audio process-tap callback (`core_audio_tap.rs`, `tap_ring.rs`)
+//! follows the same rules but predates the convention and is not covered by the
+//! check yet.
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -5,12 +48,17 @@ pub mod audio_loop;
 #[cfg(target_os = "macos")]
 pub mod blackhole_sink;
 pub mod buffer;
+pub mod capture_reader;
+pub mod capture_source;
 #[cfg(target_os = "macos")]
 pub mod core_audio_devices;
 #[cfg(target_os = "macos")]
 pub mod core_audio_tap;
 pub mod cpal_input;
+pub mod cpal_input_rt;
 pub mod cpal_output;
+pub(crate) mod cpal_output_rt;
+pub mod cpal_stream;
 pub mod device;
 pub mod echo_gate;
 pub mod endpoint;
@@ -21,8 +69,12 @@ pub mod mock;
 pub mod output;
 pub mod pipeline;
 pub mod playback;
+pub mod playback_buffer;
+mod playback_buffer_rt;
+pub mod playback_sink;
 pub mod resample;
 pub mod routing;
+pub mod stream_sink;
 pub mod tap_format;
 pub mod tap_ring;
 #[cfg(target_os = "macos")]
@@ -55,20 +107,6 @@ pub struct AudioFrame {
     pub format: AudioFormat,
     pub timestamp_ms: u64,
     pub data: Vec<u8>,
-}
-
-/// Audio frame captured from an input device, tagged with a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AudioInputFrame {
-    pub session_id: Uuid,
-    pub frame: AudioFrame,
-}
-
-/// Audio frame destined for an output device, tagged with a session.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AudioOutputFrame {
-    pub session_id: Uuid,
-    pub frame: AudioFrame,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +188,8 @@ pub enum AudioError {
     Tap(#[from] crate::tap_types::TapError),
     #[error("{0}")]
     InputPolicy(#[from] crate::input_policy::InputPolicyError),
+    #[error("{0}")]
+    Endpoint(#[from] prxvc_ports::EndpointError),
 }
 
 // ---------------------------------------------------------------------------
@@ -189,23 +229,21 @@ impl Default for DeviceProfile {
 pub mod prelude {
     pub use crate::buffer::AudioBuffer;
     #[cfg(target_os = "macos")]
-    pub use crate::blackhole_sink::BlackHoleSink;
-    #[cfg(target_os = "macos")]
     pub use crate::core_audio_tap::{CoreAudioTap, CoreAudioTapSource, TapReceiver, frame_peak_amplitude};
     pub use crate::resample::{
-        ASR_SAMPLE_RATE, MonoResampler, MonoResampler16k, downmix_to_mono, mono_16k_frame,
+        ASR_SAMPLE_RATE, MonoResampler16k, downmix_to_mono, mono_16k_frame,
     };
-    pub use crate::routing::{AppAudioSource, ProcessFilter, VirtualMicSink};
-    pub use crate::cpal_input::CpalAudioInput;
+    pub use crate::routing::ProcessFilter;
+    pub use crate::capture_source::CaptureSource;
     pub use crate::input_policy::{InputDevice, InputSelector, InputTransport, choose_input};
-    pub use crate::cpal_output::CpalAudioOutput;
+    pub use crate::playback_sink::PlaybackSink;
+    pub use crate::stream_sink::StreamSink;
     pub use crate::device::{
         AudioDeviceInfo, default_input_device_name, default_output_device_name, list_audio_devices,
     };
-    pub use crate::mock::{MockAudioInput, MockAudioOutput};
-    pub use crate::pipeline::{AudioInput, AudioOutput, AudioPipeline, VadProcessor};
+    pub use crate::mock::MockAudioSource;
+    pub use crate::pipeline::{AudioPipeline, VadProcessor};
     pub use crate::{
-        AudioError, AudioFormat, AudioFrame, AudioInputFrame, AudioOutputFrame, AudioState,
-        DeviceProfile, VadDecision, WakeResult,
+        AudioError, AudioFormat, AudioFrame, AudioState, DeviceProfile, VadDecision, WakeResult,
     };
 }

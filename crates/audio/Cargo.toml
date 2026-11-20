@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 prxvc-media = { workspace = true }
+prxvc-ports = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

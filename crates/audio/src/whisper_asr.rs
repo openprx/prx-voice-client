@@ -1,7 +1,7 @@
 //! Local speech recognition using whisper.cpp via the `whisper-cpp-plus` crate.
 //!
 //! [`WhisperAsr`] wraps whisper.cpp with Silero VAD to provide on-device,
-//! offline-capable speech-to-text. Audio frames from [`CpalAudioInput`] are
+//! offline-capable speech-to-text. Audio frames from a capture endpoint are
 //! accumulated, then transcribed when the user stops speaking.
 //!
 //! The flow:
@@ -154,7 +154,7 @@ impl WhisperAsr {
         self.audio_buffer.extend_from_slice(samples);
     }
 
-    /// Push an AudioFrame (from CpalAudioInput) into the buffer.
+    /// Push a native-format AudioFrame into the buffer.
     ///
     /// Handles format conversion (F32/I16/U8 → f32) and resampling to 16kHz.
     /// If the frame's sample rate differs from 16kHz, a simple linear
@@ -190,13 +190,21 @@ impl WhisperAsr {
             raw_samples
         };
 
+        self.push_mono_at(&mono, frame.sample_rate);
+    }
+
+    /// Push mono f32 samples captured at `rate` Hz, resampling to 16 kHz.
+    ///
+    /// A simple linear resampling is performed when the rate differs from
+    /// 16 kHz; a rate of zero drops the samples.
+    pub fn push_mono_at(&mut self, mono: &[f32], rate: u32) {
         // Step 3: resample to 16kHz if needed.
         let target_rate = 16000u32;
-        if frame.sample_rate == target_rate {
-            self.audio_buffer.extend_from_slice(&mono);
-        } else if frame.sample_rate > 0 {
+        if rate == target_rate {
+            self.audio_buffer.extend_from_slice(mono);
+        } else if rate > 0 {
             // Simple linear resampling.
-            let ratio = frame.sample_rate as f64 / target_rate as f64;
+            let ratio = rate as f64 / target_rate as f64;
             let output_len = (mono.len() as f64 / ratio) as usize;
             for i in 0..output_len {
                 let src_idx = i as f64 * ratio;
@@ -352,8 +360,8 @@ impl WhisperAsr {
 }
 
 impl MicSink for WhisperAsr {
-    fn push_frame(&mut self, frame: &crate::AudioFrame) {
-        WhisperAsr::push_frame(self, frame);
+    fn push_frame(&mut self, frame: &prxvc_media::AudioFrame) {
+        self.push_mono_at(frame.samples(), frame.rate().hz());
     }
     fn reset(&mut self) {
         WhisperAsr::reset(self);

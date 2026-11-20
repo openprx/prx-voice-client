@@ -2,7 +2,7 @@
 //!
 //! Wires every layer for a single turn:
 //!   CoreAudioTapSource → MonoResampler16k → WhisperAsr → InterpretDriver
-//!   (Translator + SineToneSynthesizer) → BlackHoleSink playback
+//!   (Translator + SineToneSynthesizer) → BlackHole playback
 //!
 //! Requires macOS 14.4+, the `integration` feature, and Whisper model files:
 //!   export PRXVC_WHISPER_MODEL=/path/to/ggml-small.bin
@@ -23,12 +23,14 @@
 fn main() {
     use std::time::{Duration, Instant};
 
-    use prxvc_audio::blackhole_sink::BlackHoleSink;
+    use prxvc_audio::blackhole_sink::open_blackhole;
     use prxvc_audio::core_audio_tap::CoreAudioTapSource;
-    use prxvc_audio::resample::MonoResampler16k;
-    use prxvc_audio::routing::{AppAudioSource, ProcessFilter, VirtualMicSink};
+    use prxvc_audio::resample::{ASR_SAMPLE_RATE, MonoResampler};
+    use prxvc_audio::routing::ProcessFilter;
+    use prxvc_audio::stream_sink::StreamSink;
     use prxvc_audio::whisper_asr::{WhisperAsr, WhisperAsrConfig};
-    use prxvc_audio::{AudioFormat, AudioFrame};
+    use prxvc_media::{AudioFrame, MonoTime, SampleRate};
+    use prxvc_ports::{AudioSink, AudioSource};
 
     use prxvc_adapters::{EchoTranslator, OpenAiTranslator, SineToneSynthesizer, Translator};
     use prxvc_session::SessionId;
@@ -104,12 +106,18 @@ fn main() {
     }
     println!("[demo] capturing pid {pid} for {secs}s, source lang '{source_lang}' ...");
 
-    let mut resampler: Option<MonoResampler16k> = None;
+    let mut resampler: Option<MonoResampler> = None;
+    let mut batch = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(secs);
     while Instant::now() < deadline {
-        while let Some(frame) = source.try_recv() {
+        batch.clear();
+        if let Err(e) = source.read(&mut batch, Duration::from_millis(20)) {
+            eprintln!("capture failed: {e}");
+            std::process::exit(1);
+        }
+        for frame in &batch {
             if resampler.is_none() {
-                match MonoResampler16k::new(frame.sample_rate) {
+                match MonoResampler::new(frame.rate().hz(), ASR_SAMPLE_RATE) {
                     Ok(r) => resampler = Some(r),
                     Err(e) => {
                         eprintln!("resampler init failed: {e}");
@@ -118,14 +126,14 @@ fn main() {
                 }
             }
             if let Some(conv) = resampler.as_mut() {
-                if let Ok(samples) = conv.push_frame(&frame) {
+                if let Ok(samples) = conv.push_samples(frame.samples()) {
                     asr.push_samples(&samples);
                 }
             }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    let _ = source.stop();
+    source.stop();
 
     // ---- recognize → translate → synthesize ----
     if let Err(e) = driver.end_utterance() {
@@ -145,25 +153,27 @@ fn main() {
 
     // ---- play synthesized translation (best-effort via BlackHole) ----
     if let Some(audio) = output.audio {
-        let mut data = Vec::with_capacity(audio.samples.len() * 4);
-        for s in &audio.samples {
-            data.extend_from_slice(&s.to_le_bytes());
-        }
-        let frame = AudioFrame {
-            sequence_no: 0,
-            sample_rate: audio.sample_rate,
-            channels: 1,
-            format: AudioFormat::F32,
-            timestamp_ms: 0,
-            data,
+        let frame = match SampleRate::new(audio.sample_rate)
+            .map_err(|e| e.to_string())
+            .and_then(|rate| {
+                AudioFrame::new(audio.samples.clone(), rate, MonoTime::ZERO, 0)
+                    .map_err(|e| e.to_string())
+            }) {
+            Ok(frame) => frame,
+            Err(e) => {
+                eprintln!("[demo] synthesized audio is not playable: {e}");
+                std::process::exit(1);
+            }
         };
         let dur = Duration::from_secs_f32(audio.samples.len() as f32 / audio.sample_rate as f32);
-        match BlackHoleSink::new() {
-            Ok(mut sink) => match sink.start().and_then(|_| sink.write(&frame)) {
-                Ok(()) => {
+        match open_blackhole() {
+            Ok(mut sink) => match sink.start() {
+                Ok(_) => {
+                    sink.write(&frame);
+                    sink.end_stream();
                     println!("[demo] playing {:.1}s of synthesized audio into BlackHole ...", dur.as_secs_f32());
                     std::thread::sleep(dur + Duration::from_millis(200));
-                    let _ = sink.stop();
+                    sink.stop();
                 }
                 Err(e) => eprintln!("[demo] BlackHole playback skipped: {e}"),
             },

@@ -4028,6 +4028,8 @@ name = "prxvc-adapters"
 version = "0.1.0"
 dependencies = [
  "prxvc-audio",
+ "prxvc-media",
+ "prxvc-ports",
  "prxvc-session",
  "reqwest",
  "serde",
@@ -4045,6 +4047,7 @@ dependencies = [
  "cpal",
  "parking_lot",
  "prxvc-media",
+ "prxvc-ports",
  "rubato",
  "serde",
  "thiserror 2.0.18",
@@ -4098,6 +4101,7 @@ dependencies = [
  "prxvc-i18n",
  "prxvc-media",
  "prxvc-observe",
+ "prxvc-ports",
  "prxvc-protocol",
  "prxvc-session",
  "prxvc-storage",

@@ -156,8 +156,10 @@ mod tests {
     use std::time::Duration;
 
     use prxvc_audio::echo_gate::{DEFAULT_HOLD_OFF, EchoGate, GateState};
-    use prxvc_audio::pipeline::AudioOutput;
-    use prxvc_audio::{AudioError, AudioOutputFrame, AudioState};
+    use prxvc_audio::output::OutputStats;
+    use prxvc_audio::stream_sink::StreamSink;
+    use prxvc_media::AudioFrame;
+    use prxvc_ports::{AudioSink, EndpointError, EndpointHealth, SinkInfo, WriteOutcome};
     use prxvc_core::bus::event_channel;
     use prxvc_protocol::Command;
 
@@ -170,31 +172,46 @@ mod tests {
 
     struct FakeOutput(Arc<parking_lot::Mutex<Probe>>);
 
-    impl AudioOutput for FakeOutput {
-        fn start(&mut self) -> Result<(), AudioError> {
-            Ok(())
+    impl AudioSink for FakeOutput {
+        fn start(&mut self) -> Result<SinkInfo, EndpointError> {
+            Ok(SinkInfo {
+                rate: SampleRate::HZ_48000,
+                device: "fake".to_owned(),
+            })
         }
-        fn stop(&mut self) -> Result<(), AudioError> {
-            Ok(())
-        }
-        fn write_frame(&mut self, _: &AudioOutputFrame) -> Result<(), AudioError> {
+        fn write(&mut self, frame: &AudioFrame) -> WriteOutcome {
             self.0.lock().drained = false;
-            Ok(())
+            WriteOutcome {
+                accepted: frame.len(),
+                dropped: 0,
+            }
         }
-        fn flush(&mut self) -> Result<(), AudioError> {
+        fn flush(&mut self) {
             let mut p = self.0.lock();
             p.flushes += 1;
             p.drained = true;
-            Ok(())
         }
+        fn queued(&self) -> Duration {
+            Duration::ZERO
+        }
+        fn health(&self) -> EndpointHealth {
+            EndpointHealth::default()
+        }
+        fn stop(&mut self) {}
+    }
+
+    impl StreamSink for FakeOutput {
         fn end_stream(&mut self) {
             self.0.lock().ends += 1;
         }
         fn is_drained(&self) -> bool {
             self.0.lock().drained
         }
-        fn state(&self) -> AudioState {
-            AudioState::OutputPlaying
+        fn wait_drained(&self, _timeout: Duration) -> bool {
+            self.is_drained()
+        }
+        fn stats(&self) -> OutputStats {
+            OutputStats::default()
         }
     }
 
@@ -212,7 +229,7 @@ mod tests {
         }));
         let p = Arc::clone(&probe);
         let player = AssistantPlayer::new(Box::new(move || {
-            Ok(Box::new(FakeOutput(Arc::clone(&p))) as Box<dyn AudioOutput>)
+            Ok(Box::new(FakeOutput(Arc::clone(&p))) as Box<dyn StreamSink>)
         }));
         let gate = EchoGateHandle::new(EchoGate::new(echo_control, DEFAULT_HOLD_OFF));
         let (event_tx, _rx) = event_channel(256);

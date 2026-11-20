@@ -4,9 +4,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::{Receiver, channel};
 
+use prxvc_media::SampleRate;
+
 use super::*;
 use crate::input_policy::{InputTransport, OWN_MIC_NAME, OWN_MIC_UID};
-use crate::mock::MockAudioInput;
+use crate::mock::MockAudioSource;
 
 #[derive(Default)]
 struct World {
@@ -20,9 +22,9 @@ impl InputBackend for FakeBackend {
     fn list(&mut self) -> Result<Vec<InputDevice>, AudioError> {
         Ok(self.0.borrow().devices.clone())
     }
-    fn open(&mut self, session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioInput>, AudioError> {
+    fn open(&mut self, _session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError> {
         self.0.borrow_mut().opened.push(device.uid.clone());
-        Ok(Box::new(MockAudioInput::new(session_id, 16_000, 1)))
+        Ok(Box::new(MockAudioSource::new(SampleRate::HZ_16000)))
     }
 }
 

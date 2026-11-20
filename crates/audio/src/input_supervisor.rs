@@ -7,14 +7,16 @@
 //! virtual microphone: when the policy finds nothing usable, capture stops and
 //! an [`AudioLoopEvent::InputUnavailable`] is sent until a device appears.
 
+use std::collections::VecDeque;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
+use prxvc_media::AudioFrame;
+use prxvc_ports::AudioSource;
 use uuid::Uuid;
 
 use crate::input_policy::{InputDevice, InputSelector, SelectionReason, SelectionUpdate};
-use crate::pipeline::AudioInput;
-use crate::{AudioError, AudioInputFrame};
+use crate::AudioError;
 
 /// How often the device list is re-read while capturing.
 pub const DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -49,7 +51,7 @@ pub trait InputBackend {
     ///
     /// # Errors
     /// The device cannot be opened.
-    fn open(&mut self, session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioInput>, AudioError>;
+    fn open(&mut self, session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError>;
 }
 
 /// The real backend: Core Audio / cpal enumeration and cpal capture.
@@ -61,8 +63,8 @@ impl InputBackend for PlatformInputBackend {
         crate::input_devices::list_input_devices()
     }
 
-    fn open(&mut self, session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioInput>, AudioError> {
-        Ok(Box::new(crate::cpal_input::CpalAudioInput::open(session_id, device)?))
+    fn open(&mut self, _session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError> {
+        Ok(Box::new(crate::cpal_input::open(device)?))
     }
 }
 
@@ -72,7 +74,11 @@ pub struct InputSupervisor<B: InputBackend> {
     selector: InputSelector,
     session_id: Uuid,
     events: Sender<AudioLoopEvent>,
-    mic: Option<Box<dyn AudioInput>>,
+    mic: Option<Box<dyn AudioSource>>,
+    /// Frames read from the source and not yet handed out.
+    pending: VecDeque<AudioFrame>,
+    /// The last read failure that was logged, so that a persistent one is logged once.
+    last_read_error: Option<String>,
     last_poll: Instant,
 }
 
@@ -86,6 +92,8 @@ impl<B: InputBackend> InputSupervisor<B> {
             session_id,
             events,
             mic: None,
+            pending: VecDeque::new(),
+            last_read_error: None,
             last_poll: Instant::now(),
         }
     }
@@ -143,8 +151,23 @@ impl<B: InputBackend> InputSupervisor<B> {
     }
 
     /// Next captured frame, if capture is running.
-    pub fn read_frame(&mut self) -> Option<AudioInputFrame> {
-        self.mic.as_mut()?.read_frame().ok().flatten()
+    pub fn read_frame(&mut self) -> Option<AudioFrame> {
+        if self.pending.is_empty() {
+            let mic = self.mic.as_mut()?;
+            let mut batch = Vec::new();
+            match mic.read(&mut batch, Duration::ZERO) {
+                Ok(()) => self.last_read_error = None,
+                Err(e) => {
+                    let text = e.to_string();
+                    if self.last_read_error.as_deref() != Some(text.as_str()) {
+                        tracing::warn!(error = %text, "reading the microphone failed");
+                        self.last_read_error = Some(text);
+                    }
+                }
+            }
+            self.pending.extend(batch);
+        }
+        self.pending.pop_front()
     }
 
     /// Stop capture.
@@ -153,10 +176,10 @@ impl<B: InputBackend> InputSupervisor<B> {
     }
 
     fn close(&mut self) {
+        self.pending.clear();
+        self.last_read_error = None;
         let Some(mut mic) = self.mic.take() else { return };
-        if let Err(e) = mic.stop() {
-            tracing::warn!(error = %e, "stopping the microphone failed");
-        }
+        mic.stop();
     }
 
     fn switch(

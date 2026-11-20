@@ -1,32 +1,31 @@
 //! Playback of assistant (TTS) audio delivered by a transport.
 //!
 //! [`AssistantPlayer`] turns [`PcmChunk`]s (mono f32 at the rate the server
-//! announced) into frames for an [`AudioOutput`], which converts them
-//! to the device format. The output device is opened lazily on the first
-//! chunk, so a session that never speaks never touches audio hardware, and a
-//! device that cannot be opened is reported instead of aborting the app.
+//! announced) into frames for a [`StreamSink`], which converts them to the
+//! device format. The output device is opened lazily on the first chunk, so a
+//! session that never speaks never touches audio hardware, and a device that
+//! cannot be opened is reported instead of aborting the app.
 
 use std::time::{Duration, Instant};
 
-use prxvc_media::PcmChunk;
+use prxvc_media::{AudioFrame, Clock, PcmChunk, SystemClock};
 
-use uuid::Uuid;
-
+use crate::AudioError;
 use crate::output::OutputStats;
-use crate::pipeline::AudioOutput;
-use crate::{AudioError, AudioFormat, AudioFrame, AudioOutputFrame, AudioState};
+use crate::stream_sink::StreamSink;
 
 /// Opens (but does not start) the output device used for playback.
-pub type OutputFactory = Box<dyn FnMut() -> Result<Box<dyn AudioOutput>, AudioError> + Send>;
+pub type OutputFactory = Box<dyn FnMut() -> Result<Box<dyn StreamSink>, AudioError> + Send>;
 
 /// How long to wait before trying to open a device that failed to open.
 const REOPEN_BACKOFF: Duration = Duration::from_secs(5);
 
-/// Plays assistant audio through an [`AudioOutput`].
+/// Plays assistant audio through a [`StreamSink`].
 pub struct AssistantPlayer {
     factory: OutputFactory,
-    output: Option<Box<dyn AudioOutput>>,
+    output: Option<Box<dyn StreamSink>>,
     next_open_at: Option<Instant>,
+    clock: SystemClock,
     sequence_no: u64,
 }
 
@@ -37,6 +36,7 @@ impl AssistantPlayer {
             factory,
             output: None,
             next_open_at: None,
+            clock: SystemClock::new(),
             sequence_no: 0,
         }
     }
@@ -45,29 +45,24 @@ impl AssistantPlayer {
     ///
     /// # Errors
     /// Fails if the device cannot be opened (retried after a short backoff,
-    /// during which chunks are dropped silently) or the write fails.
+    /// during which chunks are dropped silently) or the chunk holds samples
+    /// that are not finite numbers. An empty chunk is ignored.
     pub fn play(&mut self, chunk: &PcmChunk) -> Result<(), AudioError> {
+        if chunk.samples.is_empty() {
+            return Ok(());
+        }
         let sequence_no = self.sequence_no;
         self.sequence_no += 1;
-        let mut data = Vec::with_capacity(chunk.samples.len() * std::mem::size_of::<f32>());
-        for sample in &chunk.samples {
-            data.extend_from_slice(&sample.to_le_bytes());
+        let frame = AudioFrame::new(chunk.samples.clone(), chunk.rate, self.clock.now(), sequence_no)
+            .map_err(|e| AudioError::FormatMismatch {
+                expected: "non-empty finite samples".to_owned(),
+                got: e.to_string(),
+            })?;
+        if let Some(output) = self.ensure_output()? {
+            // Samples the sink could not queue are counted in its stats.
+            output.write(&frame);
         }
-        let frame = AudioOutputFrame {
-            session_id: Uuid::nil(),
-            frame: AudioFrame {
-                sequence_no,
-                sample_rate: chunk.rate.hz(),
-                channels: 1,
-                format: AudioFormat::F32,
-                timestamp_ms: 0,
-                data,
-            },
-        };
-        match self.ensure_output()? {
-            Some(output) => output.write_frame(&frame),
-            None => Ok(()),
-        }
+        Ok(())
     }
 
     /// The current reply has no more audio: running dry is not an underrun.
@@ -80,9 +75,7 @@ impl AssistantPlayer {
     /// Stop playing right now and discard whatever is queued.
     pub fn flush(&mut self) {
         if let Some(output) = self.output.as_mut() {
-            if let Err(e) = output.flush() {
-                tracing::warn!("flushing assistant audio failed: {e}");
-            }
+            output.flush();
         }
     }
 
@@ -104,21 +97,19 @@ impl AssistantPlayer {
     /// Stop the device and release it. The next chunk reopens it.
     pub fn close(&mut self) {
         if let Some(mut output) = self.output.take() {
-            let _ = output.stop();
+            output.stop();
         }
     }
 
     /// Open and start the output if needed. `Ok(None)` means "device is in
     /// its retry backoff; drop the chunk".
-    fn ensure_output(&mut self) -> Result<Option<&mut Box<dyn AudioOutput>>, AudioError> {
+    fn ensure_output(&mut self) -> Result<Option<&mut Box<dyn StreamSink>>, AudioError> {
         if self.output.is_none() {
             if self.next_open_at.is_some_and(|at| Instant::now() < at) {
                 return Ok(None);
             }
             let opened = (self.factory)().and_then(|mut output| {
-                if output.state() == AudioState::OutputClosed {
-                    output.start()?;
-                }
+                output.start()?;
                 Ok(output)
             });
             match opened {
@@ -142,41 +133,59 @@ mod tests {
     use std::sync::Arc;
 
     use prxvc_media::SampleRate;
+    use prxvc_ports::{AudioSink, EndpointError, EndpointHealth, SinkInfo, WriteOutcome};
 
     #[derive(Default)]
     struct Spy {
         frames: Vec<AudioFrame>,
+        starts: u32,
         flushes: u32,
         ends: u32,
     }
 
     struct SpyOutput {
         spy: Arc<parking_lot::Mutex<Spy>>,
-        state: AudioState,
     }
 
-    impl AudioOutput for SpyOutput {
-        fn start(&mut self) -> Result<(), AudioError> {
-            self.state = AudioState::OutputPlaying;
-            Ok(())
+    impl AudioSink for SpyOutput {
+        fn start(&mut self) -> Result<SinkInfo, EndpointError> {
+            self.spy.lock().starts += 1;
+            Ok(SinkInfo {
+                rate: SampleRate::HZ_48000,
+                device: "spy".to_owned(),
+            })
         }
-        fn stop(&mut self) -> Result<(), AudioError> {
-            self.state = AudioState::OutputClosed;
-            Ok(())
+        fn write(&mut self, frame: &AudioFrame) -> WriteOutcome {
+            self.spy.lock().frames.push(frame.clone());
+            WriteOutcome {
+                accepted: frame.len(),
+                dropped: 0,
+            }
         }
-        fn write_frame(&mut self, frame: &AudioOutputFrame) -> Result<(), AudioError> {
-            self.spy.lock().frames.push(frame.frame.clone());
-            Ok(())
-        }
-        fn flush(&mut self) -> Result<(), AudioError> {
+        fn flush(&mut self) {
             self.spy.lock().flushes += 1;
-            Ok(())
         }
+        fn queued(&self) -> Duration {
+            Duration::ZERO
+        }
+        fn health(&self) -> EndpointHealth {
+            EndpointHealth::default()
+        }
+        fn stop(&mut self) {}
+    }
+
+    impl StreamSink for SpyOutput {
         fn end_stream(&mut self) {
             self.spy.lock().ends += 1;
         }
-        fn state(&self) -> AudioState {
-            self.state
+        fn is_drained(&self) -> bool {
+            true
+        }
+        fn wait_drained(&self, _timeout: Duration) -> bool {
+            true
+        }
+        fn stats(&self) -> OutputStats {
+            OutputStats::default()
         }
     }
 
@@ -188,8 +197,7 @@ mod tests {
             *o.lock() += 1;
             Ok(Box::new(SpyOutput {
                 spy: Arc::clone(&s),
-                state: AudioState::OutputClosed,
-            }) as Box<dyn AudioOutput>)
+            }) as Box<dyn StreamSink>)
         }));
         (p, spy, opens)
     }
@@ -202,23 +210,23 @@ mod tests {
     }
 
     #[test]
-    fn chunks_are_played_as_mono_f32_at_the_announced_rate() {
+    fn chunks_are_played_as_mono_frames_at_the_announced_rate() {
         let (mut p, spy, _) = player();
         p.play(&chunk(24_000, 320)).unwrap();
         p.play(&chunk(16_000, 160)).unwrap();
         let spy = spy.lock();
         assert_eq!(spy.frames.len(), 2);
         let f = &spy.frames[0];
-        assert_eq!((f.sample_rate, f.channels, f.format), (24_000, 1, AudioFormat::F32));
-        assert_eq!(f.data.len(), 320 * 4);
-        assert_eq!(spy.frames[1].sample_rate, 16_000);
-        assert_eq!(spy.frames[1].data.len(), 160 * 4);
-        assert_eq!(spy.frames[1].sequence_no, 1);
+        assert_eq!((f.rate().hz(), f.len(), f.seq()), (24_000, 320, 0));
+        assert_eq!(spy.frames[1].rate().hz(), 16_000);
+        assert_eq!(spy.frames[1].len(), 160);
+        assert_eq!(spy.frames[1].seq(), 1);
+        assert!(spy.frames[1].ts() >= f.ts(), "frames carry the clock's time");
     }
 
     #[test]
     fn the_device_is_opened_lazily_and_once() {
-        let (mut p, _, opens) = player();
+        let (mut p, spy, opens) = player();
         assert_eq!(*opens.lock(), 0);
         p.flush();
         p.end_stream();
@@ -226,6 +234,7 @@ mod tests {
         p.play(&chunk(16_000, 32)).unwrap();
         p.play(&chunk(16_000, 32)).unwrap();
         assert_eq!(*opens.lock(), 1);
+        assert_eq!(spy.lock().starts, 1, "the sink is started once");
     }
 
     #[test]
@@ -245,6 +254,16 @@ mod tests {
         // Inside the backoff, chunks are dropped without another open attempt.
         assert!(p.play(&chunk(16_000, 32)).is_ok());
         assert!(p.is_drained());
+    }
+
+    #[test]
+    fn non_finite_samples_are_rejected_and_empty_chunks_ignored() {
+        let (mut p, spy, _) = player();
+        let mut bad = chunk(16_000, 4);
+        bad.samples[2] = f32::NAN;
+        assert!(p.play(&bad).is_err());
+        assert!(p.play(&chunk(16_000, 0)).is_ok());
+        assert!(spy.lock().frames.is_empty());
     }
 
     #[test]
