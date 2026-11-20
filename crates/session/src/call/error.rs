@@ -75,6 +75,9 @@ pub enum CallErrorCode {
     ActivityUnavailable,
     /// A direction runs in a reduced way.
     DirectionDegraded,
+    /// The local output could not be opened: the call application plays the remote party itself
+    /// (the tap stays unmuted) and nothing is translated for the local user.
+    LocalOutputUnavailable,
     // Stop.
     /// The default input could not be restored; the journal stays for the next start.
     RestoreFailed,

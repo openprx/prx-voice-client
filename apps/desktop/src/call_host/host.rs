@@ -11,6 +11,8 @@ use std::time::Duration;
 use prxvc_audio::call_activity::native::NativeActivitySource;
 use prxvc_audio::call_activity::{CallActivityEvent, CallActivityWatcher, WatcherConfig};
 use prxvc_audio::driver_status::DriverStatus;
+use prxvc_audio::echo_gate::{EchoGate, EchoGateHandle};
+use prxvc_audio::mix::MixerConfig;
 use prxvc_audio::input_devices::list_input_devices;
 use prxvc_audio::input_policy::{OWN_MIC_UID, choose_input};
 use prxvc_audio::mic_consent::ensure_microphone_consent;
@@ -34,7 +36,8 @@ use super::map::{
     call_mode_fault, capture_consent_fault, driver_fault, judgement, mic_consent_fault,
     required_variant, routing_notice,
 };
-use super::paths::{OutgoingPlan, start_incoming, start_outgoing};
+use super::paths::{IncomingPlan, OutgoingPlan, start_incoming, start_outgoing};
+use super::route::{current_route, gate_enabled};
 
 /// How long a system consent prompt may wait for the user.
 const CONSENT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -46,6 +49,14 @@ pub(crate) struct HostConfig {
     pub input_device: String,
     /// `audio.virtual_mic_device`.
     pub virtual_mic_device: String,
+    /// `audio.output_device`: where the translation is played; empty follows the system default.
+    pub output_device: String,
+    /// `audio.echo_mode`.
+    pub echo_mode: prxvc_config::EchoMode,
+    /// `audio.half_duplex_tail_ms`.
+    pub echo_tail: Duration,
+    /// The incoming mixer: `call.output_gain_db`, `call.original_gain_db` and the jitter buffer.
+    pub incoming_mixer: MixerConfig,
     /// Where the routing journal lives.
     pub data_dir: PathBuf,
     /// The configuration the providers are resolved from, read again at every translated start.
@@ -66,6 +77,10 @@ pub(crate) struct RealCallHost {
     pinned_microphone: Option<String>,
     activity: Option<CallActivityWatcher>,
     providers: ProviderHost,
+    /// The half-duplex gate of this call; closed only in speaker mode while our output plays.
+    echo: EchoGateHandle,
+    /// What the local output was when the call was checked.
+    route: prxvc_session::call::OutputRoute,
 }
 
 impl RealCallHost {
@@ -90,7 +105,17 @@ impl RealCallHost {
             pinned_microphone: None,
             activity: None,
             providers,
+            echo: EchoGateHandle::disabled(),
+            route: prxvc_session::call::OutputRoute::Unknown,
         }
+    }
+
+    /// Read what the local output is and set the echo gate for this call (design 6.3).
+    fn check_output(&mut self) {
+        self.route = current_route(&self.config.output_device);
+        let enabled = gate_enabled(self.config.echo_mode, self.route);
+        tracing::info!(route = ?self.route, gate = enabled, "local output checked");
+        self.echo = EchoGateHandle::new(EchoGate::new(enabled, self.config.echo_tail));
     }
 
     fn controller(&mut self) -> Result<&mut Controller, HostFault> {
@@ -138,6 +163,7 @@ impl CallHost for RealCallHost {
         } else {
             chosen.uid.clone()
         });
+        self.check_output();
         Ok(chosen.name)
     }
 
@@ -149,6 +175,7 @@ impl CallHost for RealCallHost {
         start_outgoing(&OutgoingPlan {
             microphone: &microphone,
             virtual_mic_device: &self.config.virtual_mic_device,
+            echo: Some(self.echo.clone()),
         })
     }
 
@@ -167,8 +194,19 @@ impl CallHost for RealCallHost {
         })
     }
 
-    fn start_incoming(&mut self, target: &BundleId) -> Result<Box<dyn AudioPath>, HostFault> {
-        start_incoming(target)
+    fn start_incoming(
+        &mut self,
+        target: &BundleId,
+        translate: bool,
+    ) -> Result<Box<dyn AudioPath>, HostFault> {
+        start_incoming(&IncomingPlan {
+            target,
+            translate,
+            output_device: &self.config.output_device,
+            mixer: self.config.incoming_mixer,
+            route: self.route,
+            echo: Some(self.echo.clone()),
+        })
     }
 
     fn start_activity_probe(&mut self, target: &BundleId) -> Result<(), HostFault> {

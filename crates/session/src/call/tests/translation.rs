@@ -550,3 +550,74 @@ fn a_replaced_path_is_connected_to_its_running_pipeline_again() {
     });
     assert!(rig.world.is_connected("incoming"));
 }
+
+#[test]
+fn the_incoming_path_is_told_whether_the_call_translates_at_start_and_after_a_reopen() {
+    let mut rig = Rig::new();
+    rig.start();
+    assert!(rig.log().contains(&"incoming.mode:audio_only".to_owned()));
+    rig.stop();
+
+    let mut rig = Rig::new();
+    rig.start_translating();
+    translating_both(&mut rig);
+    assert!(rig.log().contains(&"incoming.mode:translated".to_owned()));
+    rig.world.clear_log();
+    rig.world.push_path_event(
+        "incoming",
+        crate::call::PathEvent::Lost(HostFault::new(
+            CallErrorCode::EndpointLost(crate::fault::Endpoint::RemoteInput),
+            "tap lost (scripted)",
+        )),
+    );
+    rig.until_world("the path was reopened", |w| {
+        w.log().contains(&"incoming.mode:translated".to_owned())
+    });
+}
+
+#[test]
+fn translation_on_the_built_in_speakers_shows_the_headphone_warning_until_the_route_changes() {
+    use crate::call::{OutputRoute, PathStats};
+    let stats = |route| PathStats {
+        sink_route: route,
+        sink_device: Some("MacBook Pro Speakers".to_owned()),
+        ..PathStats::default()
+    };
+
+    let mut rig = Rig::new();
+    rig.world
+        .set_path_stats("incoming", stats(OutputRoute::Speakers));
+    rig.start_translating();
+    translating_both(&mut rig);
+    rig.coord.tick();
+    assert!(rig.has_issue(CallErrorCode::SpeakerOutput));
+    let detail = rig
+        .last()
+        .issues
+        .iter()
+        .find(|i| i.code == CallErrorCode::SpeakerOutput)
+        .map(|i| i.detail.clone())
+        .expect("the warning");
+    assert!(detail.contains("MacBook Pro Speakers"), "{detail}");
+
+    rig.world
+        .set_path_stats("incoming", stats(OutputRoute::Headphones));
+    rig.coord.tick();
+    assert!(!rig.has_issue(CallErrorCode::SpeakerOutput));
+}
+
+#[test]
+fn an_audio_only_call_on_the_speakers_shows_no_warning_because_nothing_is_played_by_us() {
+    use crate::call::{OutputRoute, PathStats};
+    let mut rig = Rig::new();
+    rig.world.set_path_stats(
+        "incoming",
+        PathStats {
+            sink_route: OutputRoute::Speakers,
+            ..PathStats::default()
+        },
+    );
+    rig.start();
+    rig.coord.tick();
+    assert!(!rig.has_issue(CallErrorCode::SpeakerOutput));
+}

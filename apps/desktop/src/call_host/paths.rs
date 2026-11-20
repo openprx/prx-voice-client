@@ -13,22 +13,24 @@ use prxvc_audio::call_activity::native::read_app_activity;
 use std::sync::Arc;
 
 use prxvc_audio::call_pump::{
-    EventQueue, FrameTap, PlaybackSignal, Pump, PumpConfig, PumpLink, PumpRoute, PumpSpec,
-    PumpStage, PumpStats, TranslatedFeed,
+    EchoRole, EventQueue, FrameTap, PlaybackSignal, Pump, PumpConfig, PumpEvent, PumpLink,
+    PumpRoute, PumpSpec, PumpStage, PumpStats, TranslatedFeed,
 };
+use prxvc_audio::cpal_output;
+use prxvc_audio::echo_gate::EchoGateHandle;
 use prxvc_audio::input_supervisor::PlatformInputBackend;
 use prxvc_audio::mix::{MixMode, Mixer, MixerConfig};
 use prxvc_audio::supervised_mic::SupervisedMic;
 use prxvc_audio::tap_pump_source::TapPumpSource;
-use prxvc_audio::tap_types::TapConfig;
+use prxvc_audio::tap_types::{TapConfig, TapMuteMode};
 use prxvc_audio::virtual_mic::{VirtualMicOptions, VirtualMicSink};
 use prxvc_ports::BundleId;
 use prxvc_session::Endpoint;
 use prxvc_session::OutputSource;
 use prxvc_media::{ClauseId, PcmChunk};
 use prxvc_session::call::{
-    AudioPath, CallErrorCode, HostFault, LocalOutputMode, PathEvent, PathLink, PathStats,
-    PlaybackReport, Playout,
+    AudioPath, CallErrorCode, HostFault, LocalOutputMode, OutputRoute, PathEvent, PathLink,
+    PathStats, PlaybackReport, Playout,
 };
 
 use super::map::{PathKind, path_event, virtual_mic_fault};
@@ -44,15 +46,18 @@ pub(super) struct PumpPath {
     hears: OutputSource,
     /// `call.local_output_mode`, which matters for the incoming path only.
     local_mode: LocalOutputMode,
+    /// What the device the path plays to is.
+    route: OutputRoute,
 }
 
 impl PumpPath {
-    fn new(pump: Pump, kind: PathKind) -> Self {
+    fn new(pump: Pump, kind: PathKind, route: OutputRoute) -> Self {
         Self {
             pump,
             kind,
             hears: OutputSource::Original,
             local_mode: LocalOutputMode::default(),
+            route,
         }
     }
 
@@ -101,7 +106,7 @@ impl AudioPath for PumpPath {
     fn connect(&mut self, link: PathLink) -> Result<Arc<dyn Playout>, HostFault> {
         let PathLink {
             tap_rate,
-            mut on_frame,
+            on_frame,
             mut on_playback,
             clock,
         } = link;
@@ -110,7 +115,7 @@ impl AudioPath for PumpPath {
             .connect(PumpLink {
                 tap: FrameTap {
                     rate: tap_rate,
-                    sink: Box::new(move |frame| on_frame(frame)),
+                    sink: on_frame,
                 },
                 on_playback: Box::new(move |signal| {
                     on_playback(match signal {
@@ -148,7 +153,10 @@ impl AudioPath for PumpPath {
     }
 
     fn stats(&self) -> PathStats {
-        stats_of(&self.pump.stats())
+        PathStats {
+            sink_route: self.route,
+            ..stats_of(&self.pump.stats())
+        }
     }
 
     fn take_events(&mut self) -> Vec<PathEvent> {
@@ -188,7 +196,9 @@ fn stats_of(s: &PumpStats) -> PathStats {
         translated_dropped: s.translated_dropped_samples,
         translated_peak: s.translated_level.peak,
         translated_rms: s.translated_level.rms,
-        sink_route: prxvc_session::call::OutputRoute::Unknown,
+        sink_route: OutputRoute::Unknown,
+        input_gated: s.gated,
+        gated_frames: s.gated_frames,
     }
 }
 
@@ -198,6 +208,8 @@ pub(super) struct OutgoingPlan<'a> {
     pub microphone: &'a str,
     /// `audio.virtual_mic_device`; empty is our driver's sink.
     pub virtual_mic_device: &'a str,
+    /// The half-duplex gate, in speaker mode: while it is closed the microphone is not listened to.
+    pub echo: Option<EchoGateHandle>,
 }
 
 /// Open the virtual microphone sink and the microphone and start the outgoing pump.
@@ -221,6 +233,7 @@ pub(super) fn start_outgoing(plan: &OutgoingPlan<'_>) -> Result<Box<dyn AudioPat
             sink: Box::new(sink),
         },
         events,
+        echo: plan.echo.clone().map(EchoRole::Input),
     })
     .map_err(|e| {
         let endpoint = match e.stage {
@@ -229,26 +242,117 @@ pub(super) fn start_outgoing(plan: &OutgoingPlan<'_>) -> Result<Box<dyn AudioPat
         };
         HostFault::new(CallErrorCode::EndpointOpenFailed(endpoint), e.to_string())
     })?;
-    Ok(Box::new(PumpPath::new(pump, PathKind::Outgoing)))
+    Ok(Box::new(PumpPath::new(
+        pump,
+        PathKind::Outgoing,
+        OutputRoute::Unknown,
+    )))
 }
 
-/// Tap the call application (unmuted) and start the metering pump.
-pub(super) fn start_incoming(target: &BundleId) -> Result<Box<dyn AudioPath>, HostFault> {
+/// What the incoming path is built from.
+pub(super) struct IncomingPlan<'a> {
+    /// The call application.
+    pub target: &'a BundleId,
+    /// Translated call: mute the tap while we tap it and play through our mixer.
+    pub translate: bool,
+    /// `audio.output_device`; empty follows the system default output.
+    pub output_device: &'a str,
+    /// The incoming mixer's settings: `call.output_gain_db`, `call.original_gain_db`, the jitter buffer.
+    pub mixer: MixerConfig,
+    /// What the local output is.
+    pub route: OutputRoute,
+    /// The half-duplex gate, in speaker mode: told whether our output is audible.
+    pub echo: Option<EchoGateHandle>,
+}
+
+/// Tap the call application and start the incoming pump.
+///
+/// Audio only: the tap is unmuted, nothing is played, the level is metered. Translated: the local
+/// output opens first and the tap is created muted-when-tapped only after that, so the original
+/// is never muted without our playback being ready; our mixer starts on the original and the
+/// coordinator moves it to the translation. If the output cannot be opened the path falls back to
+/// the unmuted tap (design 4.5.1) and reports `LocalOutputFailed`.
+pub(super) fn start_incoming(plan: &IncomingPlan<'_>) -> Result<Box<dyn AudioPath>, HostFault> {
     // The audio system lists a process only while the application runs: a typed answer
     // to "is it running", which the tap's own error would only give as text.
-    if read_app_activity(target.as_str()).is_ok_and(|a| !a.present) {
+    if read_app_activity(plan.target.as_str()).is_ok_and(|a| !a.present) {
         return Err(HostFault::new(
             CallErrorCode::TargetNotRunning,
-            format!("{target} is not running or has no audio process"),
+            format!("{} is not running or has no audio process", plan.target),
         ));
     }
+    if !plan.translate {
+        return meter_only(plan.target, EventQueue::new(), plan.route);
+    }
     let events = EventQueue::new();
+    let sink = match open_output(plan.output_device) {
+        Ok(sink) => sink,
+        Err(detail) => {
+            events.push(PumpEvent::LocalOutputFailed {
+                detail: format!("{detail}; the call application plays the original itself"),
+            });
+            return meter_only(plan.target, events, plan.route);
+        }
+    };
+    let mut tap = TapConfig::for_bundle(plan.target.as_str());
+    tap.mute = TapMuteMode::MutedWhenTapped;
+    let source = TapPumpSource::new(tap, events.clone());
+    let mixer = Box::new(Mixer::new(MixerConfig {
+        mode: MixMode::Original,
+        ..plan.mixer
+    }));
+    let mut config = PumpConfig::new("incoming");
+    // Stopping the tap is what gives the original back, so it must not wait for the sink.
+    config.stop_source_first = true;
+    let spec = PumpSpec {
+        config,
+        source: Box::new(source),
+        route: PumpRoute::Mix {
+            mixer,
+            sink: Box::new(sink),
+        },
+        events: events.clone(),
+        echo: plan.echo.clone().map(EchoRole::Playback),
+    };
+    match Pump::start(spec) {
+        Ok(pump) => Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, plan.route))),
+        Err(e) if e.stage == PumpStage::Sink => {
+            events.push(PumpEvent::LocalOutputFailed {
+                detail: format!("{e}; the call application plays the original itself"),
+            });
+            meter_only(plan.target, events, plan.route)
+        }
+        Err(e) => Err(HostFault::new(
+            CallErrorCode::EndpointOpenFailed(Endpoint::RemoteInput),
+            e.to_string(),
+        )),
+    }
+}
+
+/// The local output as a sink; not started.
+fn open_output(device: &str) -> Result<prxvc_audio::playback_sink::PlaybackSink, String> {
+    let device = device.trim();
+    let sink = if device.is_empty() {
+        cpal_output::open_default()
+    } else {
+        cpal_output::open_named(device)
+    };
+    sink.map_err(|e| format!("the local output cannot be opened: {e}"))
+}
+
+/// An unmuted tap whose audio is only metered: the call application plays the remote party.
+fn meter_only(
+    target: &BundleId,
+    events: EventQueue,
+    route: OutputRoute,
+) -> Result<Box<dyn AudioPath>, HostFault> {
     let source = TapPumpSource::new(TapConfig::for_bundle(target.as_str()), events.clone());
     let pump = Pump::start(PumpSpec {
         config: PumpConfig::new("incoming"),
         source: Box::new(source),
         route: PumpRoute::MeterOnly,
         events,
+        echo: None,
     })
     .map_err(|e| {
         HostFault::new(
@@ -256,7 +360,7 @@ pub(super) fn start_incoming(target: &BundleId) -> Result<Box<dyn AudioPath>, Ho
             e.to_string(),
         )
     })?;
-    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming)))
+    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, route)))
 }
 
 #[cfg(test)]
@@ -293,6 +397,8 @@ mod tests {
                 peak: 0.75,
                 rms: 0.5,
             },
+            gated_frames: 12,
+            gated: true,
         };
         let s = stats_of(&stats);
         assert_eq!((s.frames, s.overruns, s.drops, s.underruns), (9, 7, 7, 3));
@@ -301,6 +407,8 @@ mod tests {
         assert_eq!(s.queued, Duration::from_millis(40));
         assert_eq!((s.translated_underruns, s.translated_dropped), (5, 6));
         assert_eq!((s.translated_peak, s.translated_rms), (0.75, 0.5));
+        assert!(s.input_gated);
+        assert_eq!(s.gated_frames, 12);
     }
 
     #[test]

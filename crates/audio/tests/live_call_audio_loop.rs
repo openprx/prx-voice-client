@@ -205,6 +205,7 @@ fn live_call_audio_loop() {
             sink: Box::new(sink),
         },
         events: EventQueue::new(),
+        echo: None,
     })
     .expect("start the pump");
     let started_at = Instant::now();

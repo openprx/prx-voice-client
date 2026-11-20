@@ -99,7 +99,7 @@ impl Coordinator {
 
         let incoming = self
             .host
-            .start_incoming(target)
+            .start_incoming(target, self.translate)
             .map_err(|f| Failed::Endpoint(endpoint_of(f.code, Endpoint::RemoteInput), f))?;
         self.install_path(Direction::Incoming, incoming);
         self.devices.call_app = Some(target.as_str().to_owned());

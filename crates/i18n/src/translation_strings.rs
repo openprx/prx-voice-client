@@ -57,6 +57,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "call.issue.speaker_output",
         "The sound goes out through the built-in speakers, so the microphone would pick up the translation and translate it again. Use headphones.",
     ),
+    (
+        "call.issue.local_output_unavailable",
+        "The local output could not be opened. The call application plays the other person itself, so nothing is translated for you.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -112,6 +116,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "call.issue.speaker_output",
         "\u{58f0}\u{97f3}\u{4ece}\u{5185}\u{7f6e}\u{626c}\u{58f0}\u{5668}\u{64ad}\u{51fa}\u{ff0c}\u{9ea6}\u{514b}\u{98ce}\u{4f1a}\u{6536}\u{5230}\u{8bd1}\u{6587}\u{5e76}\u{518d}\u{6b21}\u{7ffb}\u{8bd1}\u{3002}\u{8bf7}\u{4f7f}\u{7528}\u{8033}\u{673a}\u{3002}",
+    ),
+    (
+        "call.issue.local_output_unavailable",
+        "\u{65e0}\u{6cd5}\u{6253}\u{5f00}\u{672c}\u{5730}\u{8f93}\u{51fa}\u{3002}\u{901a}\u{8bdd}\u{5e94}\u{7528}\u{4f1a}\u{81ea}\u{884c}\u{64ad}\u{653e}\u{5bf9}\u{65b9}\u{7684}\u{58f0}\u{97f3}\u{ff0c}\u{56e0}\u{6b64}\u{4e0d}\u{4f1a}\u{4e3a}\u{4f60}\u{7ffb}\u{8bd1}\u{3002}",
     ),
 ];
 

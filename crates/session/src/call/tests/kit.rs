@@ -472,8 +472,14 @@ impl CallHost for FakeHost {
         })
     }
 
-    fn start_incoming(&mut self, _target: &BundleId) -> Result<Box<dyn AudioPath>, HostFault> {
+    fn start_incoming(
+        &mut self,
+        _target: &BundleId,
+        translate: bool,
+    ) -> Result<Box<dyn AudioPath>, HostFault> {
         self.world.step("start_incoming")?;
+        self.world
+            .record(format!("incoming.mode:{}", if translate { "translated" } else { "audio_only" }));
         Ok(Box::new(FakePath {
             name: "incoming",
             world: self.world.clone(),

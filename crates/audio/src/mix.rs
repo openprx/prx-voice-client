@@ -122,6 +122,8 @@ pub struct MixerStats {
     pub rendered_samples: u64,
     /// Level of the translated speech as it leaves the mixer (after its gain), last full window.
     pub translated_level: Level,
+    /// Level of everything the mixer outputs, last full window.
+    pub output_level: Level,
 }
 
 /// Length of the blocks [`Mixer::feed`] writes to a sink.
@@ -140,6 +142,8 @@ pub struct Mixer {
     seq: u64,
     translated_meter: LevelMeter,
     translated_level: Level,
+    output_meter: LevelMeter,
+    output_level: Level,
     scratch_translated: Vec<f32>,
     scratch_original: Vec<f32>,
 }
@@ -170,6 +174,8 @@ impl Mixer {
             seq: 0,
             translated_meter: LevelMeter::new(),
             translated_level: Level::default(),
+            output_meter: LevelMeter::new(),
+            output_level: Level::default(),
             scratch_translated: Vec::new(),
             scratch_original: Vec::new(),
         }
@@ -247,6 +253,9 @@ impl Mixer {
         {
             self.translated_level = level;
         }
+        if let Some(level) = self.output_meter.feed(out, self.cfg.output_rate.hz()) {
+            self.output_level = level;
+        }
         self.rendered += n as u64;
     }
 
@@ -291,6 +300,7 @@ impl Mixer {
             original: self.original.stats(),
             rendered_samples: self.rendered,
             translated_level: self.translated_level,
+            output_level: self.output_level,
         }
     }
 }

@@ -100,6 +100,17 @@ pub(crate) fn settings_from(config: &prxvc_config::AppConfig) -> CallSettings {
     }
 }
 
+/// The incoming mixer's settings: the output gain (compensating the call application's ducking), the
+/// lowered original of the "both" mode and the jitter buffer.
+pub(crate) fn incoming_mixer(config: &prxvc_config::AppConfig) -> prxvc_audio::mix::MixerConfig {
+    prxvc_audio::mix::MixerConfig {
+        translated_gain_db: config.call.output_gain_db,
+        original_gain_db: config.call.original_gain_db,
+        jitter_buffer: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+        ..prxvc_audio::mix::MixerConfig::default()
+    }
+}
+
 impl CallControl {
     /// Start the coordinator thread (macOS) and connect it to `shared`. Elsewhere call mode is unavailable.
     pub(crate) fn start(shared: &SharedAppState, config: &prxvc_config::AppConfig) -> Self {
@@ -200,10 +211,13 @@ fn spawn(
     let host_config = HostConfig {
         input_device: config.audio.input_device.clone(),
         virtual_mic_device: config.audio.virtual_mic_device.clone(),
+        output_device: config.audio.output_device.clone(),
+        echo_mode: config.audio.echo_mode,
+        echo_tail: std::time::Duration::from_millis(u64::from(config.audio.half_duplex_tail_ms)),
+        incoming_mixer: incoming_mixer(config),
         data_dir: paths.data_dir.clone(),
         config_source: crate::call_kit::config::current_source(),
-        // The incoming direction joins when its mixer and preset voice are wired (part 2).
-        translate: vec![prxvc_media::Direction::Outgoing],
+        translate: vec![prxvc_media::Direction::Outgoing, prxvc_media::Direction::Incoming],
         trace: Arc::new(crate::call_kit::trace::NullTrace),
     };
     let settings = settings_from(config);
@@ -275,6 +289,21 @@ mod tests {
     fn an_unknown_setting_falls_back_loudly_to_the_documented_default() {
         let s = settings_from(&config_with(|c| c.call.outgoing_on_failure = "mute".into()));
         assert_eq!(s.outgoing.on_failure, Passthrough::Original);
+    }
+
+    #[test]
+    fn the_incoming_mixer_takes_the_output_gain_the_lowered_original_and_the_jitter_buffer() {
+        let mixer = incoming_mixer(&config_with(|c| {
+            c.call.output_gain_db = 9.0;
+            c.call.original_gain_db = -18.0;
+            c.pipeline.jitter_buffer_ms = 120;
+        }));
+        assert_eq!(mixer.translated_gain_db, 9.0);
+        assert_eq!(mixer.original_gain_db, -18.0);
+        assert_eq!(mixer.jitter_buffer, Duration::from_millis(120));
+        let default = incoming_mixer(&prxvc_config::AppConfig::default());
+        assert_eq!(default.translated_gain_db, 0.0, "no gain unless asked for");
+        assert_eq!(default.original_gain_db, -12.0);
     }
 
     #[test]

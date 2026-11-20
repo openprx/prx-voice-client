@@ -174,6 +174,9 @@ pub(super) fn path_event(kind: PathKind, event: PumpEvent) -> Option<PathEvent> 
         PumpEvent::CaptureFailed { detail } => {
             PathEvent::Fault(HostFault::new(Code::CaptureStalled, detail))
         }
+        PumpEvent::LocalOutputFailed { detail } => {
+            PathEvent::Fault(HostFault::new(Code::LocalOutputUnavailable, detail))
+        }
         _ => return None,
     })
 }

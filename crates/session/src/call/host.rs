@@ -59,6 +59,11 @@ pub struct PathStats {
     pub translated_rms: f32,
     /// What the device played to is, as far as the host can tell.
     pub sink_route: OutputRoute,
+    /// The echo gate is closed: the microphone is not being listened to while the local output
+    /// plays ("paused while you listen").
+    pub input_gated: bool,
+    /// Frames the echo gate kept from the mixer and the pipeline.
+    pub gated_frames: u64,
 }
 
 /// What the local output device is (pipeline-design 6: headphones are the baseline).
@@ -306,9 +311,20 @@ pub trait CallHost: Send {
 
     /// Step 8: start the tap of `target` and the incoming pump.
     ///
+    /// Audio only (`translate` false): the tap stays unmuted and nothing is played, because the
+    /// call application plays the remote party itself. Translated: the tap is created
+    /// muted-when-tapped, so the original is not heard twice and returns by itself if this
+    /// process dies, and the path plays to the local output through its mixer, starting with
+    /// the original (design 4.5). When the local output cannot be opened the host falls back to
+    /// the unmuted tap and says so with a `PathEvent::Fault`.
+    ///
     /// # Errors
     /// `TargetNotRunning`, a consent code or `EndpointOpenFailed(RemoteInput)`.
-    fn start_incoming(&mut self, target: &BundleId) -> Result<Box<dyn AudioPath>, HostFault>;
+    fn start_incoming(
+        &mut self,
+        target: &BundleId,
+        translate: bool,
+    ) -> Result<Box<dyn AudioPath>, HostFault>;
 
     /// Step 9: start reading the call application's activity. A failure is not blocking.
     ///

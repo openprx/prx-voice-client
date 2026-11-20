@@ -64,6 +64,7 @@ impl Coordinator {
                 self.on_path_event(d, event);
             }
         }
+        self.check_output_route();
     }
 
     fn on_path_event(&mut self, d: Direction, event: PathEvent) {
@@ -322,7 +323,7 @@ impl Coordinator {
         };
         let started = match d {
             Direction::Outgoing => self.host.start_outgoing(),
-            Direction::Incoming => self.host.start_incoming(&target),
+            Direction::Incoming => self.host.start_incoming(&target, self.translate),
         };
         match started {
             Ok(mut path) => {

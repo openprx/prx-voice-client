@@ -37,7 +37,9 @@ use prxvc_ports::CancellationToken;
 
 use super::coordinator::{BOTH, Coordinator, slot};
 use super::error::{CallErrorCode, HostFault};
-use super::host::{DirectionBuild, PathLink, PlaybackReport, Playout, PreparedProviders};
+use super::host::{
+    DirectionBuild, OutputRoute, PathLink, PlaybackReport, Playout, PreparedProviders,
+};
 use crate::call_state::CallEvent;
 use crate::direction_state::DirectionState;
 use crate::interrupt::CancelAction;
@@ -282,6 +284,27 @@ impl Coordinator {
         *playout.lock() = None;
         lane.running = None;
         lane.machine = DirectionState::Off;
+    }
+
+    /// Show the headphone warning while the translation plays on the built-in loudspeakers: the
+    /// microphone would pick the translation up and the outgoing direction would translate it
+    /// back (design section 6).
+    pub(super) fn check_output_route(&mut self) {
+        let route = self.lanes[slot(Direction::Incoming)]
+            .stats
+            .as_ref()
+            .map(|s| (s.sink_route, s.sink_device.clone()));
+        match route {
+            Some((OutputRoute::Speakers, device)) if self.translate => {
+                if !self.issues.iter().any(|i| i.code == CallErrorCode::SpeakerOutput) {
+                    self.raise(
+                        CallErrorCode::SpeakerOutput,
+                        format!("local output: {}", device.unwrap_or_default()),
+                    );
+                }
+            }
+            _ => self.clear(CallErrorCode::SpeakerOutput),
+        }
     }
 
     /// Cancel everything the call token covers.

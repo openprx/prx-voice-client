@@ -175,6 +175,7 @@ fn spec(name: &str, source: Box<dyn AudioSource>, route: PumpRoute) -> PumpSpec 
         source,
         route,
         events: EventQueue::new(),
+        echo: None,
     }
 }
 
@@ -516,4 +517,184 @@ fn a_pump_without_a_mixer_cannot_connect() {
         clock: Arc::new(prxvc_media::SystemClock::new()),
     });
     assert!(linked.is_none());
+}
+
+#[test]
+fn a_closed_echo_gate_keeps_the_microphone_from_the_mixer_and_the_pipeline() {
+    use crate::echo_gate::{EchoGate, EchoGateHandle};
+    use prxvc_media::SystemClock;
+
+    let gate = EchoGateHandle::new(EchoGate::new(true, Duration::from_millis(50)));
+    gate.with(|g| g.reply_activity(Instant::now())); // closed until the reply ends
+    let (sink, out, _stopped) = CollectSink::new();
+    let source = FakeAudioSource::new(RATE, ramp_frames(40)).with_frames_per_read(1);
+    let mut spec = spec(
+        "outgoing",
+        Box::new(source),
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
+    );
+    spec.echo = Some(EchoRole::Input(gate.clone()));
+    let mut pump = Pump::start(spec).expect("start");
+    let tapped = Arc::new(AtomicU64::new(0));
+    let counter = Arc::clone(&tapped);
+    let _feed = pump
+        .connect(PumpLink {
+            tap: FrameTap {
+                rate: SampleRate::HZ_16000,
+                sink: Box::new(move |_| {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }),
+            },
+            on_playback: Box::new(|_| {}),
+            clock: Arc::new(SystemClock::new()),
+        })
+        .expect("connect");
+    wait_until("the frames to be read", || pump.stats().frames >= 20);
+    let stats = pump.stats();
+    assert!(stats.gated, "the gate is closed");
+    assert!(stats.gated_frames >= 20, "{stats:?}");
+    assert_eq!(tapped.load(Ordering::SeqCst), 0, "nothing reaches the pipeline");
+    assert!(
+        out.lock().iter().all(|(_, s)| s.abs() < 1e-4),
+        "nothing of the microphone reaches the sink while the gate is closed"
+    );
+    gate.with(|g| g.reply_ended(Instant::now()));
+    pump.stop(Duration::from_secs(1)).expect("stop");
+}
+
+#[test]
+fn a_playing_pump_closes_the_gate_while_its_output_is_audible_and_reopens_it_after_the_tail() {
+    use crate::echo_gate::{EchoGate, EchoGateHandle};
+
+    let gate = EchoGateHandle::new(EchoGate::new(true, Duration::from_millis(60)));
+    let (sink, _out, _stopped) = CollectSink::new();
+    // 300 ms of a loud tone.
+    let frames: Vec<AudioFrame> = (0..30)
+        .map(|i| frame(i, vec![0.5; FRAME]))
+        .collect();
+    let source = FakeAudioSource::new(RATE, frames).with_frames_per_read(1);
+    let mut spec = spec(
+        "incoming",
+        Box::new(source),
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
+    );
+    spec.echo = Some(EchoRole::Playback(gate.clone()));
+    let mut pump = Pump::start(spec).expect("start");
+    wait_until("the gate to close while the output is audible", || {
+        gate.is_closed(Instant::now())
+    });
+    pump.stop(Duration::from_secs(1)).expect("stop");
+}
+
+/// Records the order in which the endpoints of a pump are stopped.
+struct OrderSource {
+    log: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl AudioSource for OrderSource {
+    fn start(&mut self) -> Result<SourceInfo, EndpointError> {
+        Ok(SourceInfo {
+            rate: RATE,
+            device: "order-source".into(),
+        })
+    }
+
+    fn read(&mut self, _out: &mut Vec<AudioFrame>, wait: Duration) -> Result<(), EndpointError> {
+        std::thread::sleep(wait.min(Duration::from_millis(2)));
+        Ok(())
+    }
+
+    fn health(&self) -> EndpointHealth {
+        EndpointHealth::default()
+    }
+
+    fn stop(&mut self) {
+        self.log.lock().push("source");
+    }
+}
+
+struct OrderSink {
+    log: Arc<Mutex<Vec<&'static str>>>,
+}
+
+impl AudioSink for OrderSink {
+    fn start(&mut self) -> Result<SinkInfo, EndpointError> {
+        Ok(SinkInfo {
+            rate: RATE,
+            device: "order-sink".into(),
+        })
+    }
+
+    fn write(&mut self, frame: &AudioFrame) -> WriteOutcome {
+        WriteOutcome {
+            accepted: frame.len(),
+            dropped: 0,
+        }
+    }
+
+    fn flush(&mut self) {}
+
+    fn queued(&self) -> Duration {
+        Duration::from_secs(1)
+    }
+
+    fn health(&self) -> EndpointHealth {
+        EndpointHealth::default()
+    }
+
+    fn stop(&mut self) {
+        self.log.lock().push("sink");
+    }
+}
+
+fn stop_order(source_first: bool) -> Vec<&'static str> {
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let mut spec = spec(
+        "incoming",
+        Box::new(OrderSource {
+            log: Arc::clone(&log),
+        }),
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(OrderSink {
+                log: Arc::clone(&log),
+            }),
+        },
+    );
+    spec.config.stop_source_first = source_first;
+    let mut pump = Pump::start(spec).expect("start");
+    pump.stop(Duration::from_secs(1)).expect("stop");
+    log.lock().clone()
+}
+
+#[test]
+fn a_path_ends_its_sink_first_unless_its_source_must_give_the_original_back_first() {
+    assert_eq!(stop_order(false), ["sink", "source"]);
+    assert_eq!(stop_order(true), ["source", "sink"]);
+}
+
+#[test]
+fn the_mixer_reports_the_level_of_what_it_outputs() {
+    let mut m = Mixer::new(MixerConfig {
+        mode: MixMode::Translation,
+        jitter_buffer: Duration::from_millis(20),
+        ..MixerConfig::default()
+    });
+    let mut out = vec![0.0; 4800];
+    m.render(&mut out);
+    assert_eq!(m.stats().output_level.peak, 0.0);
+    let chunk = AudioFrame::new(vec![0.5; 48_000], RATE, MonoTime::ZERO, 0).unwrap();
+    m.push_translated(&chunk).unwrap();
+    for _ in 0..6 {
+        m.render(&mut out);
+    }
+    let stats = m.stats();
+    assert!(stats.output_level.peak > 0.45, "{:?}", stats.output_level);
+    assert!(stats.translated_level.peak > 0.45);
 }

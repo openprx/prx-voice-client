@@ -48,6 +48,7 @@ pub use level::{Level, LevelMeter, SharedLevel};
 pub use link::{FrameTap, PlaybackFn, PlaybackSignal, PumpLink, TranslatedFeed};
 use link::LinkState;
 
+use crate::echo_gate::EchoGateHandle;
 use crate::mix::{MixMode, Mixer};
 
 /// Events kept for the owner; the oldest is dropped when a slow owner lets more pile up.
@@ -107,6 +108,12 @@ pub enum PumpEvent {
         /// Text for the log and the debug view.
         detail: String,
     },
+    /// The local output could not be opened, so the path plays nothing and the tap was left
+    /// unmuted: the call application plays the remote party itself.
+    LocalOutputFailed {
+        /// Text for the log and the debug view.
+        detail: String,
+    },
 }
 
 /// A bounded queue of [`PumpEvent`]s shared by the pump, its source wrapper and the owner.
@@ -156,6 +163,10 @@ pub struct PumpConfig {
     pub ahead: Duration,
     /// Longest a loop waits for the source, and so the longest `stop` waits for the thread.
     pub read_wait: Duration,
+    /// Stop the source before the sink when the path ends. For a path whose source mutes the
+    /// original at its origin (a muted tap), stopping the source is what gives the listener the
+    /// original back, so it must not wait for the sink.
+    pub stop_source_first: bool,
 }
 
 impl PumpConfig {
@@ -165,9 +176,24 @@ impl PumpConfig {
             name: name.into(),
             ahead: Duration::from_millis(40),
             read_wait: Duration::from_millis(10),
+            stop_source_first: false,
         }
     }
 }
+
+/// What a pump does with the half-duplex echo gate (pipeline-design 6.3, speaker mode).
+#[derive(Clone, Debug)]
+pub enum EchoRole {
+    /// The pump plays to a local speaker: it tells the gate whether its output is audible.
+    Playback(EchoGateHandle),
+    /// The pump carries the microphone: while the gate is closed, its frames reach neither the
+    /// mixer's original lane nor the pipeline tap.
+    Input(EchoGateHandle),
+}
+
+/// Output level (linear peak) above which a playing pump counts as audible for the echo gate
+/// (about -50 dBFS).
+pub const AUDIBLE_PEAK: f32 = 0.003;
 
 /// Everything a pump is started with.
 pub struct PumpSpec {
@@ -179,6 +205,8 @@ pub struct PumpSpec {
     pub route: PumpRoute,
     /// Where the pump (and the source wrapper, if it shares the queue) reports events.
     pub events: EventQueue,
+    /// The echo gate, in speaker mode.
+    pub echo: Option<EchoRole>,
 }
 
 /// Which endpoint failed to start.
@@ -246,6 +274,10 @@ pub struct PumpStats {
     pub translated_dropped_samples: u64,
     /// Level of the translated speech as played, after its gain, last full window.
     pub translated_level: Level,
+    /// Frames the echo gate kept from the mixer and the pipeline (an input pump in speaker mode).
+    pub gated_frames: u64,
+    /// The echo gate is closed now.
+    pub gated: bool,
 }
 
 const NO_TS: u64 = u64::MAX;
@@ -268,6 +300,8 @@ struct Shared {
     translated_underruns: AtomicU64,
     translated_dropped: AtomicU64,
     translated_level: SharedLevel,
+    gated_frames: AtomicU64,
+    gated: AtomicBool,
     level: SharedLevel,
 }
 
@@ -311,6 +345,7 @@ impl Pump {
             mut source,
             mut route,
             events,
+            echo,
         } = spec;
         let fail = |stage, error| PumpStartError {
             name: config.name.clone(),
@@ -349,6 +384,7 @@ impl Pump {
             events: events.clone(),
             config,
             link: Arc::clone(&link),
+            echo,
         };
         let spawned = std::thread::Builder::new()
             .name(format!("prxvc-pump-{name}"))
@@ -431,6 +467,8 @@ impl Pump {
             translated_underruns: s.translated_underruns.load(Ordering::Relaxed),
             translated_dropped_samples: s.translated_dropped.load(Ordering::Relaxed),
             translated_level: s.translated_level.load(),
+            gated_frames: s.gated_frames.load(Ordering::Relaxed),
+            gated: s.gated.load(Ordering::Relaxed),
         }
     }
 
@@ -479,6 +517,7 @@ struct Worker {
     events: EventQueue,
     config: PumpConfig,
     link: Arc<Mutex<Option<LinkState>>>,
+    echo: Option<EchoRole>,
 }
 
 impl Worker {
@@ -496,8 +535,13 @@ impl Worker {
                 self.shared.failed.store(true, Ordering::Release);
                 break;
             }
+            let gated = self.input_gated();
             for frame in &frames {
                 self.account(frame, &mut meter);
+                if gated {
+                    self.shared.gated_frames.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 if let Some(link) = self.link.lock().as_mut() {
                     link.tap_frame(frame);
                 }
@@ -524,6 +568,16 @@ impl Worker {
             }
         }
         self.close();
+    }
+
+    /// Whether the echo gate keeps this loop's frames from the mixer and the pipeline.
+    fn input_gated(&self) -> bool {
+        let closed = match &self.echo {
+            Some(EchoRole::Input(gate)) => gate.is_closed(Instant::now()),
+            _ => false,
+        };
+        self.shared.gated.store(closed, Ordering::Relaxed);
+        closed
     }
 
     fn account(&self, frame: &prxvc_media::AudioFrame, meter: &mut LevelMeter) {
@@ -575,15 +629,24 @@ impl Worker {
         s.translated_dropped
             .store(mixer_stats.translated.dropped_samples, Ordering::Relaxed);
         s.translated_level.store(mixer_stats.translated_level);
+        if let Some(EchoRole::Playback(gate)) = &self.echo {
+            let audible = mixer_stats.output_level.peak > AUDIBLE_PEAK;
+            gate.with(|g| g.update(!audible, Instant::now()));
+        }
     }
 
     /// Release the endpoints; the sink first, so that nothing plays after the source is gone.
     fn close(&mut self) {
+        if self.config.stop_source_first {
+            self.source.stop();
+        }
         if let PumpRoute::Mix { sink, .. } = &mut self.route {
             sink.flush();
             sink.stop();
         }
-        self.source.stop();
+        if !self.config.stop_source_first {
+            self.source.stop();
+        }
         self.shared.running.store(false, Ordering::Release);
     }
 }
