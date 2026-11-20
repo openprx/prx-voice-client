@@ -24,8 +24,8 @@ pub use catalogue::{
 };
 pub use hardware::{Arch, HardwareInfo, Os};
 pub use manager::{
-    JobView, ManagerConfig, ManagerOptions, ManagerSnapshot, ModelCommand, ModelEvent, ModelHandle,
-    ModelManager, ModelView,
+    EVENT_CAPACITY, EventReceiver, JobView, ManagerConfig, ManagerOptions, ManagerSnapshot,
+    ModelCommand, ModelEvent, ModelHandle, ModelManager, ModelView,
 };
 pub use net::{Blocked, Endpoint, NetworkPolicy};
 pub use store::{

@@ -1,10 +1,11 @@
 //! The manager facade: starts the coordinator thread and hands out the
 //! `ModelHandle` (design 4.7). Module map: `api` (value types), `handle`
-//! (shared state and `ModelHandle`), `coordinator` (queue and scheduling),
+//! (shared state and `ModelHandle`), `event_channel` (bounded subscription), `coordinator` (queue and scheduling),
 //! `snapshot` (derived UI state), `jobs_file` (persistence).
 
 mod api;
 mod coordinator;
+mod event_channel;
 mod handle;
 mod jobs_file;
 mod snapshot;
@@ -25,6 +26,7 @@ pub use api::{
     JobView, MAX_CONCURRENT_LIMIT, ManagerConfig, ManagerOptions, ManagerSnapshot, ModelCommand,
     ModelEvent, ModelView,
 };
+pub use event_channel::{EVENT_CAPACITY, EventReceiver};
 pub use handle::ModelHandle;
 
 use coordinator::{Coordinator, CoordinatorParams};
@@ -54,7 +56,7 @@ impl ModelManager {
         let shared = Arc::new(Shared {
             tx: Mutex::new(tx.clone()),
             snapshot: RwLock::new(Arc::new(ManagerSnapshot::default())),
-            subscribers: Mutex::new(Vec::new()),
+            subscribers: Default::default(),
             waker: RwLock::new(None),
             store: Arc::new(store),
             catalogue: RwLock::new(Arc::new(cfg.catalogue)),

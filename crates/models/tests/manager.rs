@@ -7,15 +7,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use common::*;
 use prxvc_models::catalogue::{Catalogue, ModelId, Role};
 use prxvc_models::net::{Blocked, Endpoint, NetworkPolicy};
 use prxvc_models::{
-    ActiveSet, FailReason, InstallState, LangKey, LoadState, ManagerConfig, ModelCommand,
-    ModelEvent, ModelHandle, ModelManager, NotReady, UpdateAvailable,
+    ActiveSet, EventReceiver, FailReason, InstallState, LangKey, LoadState, ManagerConfig,
+    ModelCommand, ModelEvent, ModelHandle, ModelManager, NotReady, UpdateAvailable,
 };
 use url::Url;
 
@@ -28,7 +27,7 @@ struct Rig {
     specs: Vec<ModelSpec>,
     mgr: Option<ModelManager>,
     handle: ModelHandle,
-    events: Receiver<ModelEvent>,
+    events: EventReceiver<ModelEvent>,
 }
 
 fn config(

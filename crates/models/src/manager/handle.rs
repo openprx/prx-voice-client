@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::Sender;
 
 use parking_lot::{Mutex, RwLock};
 
@@ -14,6 +14,7 @@ use crate::store::{ModelStore, ReadyModel};
 use crate::types::{ActiveSet, InstallState, LoadState, NotReady};
 
 use super::api::{ManagerSnapshot, ModelCommand, ModelEvent, SharedSnapshot, Waker};
+use super::event_channel::{EventReceiver, Subscribers};
 
 /// Messages for the coordinator thread.
 pub(crate) enum Msg {
@@ -37,7 +38,7 @@ pub(crate) enum Msg {
 pub(crate) struct Shared {
     pub tx: Mutex<Sender<Msg>>,
     pub snapshot: RwLock<SharedSnapshot>,
-    pub subscribers: Mutex<Vec<Sender<ModelEvent>>>,
+    pub subscribers: Subscribers<ModelEvent>,
     pub waker: RwLock<Option<Waker>>,
     pub store: Arc<ModelStore>,
     pub catalogue: RwLock<Arc<Catalogue>>,
@@ -49,9 +50,7 @@ pub(crate) struct Shared {
 
 impl Shared {
     pub fn emit(&self, ev: ModelEvent) {
-        self.subscribers
-            .lock()
-            .retain(|s| s.send(ev.clone()).is_ok());
+        self.subscribers.emit(ev);
     }
 
     pub fn wake(&self) {
@@ -81,10 +80,11 @@ impl ModelHandle {
         self.inner.snapshot.read().clone()
     }
 
-    pub fn subscribe(&self) -> Receiver<ModelEvent> {
-        let (tx, rx) = channel();
-        self.inner.subscribers.lock().push(tx);
-        rx
+    /// Subscribe to manager events. The queue is bounded (`EVENT_CAPACITY`)
+    /// and drops the oldest event when the subscriber lags; the snapshot is
+    /// the source of truth, so after `dropped_count` grows, re-read it.
+    pub fn subscribe(&self) -> EventReceiver<ModelEvent> {
+        self.inner.subscribers.subscribe()
     }
 
     /// Called (from any thread) whenever the snapshot or an event changed;
