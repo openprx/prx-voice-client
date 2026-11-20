@@ -74,7 +74,7 @@ impl fmt::Display for PromptTemplate {
 /// How much context and glossary one request may carry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PromptLimits {
-    /// Most previous clause pairs (`pipeline.mt_context_clauses`, 2 [C]).
+    /// Most previous clause pairs (`pipeline.mt_context_clauses`, 4 [C]).
     pub max_context_pairs: usize,
     /// Most characters of context (both sides of all pairs).
     pub max_context_chars: usize,
@@ -87,8 +87,8 @@ pub struct PromptLimits {
 impl Default for PromptLimits {
     fn default() -> Self {
         Self {
-            max_context_pairs: 2,
-            max_context_chars: 600,
+            max_context_pairs: 4,
+            max_context_chars: 800,
             max_glossary_terms: 32,
             max_glossary_chars: 800,
         }

@@ -88,8 +88,8 @@ pub struct PipelineParams {
     /// Language the listener hears.
     pub target: Lang,
     /// `pipeline.clause_pause_ms`, `segment_end_pause_ms`, `long_segment_*`,
-    /// `max_clause_s`, `max_segment_s`, `commit_on_stable_partial`,
-    /// `stable_partial_ms`, `split_target_clauses`.
+    /// `max_clause_s`, `max_segment_s`, `early_commit`, `early_chunk_chars`,
+    /// `early_chunk_words`, `early_max_wait_ms`, `split_target_clauses`.
     pub commit: CommitParams,
     /// `call.barge_in` and `call.barge_in_max_lag_ms`.
     pub interrupt: InterruptParams,
@@ -151,7 +151,7 @@ impl PipelineParams {
             vad_release_threshold: 0.25,
             min_speech: Duration::from_millis(160),
             pad: Duration::from_millis(200),
-            mt_context_clauses: 2,
+            mt_context_clauses: 4,
             max_backlog: Duration::from_secs(6),
             jitter_buffer: Duration::from_millis(150),
             voice,

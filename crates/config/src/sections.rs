@@ -375,10 +375,17 @@ pub struct PipelineConfig {
     pub min_speech_ms: u32,
     /// Audio kept before and after speech, in milliseconds.
     pub pad_ms: u32,
-    /// Commit a clause on a sentence-final mark that has stopped changing.
-    pub commit_on_stable_partial: bool,
-    /// How long a partial must stay unchanged to count as stable, in milliseconds.
-    pub stable_partial_ms: u32,
+    /// When translatable units are committed from the recogniser's stable prefix, before the
+    /// speaker pauses: `"segment_end"` (only at a pause or the end of the segment),
+    /// `"punctuation"` (also at sentence-final and clause-level marks) or `"chunk"` (also, with no
+    /// mark, once the stable text has `early_chunk_chars` or `early_chunk_words` units).
+    pub early_commit: String,
+    /// Fewest stable Chinese characters that make a chunk when no mark is available.
+    pub early_chunk_chars: u32,
+    /// Fewest stable English words that make a chunk when no mark is available.
+    pub early_chunk_words: u32,
+    /// Audio without a commit after which the chunk size is halved, in milliseconds.
+    pub early_max_wait_ms: u32,
     /// Send the first target sentence to synthesis before the clause is complete.
     pub split_target_clauses: bool,
     /// Translate a stable partial ahead of its commit.
@@ -413,11 +420,13 @@ impl Default for PipelineConfig {
             vad_threshold: 0.4,
             min_speech_ms: 160,
             pad_ms: 200,
-            commit_on_stable_partial: false,
-            stable_partial_ms: 400,
+            early_commit: "chunk".to_owned(),
+            early_chunk_chars: 8,
+            early_chunk_words: 6,
+            early_max_wait_ms: 2_500,
             split_target_clauses: false,
             speculative_mt: false,
-            mt_context_clauses: 2,
+            mt_context_clauses: 4,
             jitter_buffer_ms: 150,
             max_backlog_ms: 6_000,
             asr_redecode_interval_ms: 400,

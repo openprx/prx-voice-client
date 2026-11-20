@@ -326,6 +326,48 @@ pub fn first_clause_end(lang: Lang, text: &str) -> Option<usize> {
     }
 }
 
+/// The byte offset just after the last clause of `text` that ends at or before `limit`: the
+/// clauses are cut one after the other by the rule of [`ClauseSplitter`] (a mark that needs the
+/// next character to be judged does not count while that character is missing), and the marks and
+/// closing quotes that trail the last cut are taken with it when they end within `limit`.
+///
+/// For callers that hold a growing text and commit it up to its last safe boundary: `limit` is the
+/// part of the text that will not change, while the text after it is still read, so that a mark
+/// at the end of the stable part can be judged by what follows it.
+pub fn last_clause_end_within(lang: Lang, text: &str, limit: usize) -> Option<usize> {
+    let params = SplitParams::for_lang(lang);
+    let mut start = 0;
+    let mut last = None;
+    while start < text.len() {
+        let splitter = ClauseSplitter {
+            params,
+            buf: text[start..].to_owned(),
+            after_cut: false,
+        };
+        let Scan::Cut(end) = splitter.scan(false) else {
+            break;
+        };
+        let cut = start + end;
+        if cut > limit {
+            break;
+        }
+        let rest = &text[cut..];
+        let marks = rest.len()
+            - rest
+                .trim_start_matches(|c: char| {
+                    CLOSERS.contains(&c) || SENTENCE_MARKS.contains(&c) || c == '.'
+                })
+                .len();
+        last = Some(if cut + marks <= limit {
+            cut + marks
+        } else {
+            cut
+        });
+        start = cut + (rest.len() - trim_stray_start(rest).len());
+    }
+    last
+}
+
 /// `text` without the whitespace, closing quotes and marks that trail a clause
 /// just cut (they belong to that clause and are silent).
 pub fn trim_stray_start(text: &str) -> &str {
@@ -538,6 +580,61 @@ mod tests {
             Some("今天天气很好。".len())
         );
         assert_eq!(first_clause_end(Lang::En, "The U.S. economy grew"), None);
+    }
+
+    #[test]
+    fn last_clause_end_within_takes_the_last_cut_inside_the_limit() {
+        let text = "We left early today, and then the rain started. After that we";
+        let all = text.len();
+        assert_eq!(
+            last_clause_end_within(Lang::En, text, all),
+            Some("We left early today, and then the rain started.".len())
+        );
+        // Limited to the stable part: only the first cut fits.
+        assert_eq!(
+            last_clause_end_within(Lang::En, text, "We left early today, and then".len()),
+            Some("We left early today,".len())
+        );
+        assert_eq!(last_clause_end_within(Lang::En, text, 5), None);
+    }
+
+    #[test]
+    fn last_clause_end_within_keeps_numbers_and_abbreviations_whole() {
+        let text = "The total is 3.5 million dollars, said Dr. Smith at 10:30 and";
+        assert_eq!(
+            last_clause_end_within(Lang::En, text, text.len()),
+            Some("The total is 3.5 million dollars,".len())
+        );
+        let text = "see you at 10:30 then";
+        assert_eq!(last_clause_end_within(Lang::En, text, text.len()), None);
+        assert_eq!(
+            last_clause_end_within(Lang::En, "Dr. Smith said hello", 20),
+            None
+        );
+    }
+
+    #[test]
+    fn last_clause_end_within_waits_for_a_dot_that_needs_the_next_character() {
+        let text = "We will pay it all today.";
+        assert_eq!(last_clause_end_within(Lang::En, text, text.len()), None);
+        let text = "We will pay it all today. Then";
+        assert_eq!(
+            last_clause_end_within(Lang::En, text, "We will pay it all today.".len()),
+            Some("We will pay it all today.".len())
+        );
+    }
+
+    #[test]
+    fn last_clause_end_within_handles_chinese_marks() {
+        let text = "如果明天下雨，我们就改期。好的";
+        assert_eq!(
+            last_clause_end_within(Lang::Zh, text, text.len()),
+            Some("如果明天下雨，我们就改期。".len())
+        );
+        assert_eq!(
+            last_clause_end_within(Lang::Zh, text, "如果明天下雨，我们".len()),
+            Some("如果明天下雨，".len())
+        );
     }
 
     #[test]

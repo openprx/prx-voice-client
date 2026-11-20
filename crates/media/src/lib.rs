@@ -24,7 +24,9 @@ pub mod text_units;
 pub mod time;
 
 pub use audio::{AudioFrame, FrameError, PcmChunk};
-pub use clause_split::{ClauseSplitter, SplitParams, first_clause_end, trim_stray_start};
+pub use clause_split::{
+    ClauseSplitter, SplitParams, first_clause_end, last_clause_end_within, trim_stray_start,
+};
 pub use envelope::{Envelope, EnvelopeKey, RevisionTracker};
 pub use ids::{ClauseId, Direction, SegmentId};
 pub use lang::{Lang, UnknownLang};

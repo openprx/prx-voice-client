@@ -1,7 +1,7 @@
 //! `call_harness`: one direction of the real pipeline with the real providers, a WAV file as the source and either a WAV file or the virtual microphone as the output (pipeline-design CT-15). No call application, no real microphone, no system default device is touched.
 //!
 //! ```text
-//! call_harness --direction outgoing|incoming --set zh|en [--commit segment|early]
+//! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
 //!              [--own zh --peer en] [--max-backlog-ms N] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
@@ -10,8 +10,10 @@
 //!   synthetic sentences with numbers, dates, names and negation), `--set en` the English ones.
 //!   The set's language must be the direction's source language (by default `zh` goes through
 //!   `outgoing`, `en` through `incoming`).
-//! * `--commit segment` is the pipeline's default (a clause is committed at a pause or the end of
-//!   the segment); `early` also commits at a sentence-final mark of a partial that stopped changing.
+//! * `--commit` sets `pipeline.early_commit`: `segment` commits a clause only at a pause or the end
+//!   of the segment (`segment_end`); `punctuation` also commits the recogniser's stable text at
+//!   sentence-final and clause-level marks; `chunk` also commits it, with no mark, once it has the
+//!   configured minimum size. Without the option the configured value is used (default `chunk`).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
 //!   records it (by UID, no default device changed) and recognises the recording again: the round trip.
 //! * Every utterance runs at the pace of real time with 0.3 s of silence before and 2 s after.
@@ -32,6 +34,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use prxvc_media::{Direction, Lang, SystemClock};
+use prxvc_session::EarlyCommit;
 
 use call_kit::config::load_current;
 use call_kit::params::pipeline_params;
@@ -51,7 +54,7 @@ struct Item {
 struct Options {
     direction: Direction,
     set: String,
-    early: bool,
+    commit: Option<EarlyCommit>,
     vmic: bool,
     count: usize,
     numbers: usize,
@@ -68,7 +71,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut o = Options {
         direction: Direction::Outgoing,
         set: "zh".into(),
-        early: false,
+        commit: None,
         vmic: false,
         count: 10,
         numbers: 5,
@@ -96,11 +99,12 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--set" => o.set = value(arg, &mut it)?,
             "--commit" => {
-                o.early = match value(arg, &mut it)?.as_str() {
-                    "segment" => false,
-                    "early" => true,
+                o.commit = Some(match value(arg, &mut it)?.as_str() {
+                    "segment" | "segment_end" => EarlyCommit::SegmentEnd,
+                    "punctuation" => EarlyCommit::Punctuation,
+                    "chunk" => EarlyCommit::Chunk,
                     other => return Err(format!("unknown commit behaviour {other}")),
-                }
+                })
             }
             "--output" => {
                 o.vmic = match value(arg, &mut it)?.as_str() {
@@ -134,7 +138,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "{}-{}-{}-{}",
             format!("{:?}", o.direction).to_lowercase(),
             o.set,
-            if o.early { "early" } else { "segment" },
+            o.commit.map_or("default", EarlyCommit::as_str),
             if o.vmic { "vmic" } else { "wav" }
         );
     }
@@ -202,7 +206,9 @@ fn lang_of(set: &str) -> Option<Lang> {
 fn execute(o: &Options) -> Result<bool, String> {
     let items = load_items(o)?;
     let mut config = load_current();
-    config.pipeline.commit_on_stable_partial = o.early;
+    if let Some(mode) = o.commit {
+        config.pipeline.early_commit = mode.as_str().to_owned();
+    }
     // The languages of the run, whatever the interface language derives them to.
     config.call.self_language.clone_from(&o.own);
     config.call.peer_language.clone_from(&o.peer);
@@ -236,11 +242,7 @@ fn execute(o: &Options) -> Result<bool, String> {
         direction_plan.source,
         direction_plan.target,
         plan.recognition,
-        if o.early {
-            "early (stable sentence end)"
-        } else {
-            "at the pause or segment end"
-        },
+        config.pipeline.early_commit,
         if o.vmic {
             "virtual microphone with round trip"
         } else {
@@ -257,14 +259,13 @@ fn execute(o: &Options) -> Result<bool, String> {
             .join("\n")
     })?;
     let build = built.pop().ok_or("nothing was built")?;
-    let mut params = pipeline_params(
+    let params = pipeline_params(
         &config,
         o.direction,
         (direction_plan.source, direction_plan.target),
         direction_plan.tts.primary.voice.selection(),
         plan.recognition,
     );
-    params.commit.commit_on_stable_partial = o.early;
     let out_dir = o.out.join(&o.tag);
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let output = if o.vmic {
@@ -423,14 +424,14 @@ mod tests {
             "--set",
             "en",
             "--commit",
-            "early",
+            "chunk",
             "--output",
             "vmic",
         ]))
         .unwrap();
         assert_eq!(o.direction, Direction::Incoming);
-        assert!(o.early && o.vmic);
-        assert_eq!(o.tag, "incoming-en-early-vmic");
+        assert!(o.commit == Some(EarlyCommit::Chunk) && o.vmic);
+        assert_eq!(o.tag, "incoming-en-chunk-vmic");
         assert!(parse(&args(&["--commit", "late"])).is_err());
         assert!(parse(&args(&["--nope"])).is_err());
     }

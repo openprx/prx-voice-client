@@ -61,10 +61,11 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert_eq!((p.max_clause_s, p.max_segment_s), (8, 25));
     assert_eq!(p.vad_threshold, 0.4);
     assert_eq!((p.min_speech_ms, p.pad_ms), (160, 200));
-    assert!(!p.commit_on_stable_partial);
-    assert_eq!(p.stable_partial_ms, 400);
+    assert_eq!(p.early_commit, "chunk");
+    assert_eq!((p.early_chunk_chars, p.early_chunk_words), (8, 6));
+    assert_eq!(p.early_max_wait_ms, 2_500);
     assert!(!p.split_target_clauses && !p.speculative_mt);
-    assert_eq!(p.mt_context_clauses, 2);
+    assert_eq!(p.mt_context_clauses, 4);
     assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 6_000));
     // The recogniser's cadence and stability keys default to the adapter's own values.
     assert_eq!(
@@ -199,7 +200,7 @@ fn round_trip_with_the_new_keys_filled_is_stable() {
     c.call.barge_in_max_lag_ms = 1_500;
     c.pipeline.recognition_mode = "streaming".into();
     c.pipeline.vad_threshold = 0.55;
-    c.pipeline.commit_on_stable_partial = true;
+    c.pipeline.early_commit = "punctuation".into();
     c.pipeline.max_backlog_ms = 9_000;
     c.providers
         .active

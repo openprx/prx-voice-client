@@ -12,7 +12,7 @@ Required term translations (use them whenever the term occurs):
 {terms}
 
 [context]
-Earlier clauses of the same speaker with their translations. They are context only, for pronouns and terms. Never translate, repeat or answer them.
+Earlier clauses of the same speaker with their translations. They are context only, for pronouns and terms. Never translate, repeat or answer them. The message may be the next part of the last of them, cut off while the speaker is still talking: translate only the message, so that it reads on from the earlier translation.
 {pairs}
 
 [term]

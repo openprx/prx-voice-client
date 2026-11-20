@@ -59,9 +59,10 @@ pub use call_state::{
     CallAction, CallEvent, CallReason, CallReasons, CallRejection, CallState, ProviderProgress,
 };
 pub use commit_policy::{
-    ClauseReason, CommitDecision, CommitParams, CutPoint, EndReason, RecognitionInput, Speculation,
-    TranslationProgress, TtsCommit, check_speculation, decide_recognition_commit,
-    decide_tts_commit, is_clause_sized,
+    ClauseReason, CommitDecision, CommitParams, CutPoint, EarlyCommit, EarlyCut, EarlyInput,
+    EarlyReason, EndReason, RecognitionInput, Speculation, TranslationProgress, TtsCommit,
+    check_speculation, decide_early_cut, decide_recognition_commit, decide_tts_commit,
+    is_clause_sized,
 };
 pub use config::{InterruptMode, SessionConfig, TranscriptMode};
 pub use dir_set::DirSet;

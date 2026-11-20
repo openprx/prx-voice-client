@@ -17,8 +17,8 @@ use super::segmenter::Segmenter;
 use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
-    ClauseReason, CommitDecision, CutPoint, RecognitionInput, decide_recognition_commit,
-    is_clause_sized, last_sentence_end,
+    ClauseReason, CommitDecision, CutPoint, EarlyInput, RecognitionInput, decide_early_cut,
+    decide_recognition_commit, is_clause_sized,
 };
 use crate::fault::Stage;
 use crate::pipeline::snapshot::Stats;
@@ -93,7 +93,6 @@ struct OpenSegment {
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
-    tail_changed_at: MonoTime,
     first_partial_traced: bool,
     pause_traced: bool,
     clips: VecDeque<(MonoTime, Vec<f32>)>,
@@ -300,7 +299,6 @@ impl RecognitionStage {
             hyp: None,
             partial_seen: false,
             tail: String::new(),
-            tail_changed_at: self.now,
             first_partial_traced: false,
             pause_traced: false,
             clips,
@@ -387,10 +385,7 @@ impl RecognitionStage {
         }
         let tail = text[committed..].to_owned();
         let stable_in_tail = floor_boundary(&tail, stable.saturating_sub(committed));
-        if tail != open.tail {
-            open.tail.clone_from(&tail);
-            open.tail_changed_at = self.now;
-        }
+        open.tail.clone_from(&tail);
         open.partial_seen = true;
         open.hyp = Some(Hyp {
             text,
@@ -424,7 +419,10 @@ impl RecognitionStage {
             open.pause_traced = true;
             self.tracer.mark(open.clause(), TraceStage::ClausePause);
         }
-        let heard_speech = self.segmenter.last_speech_end() > open.last_commit_ts;
+        // Text still waiting after a commit from the stable prefix is speech that has not been
+        // committed, whatever the end of the last commit says.
+        let heard_speech = self.segmenter.last_speech_end() > open.last_commit_ts
+            || (open.committed_bytes > 0 && !open.tail.trim().is_empty());
         let joined;
         let text: &str = if !open.partial_seen {
             if heard_speech || !open.carry.is_empty() {
@@ -447,13 +445,41 @@ impl RecognitionStage {
             uncommitted_text: text,
             uncommitted_audio: self.now.saturating_since(open.last_commit_ts),
             segment_audio: self.now.saturating_since(open.onset),
-            text_unchanged_for: self.now.saturating_since(open.tail_changed_at),
             has_stable_word_boundary: stable_cut(open).is_some(),
         };
+        let waited = input.uncommitted_audio;
         match decide_recognition_commit(&self.p.commit, &input) {
-            CommitDecision::Wait => Ok(()),
+            CommitDecision::Wait => {
+                self.commit_early(waited, out);
+                Ok(())
+            }
             CommitDecision::CommitClause(reason) => self.commit_clause(reason, out),
             CommitDecision::EndSegment { .. } => self.end_segment(out),
+        }
+    }
+
+    /// Commit text from the recogniser's stable prefix while the speaker goes on (`early_commit`).
+    /// Not with a refine pass: it decodes the audio of a clause again and would not match a cut that
+    /// the stable text chose.
+    fn commit_early(&mut self, waited: Duration, out: &mut Out) {
+        if self.p.refines() {
+            return;
+        }
+        let Some(open) = self.open.as_ref() else {
+            return;
+        };
+        let (Some(hyp), Some(stable)) = (open.hyp.as_ref(), stable_cut(open)) else {
+            return;
+        };
+        let input = EarlyInput {
+            lang: self.p.source,
+            text: &hyp.text,
+            committed: open.committed_bytes,
+            stable,
+            waited,
+        };
+        if let Some(cut) = decide_early_cut(&self.p.commit, &input) {
+            self.commit_prefix(cut.end, out);
         }
     }
 
@@ -462,14 +488,8 @@ impl RecognitionStage {
         reason: ClauseReason,
         out: &mut Out,
     ) -> Result<(), RecognitionFault> {
-        let stable = matches!(
-            reason,
-            ClauseReason::LengthCut(CutPoint::LastStableWord) | ClauseReason::StablePunctuation
-        );
-        if stable && self.commit_stable(reason, out) {
-            return Ok(());
-        }
-        if matches!(reason, ClauseReason::StablePunctuation) {
+        let stable = matches!(reason, ClauseReason::LengthCut(CutPoint::LastStableWord));
+        if stable && self.commit_stable(out) {
             return Ok(());
         }
         self.commit_final(false, out)
@@ -477,21 +497,25 @@ impl RecognitionStage {
 
     /// Commit the stable part of the hypothesis without ending the round.
     /// Returns whether a clause was committed.
-    fn commit_stable(&mut self, reason: ClauseReason, out: &mut Out) -> bool {
+    fn commit_stable(&mut self, out: &mut Out) -> bool {
+        let Some(cut) = self.open.as_ref().and_then(stable_cut) else {
+            return false;
+        };
+        self.commit_prefix(cut, out)
+    }
+
+    /// Commit the hypothesis text up to byte `cut` as a clause, without ending the round.
+    /// Returns whether a clause was committed.
+    fn commit_prefix(&mut self, cut: usize, out: &mut Out) -> bool {
         let Some(open) = self.open.as_mut() else {
             return false;
         };
-        let (Some(hyp), Some(cut)) = (open.hyp.clone(), stable_cut(open)) else {
+        let Some(hyp) = open.hyp.clone() else {
             return false;
         };
-        let cut = if matches!(reason, ClauseReason::StablePunctuation) {
-            match last_sentence_end(&hyp.text[open.committed_bytes..cut]) {
-                Some(rel) => open.committed_bytes + rel,
-                None => return false,
-            }
-        } else {
-            cut
-        };
+        if cut <= open.committed_bytes || cut > hyp.text.len() {
+            return false;
+        }
         let piece = hyp.text[open.committed_bytes..cut].trim().to_owned();
         let text = join_carry(&open.carry, &piece);
         if !is_clause_sized(&self.p.commit, &text) {
@@ -500,7 +524,6 @@ impl RecognitionStage {
         open.committed_prefix = hyp.text[..cut].to_owned();
         open.committed_bytes = cut;
         open.tail = hyp.text[cut..].to_owned();
-        open.tail_changed_at = self.now;
         let end = hyp.audio_end.min(self.now);
         self.emit_commit(text, end, out);
         true

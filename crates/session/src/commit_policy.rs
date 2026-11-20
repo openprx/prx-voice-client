@@ -4,13 +4,16 @@ use std::time::Duration;
 
 use prxvc_media::{Lang, first_clause_end};
 
+mod early;
+pub use early::{EarlyCommit, EarlyCut, EarlyInput, EarlyReason, decide_early_cut};
+
 /// Thresholds of the commit rules, shaped like the `[pipeline]` configuration keys.
 ///
 /// The crate does not depend on `prxvc-config`: the composition root fills
 /// this from the configuration (`clause_pause_ms`, `segment_end_pause_ms`,
 /// `long_segment_after_s`, `long_segment_pause_ms`, `max_clause_s`,
-/// `max_segment_s`, `commit_on_stable_partial`, `stable_partial_ms`,
-/// `split_target_clauses`, `speculative_mt`).
+/// `max_segment_s`, `early_commit`, `early_chunk_chars`, `early_chunk_words`,
+/// `early_max_wait_ms`, `split_target_clauses`, `speculative_mt`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CommitParams {
     /// Silence that commits a clause inside a segment.
@@ -29,10 +32,17 @@ pub struct CommitParams {
     pub min_clause_chars: usize,
     /// Fewest English words that make a clause on a pause.
     pub min_clause_words: usize,
-    /// Commit on a stable sentence-final mark (milestone M3).
-    pub commit_on_stable_partial: bool,
-    /// How long the prefix must stay unchanged for that.
-    pub stable_partial: Duration,
+    /// When translatable units are committed from the recogniser's stable prefix, before the
+    /// segment ends (`pipeline.early_commit`, see [`early`]).
+    pub early: EarlyCommit,
+    /// Fewest stable Chinese characters that make a chunk when no mark is available.
+    pub chunk_chars: usize,
+    /// Fewest stable English words that make a chunk when no mark is available.
+    pub chunk_words: usize,
+    /// Audio without a commit after which the chunk size is halved.
+    pub early_max_wait: Duration,
+    /// Fewest units a chunk cut may leave after it (nothing is also fine).
+    pub min_remainder: usize,
     /// Send the first target sentence to synthesis early (milestone M3).
     pub split_target_clauses: bool,
     /// Tokens that must follow a sentence-final mark before an early split.
@@ -51,8 +61,11 @@ impl Default for CommitParams {
             max_segment: Duration::from_secs(25),
             min_clause_chars: 4,
             min_clause_words: 2,
-            commit_on_stable_partial: false,
-            stable_partial: Duration::from_millis(400),
+            early: EarlyCommit::Chunk,
+            chunk_chars: 8,
+            chunk_words: 6,
+            early_max_wait: Duration::from_millis(2500),
+            min_remainder: 2,
             split_target_clauses: false,
             split_min_tokens_after: 4,
         }
@@ -70,8 +83,6 @@ pub struct RecognitionInput<'a> {
     pub uncommitted_audio: Duration,
     /// Audio since the segment began.
     pub segment_audio: Duration,
-    /// How long the partial's text has stayed unchanged.
-    pub text_unchanged_for: Duration,
     /// Whether the partial has a stable word boundary to cut at.
     pub has_stable_word_boundary: bool,
 }
@@ -92,8 +103,6 @@ pub enum ClauseReason {
     ClausePause,
     /// The uncommitted audio reached its maximum.
     LengthCut(CutPoint),
-    /// A sentence-final mark stayed unchanged (M3).
-    StablePunctuation,
 }
 
 /// Why a segment ended.
@@ -125,7 +134,7 @@ pub enum CommitDecision {
 ///
 /// All rules are evaluated at one instant; when several hold, the strongest
 /// wins: segment end (by length, then by pause), clause length cut, clause
-/// pause, stable punctuation. A clause pause with too little text is
+/// pause. Commits from the stable prefix are a separate rule ([`decide_early_cut`]). A clause pause with too little text is
 /// ignored and the text joins the next clause; a segment end always commits
 /// whatever text exists, so no recognised text is lost.
 pub fn decide_recognition_commit(p: &CommitParams, i: &RecognitionInput<'_>) -> CommitDecision {
@@ -151,12 +160,6 @@ pub fn decide_recognition_commit(p: &CommitParams, i: &RecognitionInput<'_>) -> 
     }
     if i.silence >= p.clause_pause && is_clause_sized(p, i.uncommitted_text) {
         return CommitDecision::CommitClause(ClauseReason::ClausePause);
-    }
-    if p.commit_on_stable_partial
-        && ends_sentence(i.uncommitted_text)
-        && i.text_unchanged_for >= p.stable_partial
-    {
-        return CommitDecision::CommitClause(ClauseReason::StablePunctuation);
     }
     CommitDecision::Wait
 }
@@ -197,27 +200,6 @@ fn count_units(text: &str) -> (usize, usize) {
 
 fn is_cjk(c: char) -> bool {
     matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}')
-}
-
-const SENTENCE_FINAL: [char; 7] = ['。', '！', '？', '.', '!', '?', '…'];
-
-fn is_final_mark(c: char) -> bool {
-    SENTENCE_FINAL.contains(&c)
-}
-
-/// The byte offset just after the last sentence-final mark of `text`, if it has one.
-pub(crate) fn last_sentence_end(text: &str) -> Option<usize> {
-    text.char_indices()
-        .filter(|(_, c)| is_final_mark(*c))
-        .map(|(at, c)| at + c.len_utf8())
-        .next_back()
-}
-
-fn ends_sentence(text: &str) -> bool {
-    text.trim_end()
-        .chars()
-        .next_back()
-        .is_some_and(is_final_mark)
 }
 
 /// The translation stream of one clause at one instant.

@@ -48,7 +48,7 @@ What this test shows: you press **Start** with **Translate** on, make a WhatsApp
    | `call.output_gain_db` | gain of the translation you hear, dB; raise it if WhatsApp's voice processing lowers it (see item 8) |
    | `call.local_output_mode` | `translation`, `both` or `original` (what you hear) |
    | `debug.call_trace = true` | write one line per clause to `traces/call-<time>.jsonl` (also `PRXVC_CALL_TRACE=1`); add `debug.call_trace_text = true` (or `PRXVC_CALL_TRACE_TEXT=1`) to include the texts. Off by default; nothing is written to disk otherwise. Captions are only on screen |
-   | `pipeline.clause_pause_ms`, `pipeline.commit_on_stable_partial` | when a clause is committed (see "What the harness found") |
+   | `pipeline.clause_pause_ms`, `pipeline.early_commit` | when a clause is committed: `early_commit` is `segment_end` (only at a pause or the end of the segment), `punctuation` (also from the recogniser's stable text at sentence-final and clause-level marks) or `chunk` (default: also, with no mark, once the stable text has `pipeline.early_chunk_words` English words or `pipeline.early_chunk_chars` Chinese characters, 6 and 8; after `pipeline.early_max_wait_ms` (2500) without a commit the chunk size is halved). See "What the harness found" |
    | `pipeline.max_backlog_ms` | unplayed audio per direction above which the oldest clause is skipped; see "What the harness found" |
 
 6. Open the app and the debug window: `open -n "dist/debug/PRX Voice.app"`, then right-click the orb and choose **Debug** (Chinese: **调试**). The section "Call mode (temporary control)" holds the switch, the buttons and the readouts below. Start WhatsApp and leave it idle.
@@ -137,5 +137,5 @@ Per item: pass or fail, the debug view's state, lines and counters at a failure,
 
 The silent harness (`call_harness`, see its header) runs one direction of the real pipeline on recorded speech without a call application, a microphone or any change of the default devices; its latency tables are in the report that came with this change. Two behaviours matter for your first call:
 
-- A clause is committed at a pause of `pipeline.clause_pause_ms` (300) or at the end of the segment, so a sentence spoken without a pause is translated only after it ends.
+- A clause is committed at a pause of `pipeline.clause_pause_ms` (300) or at the end of the segment; with `pipeline.early_commit = "punctuation"` or `"chunk"` the recogniser's stable text is also committed while you are still talking (cuts never split a number with its unit, a time, a date, a name, or end on a function word). Early commits translate smaller units, each with the earlier units of the same utterance as context.
 - The backlog rule counts the length of the **source speech** of queued clauses. When a long clause is followed by a short one (for instance a trailing "um"), the sum can exceed `pipeline.max_backlog_ms` (6000) and the **older, long clause is skipped without being spoken**. If a long sentence is missing from the translation and the counters show a backlog skip, raise `pipeline.max_backlog_ms` (for example 20000) in `config.toml`.

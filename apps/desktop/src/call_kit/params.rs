@@ -7,7 +7,7 @@ use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 use prxvc_providers::RecognitionMode as PlannedMode;
 use prxvc_session::pipeline::{PipelineParams, RecognitionMode};
-use prxvc_session::{CommitParams, InterruptParams, OutputPolicy, Passthrough};
+use prxvc_session::{CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough};
 
 fn ms(n: u32) -> Duration {
     Duration::from_millis(u64::from(n))
@@ -31,6 +31,18 @@ fn passthrough(setting: &str, key: &str) -> Passthrough {
             Passthrough::Original
         }
     }
+}
+
+/// The configured early-commit behaviour; an unknown spelling is reported and means the default.
+fn early_commit(setting: &str) -> EarlyCommit {
+    EarlyCommit::parse(setting).unwrap_or_else(|| {
+        tracing::warn!(
+            key = "pipeline.early_commit",
+            value = setting,
+            "unknown early commit setting; using \"chunk\""
+        );
+        CommitParams::default().early
+    })
 }
 
 /// What the listener of each direction hears while it is paused or failed (`call.*_when_paused`, `call.*_on_failure`).
@@ -73,8 +85,10 @@ pub(crate) fn pipeline_params(
         long_segment_pause: ms(p.long_segment_pause_ms),
         max_clause: secs(p.max_clause_s),
         max_segment: secs(p.max_segment_s),
-        commit_on_stable_partial: p.commit_on_stable_partial,
-        stable_partial: ms(p.stable_partial_ms),
+        early: early_commit(&p.early_commit),
+        chunk_chars: p.early_chunk_chars as usize,
+        chunk_words: p.early_chunk_words as usize,
+        early_max_wait: ms(p.early_max_wait_ms),
         split_target_clauses: p.split_target_clauses,
         ..CommitParams::default()
     };
@@ -113,7 +127,10 @@ mod tests {
         assert_eq!(params.commit.clause_pause, Duration::from_millis(300));
         assert_eq!(params.commit.segment_end_pause, Duration::from_millis(600));
         assert_eq!(params.commit.max_clause, Duration::from_secs(8));
-        assert!(!params.commit.commit_on_stable_partial);
+        assert_eq!(params.commit.early, EarlyCommit::Chunk);
+        assert_eq!(params.commit.chunk_chars, 8);
+        assert_eq!(params.commit.chunk_words, 6);
+        assert_eq!(params.commit.early_max_wait, Duration::from_millis(2500));
         assert_eq!(params.recognition_mode, RecognitionMode::TwoPass);
         assert_eq!(params.output, OutputPolicy::default());
         assert!(params.interrupt.barge_in);
@@ -123,9 +140,38 @@ mod tests {
     }
 
     #[test]
+    fn an_unknown_early_commit_setting_means_the_default() {
+        let mut config = AppConfig::default();
+        config.pipeline.early_commit = "sometimes".into();
+        let params = pipeline_params(
+            &config,
+            Direction::Outgoing,
+            (Lang::Zh, Lang::En),
+            voice(),
+            PlannedMode::Streaming,
+        );
+        assert_eq!(params.commit.early, CommitParams::default().early);
+        for (spelling, want) in [
+            ("segment_end", EarlyCommit::SegmentEnd),
+            ("punctuation", EarlyCommit::Punctuation),
+            ("chunk", EarlyCommit::Chunk),
+        ] {
+            config.pipeline.early_commit = spelling.into();
+            let p = pipeline_params(
+                &config,
+                Direction::Outgoing,
+                (Lang::Zh, Lang::En),
+                voice(),
+                PlannedMode::Streaming,
+            );
+            assert_eq!(p.commit.early, want);
+        }
+    }
+
+    #[test]
     fn configured_values_and_the_direction_s_own_policy_are_read() {
         let mut config = AppConfig::default();
-        config.pipeline.commit_on_stable_partial = true;
+        config.pipeline.early_commit = "punctuation".into();
         config.pipeline.clause_pause_ms = 250;
         config.call.barge_in = false;
         config.call.incoming_on_failure = "silence".into();
@@ -143,7 +189,7 @@ mod tests {
             voice(),
             PlannedMode::Streaming,
         );
-        assert!(outgoing.commit.commit_on_stable_partial);
+        assert_eq!(outgoing.commit.early, EarlyCommit::Punctuation);
         assert_eq!(outgoing.commit.clause_pause, Duration::from_millis(250));
         assert!(!outgoing.interrupt.barge_in);
         assert_eq!(outgoing.output.on_failure, Passthrough::Original);

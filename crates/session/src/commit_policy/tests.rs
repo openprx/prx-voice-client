@@ -12,7 +12,6 @@ fn input<'a>(text: &'a str) -> RecognitionInput<'a> {
         uncommitted_text: text,
         uncommitted_audio: ms(1_000),
         segment_audio: ms(1_000),
-        text_unchanged_for: Duration::ZERO,
         has_stable_word_boundary: true,
     }
 }
@@ -169,62 +168,27 @@ fn recognition_rows_2() -> Vec<Row> {
                 reason: EndReason::MaxSegmentLength,
             },
         },
-        Row {
-            name: "stable punctuation is off by default",
-            params: p,
-            input: RecognitionInput {
-                text_unchanged_for: ms(900),
-                ..base("今天天气很好。")
-            },
-            want: Wait,
-        },
     ]
 }
 
 /// Part 3 of the recognition rows.
 fn recognition_rows_3() -> Vec<Row> {
-    use ClauseReason::{ClausePause, StablePunctuation};
+    use ClauseReason::ClausePause;
     use CommitDecision::{CommitClause, Wait};
     let p = CommitParams::default();
-    let stable = CommitParams {
-        commit_on_stable_partial: true,
-        ..p
-    };
     let base = |text: &'static str| input(text);
     vec![
         Row {
-            name: "stable punctuation commits when enabled and unchanged long enough",
-            params: stable,
-            input: RecognitionInput {
-                text_unchanged_for: ms(400),
-                ..base("今天天气很好。")
-            },
-            want: CommitClause(StablePunctuation),
-        },
-        Row {
-            name: "stable punctuation waits while the prefix still changes",
-            params: stable,
-            input: RecognitionInput {
-                text_unchanged_for: ms(399),
-                ..base("今天天气很好。")
-            },
+            name: "a sentence-final mark alone commits nothing here (the early rule does)",
+            params: p,
+            input: base("今天天气很好。"),
             want: Wait,
         },
         Row {
-            name: "no sentence-final mark, no stable-punctuation commit",
-            params: stable,
-            input: RecognitionInput {
-                text_unchanged_for: ms(900),
-                ..base("今天天气很好")
-            },
-            want: Wait,
-        },
-        Row {
-            name: "pause wins over stable punctuation",
-            params: stable,
+            name: "pause commits a finished sentence",
+            params: p,
             input: RecognitionInput {
                 silence: ms(300),
-                text_unchanged_for: ms(900),
                 ..base("Is it ready?")
             },
             want: CommitClause(ClausePause),
