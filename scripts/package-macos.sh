@@ -115,7 +115,23 @@ iconutil -c icns "$iconset" -o "$contents/Resources/AppIcon.icns"
 # Licences and third-party notices.
 cp LICENSE LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES.md "$contents/Resources/"
 
-# Signing. Nested code (none today; native libraries loaded later go in
+# Virtual microphone driver (usb variant, the one to ship): built with the same signing identity and
+# carried as payload that the app installs into /Library/Audio/Plug-Ins/HAL on request. Its notice
+# travels with it (inside the driver bundle and next to the licences).
+driver_dir="$contents/Resources/Drivers"
+case "${target%%-*}" in
+  ""|aarch64|arm64)
+    echo "building the virtual microphone driver (usb variant)"
+    "$root/driver/macos/build.sh" --transport usb --out "$work/driver" >"$work/driver-build.log" 2>&1 \
+      || { cat "$work/driver-build.log" >&2; die "the driver build failed"; }
+    mkdir -p "$driver_dir"
+    ditto "$work/driver/usb/PrxVoiceMicrophone.driver" "$driver_dir/PrxVoiceMicrophone.driver"
+    cp driver/macos/NOTICE "$contents/Resources/NOTICE-PrxVoiceMicrophone-driver"
+    ;;
+  *) echo "note: the virtual microphone driver is arm64 only; not bundled for target $target" ;;
+esac
+
+# Signing. Nested code (the driver payload; native libraries loaded later go in
 # Contents/Frameworks) is signed first with the same identity, so library
 # validation under the hardened runtime accepts it.
 identity="${PRXVC_CODESIGN_IDENTITY:--}"
@@ -129,7 +145,7 @@ sign() {
     codesign --force --timestamp --options runtime --sign "$identity" "$@"
   fi
 }
-for dir in Frameworks PlugIns Library; do
+for dir in Frameworks PlugIns Library Resources/Drivers; do
   if [ -d "$contents/$dir" ]; then
     while IFS= read -r nested; do sign "$nested"; done < <(
       find "$contents/$dir" \( -name '*.dylib' -o -name '*.framework' -o -name '*.driver' -o -name '*.bundle' \) -prune)
