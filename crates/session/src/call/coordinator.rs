@@ -437,6 +437,7 @@ impl Coordinator {
                 hears: l.hears,
                 path: l.path.as_ref().and(l.stats.clone()),
                 pipeline: l.running.as_ref().and_then(Running::snapshot),
+                languages: l.running.as_ref().map(Running::languages),
             }
         };
         CallSnapshot {

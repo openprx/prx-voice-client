@@ -208,6 +208,7 @@ fn spawn(
         tracing::warn!("call mode is unavailable: the data directory is unknown");
         return None;
     };
+    let trace = crate::call_kit::trace::TraceSlot::default();
     let host_config = HostConfig {
         input_device: config.audio.input_device.clone(),
         virtual_mic_device: config.audio.virtual_mic_device.clone(),
@@ -218,7 +219,7 @@ fn spawn(
         data_dir: paths.data_dir.clone(),
         config_source: crate::call_kit::config::current_source(),
         translate: vec![prxvc_media::Direction::Outgoing, prxvc_media::Direction::Incoming],
-        trace: Arc::new(crate::call_kit::trace::NullTrace),
+        trace: trace.clone(),
     };
     let settings = settings_from(config);
     let (shared, ownership) = (shared.clone(), ownership.clone());
@@ -226,7 +227,7 @@ fn spawn(
         host: Box::new(RealCallHost::new(host_config)),
         clock: Arc::new(SystemClock::new()),
         ownership,
-        sink: Box::new(move |snapshot| shared.set_call_panel(panel_of(snapshot))),
+        sink: Box::new(move |snapshot| shared.set_call_panel(panel_of(snapshot, &trace))),
         settings,
     });
     match spawned {

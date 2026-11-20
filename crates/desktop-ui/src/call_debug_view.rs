@@ -14,16 +14,35 @@ pub(crate) fn call_section(
     ui: &mut egui::Ui,
     tk: &Tokens,
     panel: &CallPanel,
+    translate: &mut bool,
     commands: &mut Vec<String>,
 ) {
     widgets::section_header(ui, tk, &prxvc_i18n::t("call.title"), false);
+
+    // The switch decides what the next start does; it can only change while call mode is off.
+    let label = prxvc_i18n::t("call.translate");
+    ui.horizontal(|ui| {
+        ui.name_inputs(&label, |ui| {
+            if panel.can_start() {
+                widgets::switch(ui, tk, translate);
+            } else {
+                widgets::switch_with(ui, tk, &mut panel.translate_enabled.clone(), false);
+            }
+        });
+        ui.label(widgets::text(&label, size::SECONDARY, tk.text));
+    });
+    let start_command = if *translate {
+        command::START_TRANSLATED
+    } else {
+        command::START_AUDIO_ONLY
+    };
 
     ui.horizontal_wrapped(|ui| {
         let buttons = [
             (
                 ButtonKind::Primary,
                 "call.start",
-                command::START,
+                start_command,
                 panel.can_start(),
             ),
             (
@@ -91,6 +110,14 @@ pub(crate) fn call_section(
         "call.you_hear",
         &panel.incoming,
     );
+
+    if panel.outgoing.input_gated {
+        ui.label(widgets::text(
+            prxvc_i18n::t("call.input_gated"),
+            size::META,
+            tk.secondary,
+        ));
+    }
 
     ui.add_space(space::S8);
     ui.label(widgets::text(
@@ -163,7 +190,7 @@ fn lane(ui: &mut egui::Ui, tk: &Tokens, title_key: &str, hear_key: &str, lane: &
         size::SECONDARY,
         tk.text,
     ));
-    if !lane.running {
+    if !lane.running && !lane.translating {
         ui.label(widgets::text(
             prxvc_i18n::t("call.path.off"),
             size::META,
@@ -185,6 +212,7 @@ fn lane(ui: &mut egui::Ui, tk: &Tokens, title_key: &str, hear_key: &str, lane: &
         ],
     );
     ui.label(widgets::text(counters, size::META, tk.text));
+    crate::call_captions_view::translation_detail(ui, tk, lane);
 }
 
 fn heard_text(hear_key: &str, hears: Heard) -> String {

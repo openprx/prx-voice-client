@@ -235,6 +235,12 @@ pub struct DebugConfig {
     pub enabled: bool,
     pub log_level: String,
     pub show_debug_panel: bool,
+    /// Write the stage timestamps of every call clause to a file under the data directory
+    /// (`traces/`). Off by default; `PRXVC_CALL_TRACE=1` also switches it on.
+    pub call_trace: bool,
+    /// Add the recognised, translated and spoken texts to the trace. Only with `call_trace`;
+    /// off by default; `PRXVC_CALL_TRACE_TEXT=1` also switches it on.
+    pub call_trace_text: bool,
 }
 
 impl Default for DebugConfig {
@@ -243,6 +249,8 @@ impl Default for DebugConfig {
             enabled: false,
             log_level: String::from("info"),
             show_debug_panel: false,
+            call_trace: false,
+            call_trace_text: false,
         }
     }
 }

@@ -23,7 +23,7 @@ use prxvc_audio::tap_consent::{ConsentOutcome, request_capture_consent};
 use std::sync::Arc;
 
 use prxvc_media::Direction;
-use prxvc_ports::{BundleId, TraceSink};
+use prxvc_ports::BundleId;
 use prxvc_session::call::{
     ActivityJudgement, AudioPath, CallErrorCode, CallHost, EnteredRouting, HostFault, LeftRouting,
     PreparedProviders, ProvidersFailure, RoutingNotice,
@@ -31,6 +31,7 @@ use prxvc_session::call::{
 
 use crate::call_kit::config::ConfigSource;
 use crate::call_kit::providers::ProviderHost;
+use crate::call_kit::trace::{CallTrace, TraceOptions, TraceSlot};
 
 use super::map::{
     call_mode_fault, capture_consent_fault, driver_fault, judgement, mic_consent_fault,
@@ -63,8 +64,8 @@ pub(crate) struct HostConfig {
     pub config_source: ConfigSource,
     /// The directions that translate.
     pub translate: Vec<Direction>,
-    /// Where the stage timestamps go.
-    pub trace: Arc<dyn TraceSink>,
+    /// The current call's trace recorder, made at every translated start.
+    pub trace: TraceSlot,
 }
 
 type Controller = RoutingController<CoreAudioRouting, OsSystem, FileJournalStore>;
@@ -273,7 +274,12 @@ impl CallHost for RealCallHost {
     }
 
     fn prepare_providers(&mut self) -> Result<PreparedProviders, ProvidersFailure> {
-        self.providers.prepare(Arc::clone(&self.config.trace))
+        // A new recorder for each call: its own file when tracing is on, and the figures of the
+        // debug view in every case.
+        let options = TraceOptions::from_config(&(self.config.config_source)(), &self.config.data_dir);
+        let trace = CallTrace::open(&options);
+        self.config.trace.set(Arc::clone(&trace));
+        self.providers.prepare(trace)
     }
 
     fn release_providers(&mut self) {

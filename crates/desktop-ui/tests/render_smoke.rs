@@ -688,11 +688,15 @@ fn chinese_and_latin_text_render_in_every_style() {
 /// with an idle panel and with a running panel that carries issues.
 #[test]
 fn call_control_renders_in_both_languages_with_issues() {
+    use prxvc_desktop_ui::call_view::{
+        CaptionView, ClauseStatus, CountersView, LatencyView, PartialView,
+    };
     use prxvc_desktop_ui::{
         ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
     };
     let _guard = lock_locale();
     let running = CallPanel {
+        translate_enabled: false,
         phase: CallPhase::AudioReady,
         in_call_mode: true,
         default_input_ours: false,
@@ -715,10 +719,48 @@ fn call_control_renders_in_both_languages_with_issues() {
             detail: String::new(),
         }),
     };
+    // A translating call: captions with a stable prefix, counters, latency, level and the gate.
+    let lane = LaneView {
+        running: true,
+        translating: true,
+        languages: Some(("zh".into(), "en".into())),
+        hears: Heard::Translation,
+        device: "Built-in Mic".into(),
+        frames: 500,
+        partial: Some(PartialView { text: "今天天气很好我们去".into(), stable_len: 18 }),
+        clauses: vec![
+            CaptionView { source: "你好".into(), translation: "Hello.".into(), status: ClauseStatus::Played },
+            CaptionView { source: "我们开会".into(), translation: String::new(), status: ClauseStatus::Translating },
+        ],
+        counters: Some(CountersView { late_dropped: 1, underruns: 2, ..CountersView::default() }),
+        latency: Some(LatencyView {
+            speech_start_to_first_audio_ms: Some(2500.0),
+            pause_to_first_audio_ms: Some(900.0),
+            stages: vec![("mt_first_token".into(), 90.0)],
+        }),
+        translated_peak: 0.3,
+        translated_rms: 0.05,
+        input_gated: true,
+        ..LaneView::default()
+    };
+    let translating = CallPanel {
+        translate_enabled: true,
+        phase: CallPhase::Translating,
+        in_call_mode: true,
+        default_input_ours: true,
+        outgoing: lane.clone(),
+        incoming: LaneView { hears: Heard::Translation, ..lane },
+        issues: vec![IssueView {
+            key: "call.issue.speaker_output".into(),
+            severity: IssueSeverity::Degraded,
+            detail: "local output: MacBook Pro Speakers".into(),
+        }],
+        ..CallPanel::default()
+    };
     for (_, system) in SCHEMES {
         for locale in LOCALES {
             prxvc_i18n::set_locale(locale.clone());
-            for panel in [CallPanel::default(), running.clone()] {
+            for panel in [CallPanel::default(), running.clone(), translating.clone()] {
                 let ctx = new_ctx();
                 let mut state = sample_state();
                 state.call = panel;

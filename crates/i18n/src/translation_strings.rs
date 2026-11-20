@@ -61,6 +61,90 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "call.issue.local_output_unavailable",
         "The local output could not be opened. The call application plays the other person itself, so nothing is translated for you.",
     ),
+    (
+        "call.translate",
+        "Translate",
+    ),
+    (
+        "call.languages",
+        "Languages: {0} to {1}",
+    ),
+    (
+        "call.captions",
+        "Captions",
+    ),
+    (
+        "call.clause.committed",
+        "committed",
+    ),
+    (
+        "call.clause.recognized",
+        "recognized",
+    ),
+    (
+        "call.clause.translating",
+        "translating",
+    ),
+    (
+        "call.clause.translated",
+        "translated",
+    ),
+    (
+        "call.clause.synthesizing",
+        "speaking soon",
+    ),
+    (
+        "call.clause.playing",
+        "playing",
+    ),
+    (
+        "call.clause.played",
+        "played",
+    ),
+    (
+        "call.clause.cancelled",
+        "cancelled",
+    ),
+    (
+        "call.clause.skipped",
+        "skipped",
+    ),
+    (
+        "call.clause.failed",
+        "failed",
+    ),
+    (
+        "call.counters.line1",
+        "late drops {0}, backlog skips {1}, stale skips {2}, forced cuts {3}, final rewrites {4}",
+    ),
+    (
+        "call.counters.line2",
+        "suspect translations {0}, runaway synthesis {1}, capture overruns {2}, underruns {3}, refine fallbacks {4}",
+    ),
+    (
+        "call.latency.none",
+        "No clause has finished yet.",
+    ),
+    (
+        "call.latency.start_to_audio",
+        "Speech start to first translated audio: {0} ms",
+    ),
+    (
+        "call.latency.pause_to_audio",
+        "Pause detected to first translated audio: {0} ms",
+    ),
+    (
+        "call.latency.stages",
+        "Stages (ms): {0}",
+    ),
+    (
+        "call.translated_level",
+        "Translated playback level: {0} dBFS, peak {1} dBFS",
+    ),
+    (
+        "call.input_gated",
+        "Paused while you listen (speaker mode): the microphone is closed while the translation plays.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -120,6 +204,90 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "call.issue.local_output_unavailable",
         "\u{65e0}\u{6cd5}\u{6253}\u{5f00}\u{672c}\u{5730}\u{8f93}\u{51fa}\u{3002}\u{901a}\u{8bdd}\u{5e94}\u{7528}\u{4f1a}\u{81ea}\u{884c}\u{64ad}\u{653e}\u{5bf9}\u{65b9}\u{7684}\u{58f0}\u{97f3}\u{ff0c}\u{56e0}\u{6b64}\u{4e0d}\u{4f1a}\u{4e3a}\u{4f60}\u{7ffb}\u{8bd1}\u{3002}",
+    ),
+    (
+        "call.translate",
+        "\u{7ffb}\u{8bd1}",
+    ),
+    (
+        "call.languages",
+        "\u{8bed}\u{8a00}\u{ff1a}{0} \u{8bd1}\u{4e3a} {1}",
+    ),
+    (
+        "call.captions",
+        "\u{5b57}\u{5e55}",
+    ),
+    (
+        "call.clause.committed",
+        "\u{5df2}\u{63d0}\u{4ea4}",
+    ),
+    (
+        "call.clause.recognized",
+        "\u{5df2}\u{8bc6}\u{522b}",
+    ),
+    (
+        "call.clause.translating",
+        "\u{7ffb}\u{8bd1}\u{4e2d}",
+    ),
+    (
+        "call.clause.translated",
+        "\u{5df2}\u{7ffb}\u{8bd1}",
+    ),
+    (
+        "call.clause.synthesizing",
+        "\u{5408}\u{6210}\u{4e2d}",
+    ),
+    (
+        "call.clause.playing",
+        "\u{64ad}\u{653e}\u{4e2d}",
+    ),
+    (
+        "call.clause.played",
+        "\u{5df2}\u{64ad}\u{653e}",
+    ),
+    (
+        "call.clause.cancelled",
+        "\u{5df2}\u{53d6}\u{6d88}",
+    ),
+    (
+        "call.clause.skipped",
+        "\u{5df2}\u{8df3}\u{8fc7}",
+    ),
+    (
+        "call.clause.failed",
+        "\u{5931}\u{8d25}",
+    ),
+    (
+        "call.counters.line1",
+        "\u{8fdf}\u{5230}\u{4e22}\u{5f03} {0}\u{ff0c}\u{79ef}\u{538b}\u{8df3}\u{8fc7} {1}\u{ff0c}\u{8fc7}\u{671f}\u{8df3}\u{8fc7} {2}\u{ff0c}\u{5f3a}\u{5236}\u{5207}\u{5206} {3}\u{ff0c}\u{7ec8}\u{7a3f}\u{6539}\u{5199} {4}",
+    ),
+    (
+        "call.counters.line2",
+        "\u{53ef}\u{7591}\u{8bd1}\u{6587} {0}\u{ff0c}\u{5408}\u{6210}\u{5931}\u{63a7} {1}\u{ff0c}\u{91c7}\u{96c6}\u{6ea2}\u{51fa} {2}\u{ff0c}\u{6b20}\u{8f7d} {3}\u{ff0c}\u{7cbe}\u{4fee}\u{56de}\u{9000} {4}",
+    ),
+    (
+        "call.latency.none",
+        "\u{5c1a}\u{65e0}\u{5df2}\u{5b8c}\u{6210}\u{7684}\u{8bed}\u{53e5}\u{3002}",
+    ),
+    (
+        "call.latency.start_to_audio",
+        "\u{8bf4}\u{8bdd}\u{5f00}\u{59cb}\u{5230}\u{9996}\u{4e2a}\u{8bd1}\u{97f3}\u{ff1a}{0} \u{6beb}\u{79d2}",
+    ),
+    (
+        "call.latency.pause_to_audio",
+        "\u{68c0}\u{6d4b}\u{5230}\u{505c}\u{987f}\u{5230}\u{9996}\u{4e2a}\u{8bd1}\u{97f3}\u{ff1a}{0} \u{6beb}\u{79d2}",
+    ),
+    (
+        "call.latency.stages",
+        "\u{5404}\u{9636}\u{6bb5}\u{ff08}\u{6beb}\u{79d2}\u{ff09}\u{ff1a}{0}",
+    ),
+    (
+        "call.translated_level",
+        "\u{8bd1}\u{97f3}\u{64ad}\u{653e}\u{7535}\u{5e73}\u{ff1a}{0} dBFS\u{ff0c}\u{5cf0}\u{503c} {1} dBFS",
+    ),
+    (
+        "call.input_gated",
+        "\u{8046}\u{542c}\u{65f6}\u{6682}\u{505c}\u{ff08}\u{626c}\u{58f0}\u{5668}\u{6a21}\u{5f0f}\u{ff09}\u{ff1a}\u{64ad}\u{653e}\u{8bd1}\u{97f3}\u{65f6}\u{9ea6}\u{514b}\u{98ce}\u{5173}\u{95ed}\u{3002}",
     ),
 ];
 

@@ -62,12 +62,18 @@ pub(super) struct Running {
     pub(super) reported_problem: bool,
     /// The rate the pipeline's VAD wants its frames at.
     tap_rate: prxvc_media::SampleRate,
+    languages: (prxvc_media::Lang, prxvc_media::Lang),
 }
 
 impl Running {
     /// The pipeline's newest snapshot.
     pub(super) fn snapshot(&self) -> Option<Arc<crate::pipeline::DirectionSnapshot>> {
         self.snapshots.latest()
+    }
+
+    /// The language spoken and the language heard.
+    pub(super) fn languages(&self) -> (prxvc_media::Lang, prxvc_media::Lang) {
+        self.languages
     }
 
     pub(super) fn pause(&self) {
@@ -112,6 +118,7 @@ impl Coordinator {
     ) -> Result<(), HostFault> {
         let d = build.params.direction;
         let tap_rate = vad_rate(&build);
+        let languages = (build.params.source, build.params.target);
         let Started {
             pipeline,
             events,
@@ -136,6 +143,7 @@ impl Coordinator {
             forwarder: Some(forwarder),
             reported_problem: false,
             tap_rate,
+            languages,
         });
         if let Err(fault) = self.link_path(d) {
             self.stop_translation(d);

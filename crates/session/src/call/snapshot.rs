@@ -74,6 +74,8 @@ pub struct DirectionSnapshot {
     pub path: Option<PathStats>,
     /// The pipeline's own snapshot (captions, counters, backlog) while the direction translates.
     pub pipeline: Option<Arc<crate::pipeline::DirectionSnapshot>>,
+    /// The language spoken and the language heard while the direction translates.
+    pub languages: Option<(prxvc_media::Lang, prxvc_media::Lang)>,
 }
 
 /// The last change of what a listener hears (PD-4.3.1: never unannounced).

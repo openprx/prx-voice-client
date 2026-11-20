@@ -275,7 +275,10 @@ impl Run<'_> {
         if self.full.trim().is_empty() {
             return self.suspect("empty");
         }
-        self.stage.tracer.mark(self.clause, TraceStage::MtDone);
+        let full = &self.full;
+        self.stage
+            .tracer
+            .mark_text(self.clause, TraceStage::MtDone, || full.clone());
         let sent = self.event(StageEvent::MtDone {
             clause: self.clause,
         });

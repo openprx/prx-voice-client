@@ -1,13 +1,20 @@
 //! Maps the coordinator's snapshot into the debug control's view model: enums, stable i18n keys for issues, numbers for levels and counters.
 
+use prxvc_desktop_ui::call_view::{
+    CaptionView, ClauseStatus, CountersView, LatencyView, PartialView,
+};
 use prxvc_desktop_ui::{
     ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
 };
+use prxvc_media::Direction;
+use prxvc_session::ClauseState;
 use prxvc_session::call::{
     ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot, ProviderIssue,
     Severity,
 };
 use prxvc_session::{CallState, OutputSource};
+
+use crate::call_kit::trace::{LastClause, TraceSlot};
 
 /// The i18n key of the message for an error code.
 pub(crate) fn issue_key(code: CallErrorCode) -> &'static str {
@@ -92,24 +99,80 @@ fn heard(source: OutputSource) -> Heard {
     }
 }
 
-fn lane(d: &DirectionSnapshot) -> LaneView {
-    let Some(path) = &d.path else {
-        return LaneView {
-            hears: heard(d.hears),
-            ..LaneView::default()
-        };
-    };
-    LaneView {
-        running: path.running,
-        hears: heard(d.hears),
-        device: path.source_device.clone(),
-        frames: path.frames,
-        rms: path.rms,
-        peak: path.peak,
-        overruns: path.overruns,
-        drops: path.drops,
-        underruns: path.underruns,
+fn clause_status(state: &ClauseState) -> ClauseStatus {
+    match state {
+        ClauseState::Committed => ClauseStatus::Committed,
+        ClauseState::Recognized => ClauseStatus::Recognized,
+        ClauseState::Translating => ClauseStatus::Translating,
+        ClauseState::Translated => ClauseStatus::Translated,
+        ClauseState::Synthesizing => ClauseStatus::Synthesizing,
+        ClauseState::Playing => ClauseStatus::Playing,
+        ClauseState::Played => ClauseStatus::Played,
+        ClauseState::Cancelled => ClauseStatus::Cancelled,
+        ClauseState::Skipped => ClauseStatus::Skipped,
+        ClauseState::Failed(_) => ClauseStatus::Failed,
     }
+}
+
+fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
+    let mut view = LaneView {
+        hears: heard(d.hears),
+        ..LaneView::default()
+    };
+    if let Some(path) = &d.path {
+        view.running = path.running;
+        view.device = path.source_device.clone();
+        view.frames = path.frames;
+        view.rms = path.rms;
+        view.peak = path.peak;
+        view.overruns = path.overruns;
+        view.drops = path.drops;
+        view.underruns = path.underruns;
+        view.translated_peak = path.translated_peak;
+        view.translated_rms = path.translated_rms;
+        view.input_gated = path.input_gated;
+    }
+    if let Some(p) = &d.pipeline {
+        view.translating = true;
+        view.languages = d.languages.map(|(a, b)| (a.code().to_owned(), b.code().to_owned()));
+        view.partial = p.partial.as_ref().map(|x| PartialView {
+            text: x.text.clone(),
+            stable_len: x.stable_prefix_len,
+        });
+        view.clauses = p
+            .clauses
+            .iter()
+            .map(|c| CaptionView {
+                source: c.source_text.clone(),
+                translation: c.translation.clone(),
+                status: if c.skipped.is_some() {
+                    ClauseStatus::Skipped
+                } else {
+                    clause_status(&c.state)
+                },
+            })
+            .collect();
+        let c = &p.counters;
+        let underruns = d.path.as_ref().map_or(0, |x| x.underruns + x.translated_underruns);
+        view.counters = Some(CountersView {
+            late_dropped: c.late_dropped,
+            backlog_skips: c.backlog_skips,
+            stale_skips: c.stale_skips,
+            forced_cuts: c.forced_cuts,
+            final_rewrites: c.final_rewrites,
+            mt_suspect: c.mt_suspect,
+            runaway_synth: c.runaway_synth,
+            capture_overruns: c.capture_overruns,
+            underruns,
+            refine_fallbacks: c.refine_fallbacks,
+        });
+        view.latency = latency.map(|l| LatencyView {
+            speech_start_to_first_audio_ms: l.speech_start_to_first_audio_ms,
+            pause_to_first_audio_ms: l.clause_pause_to_first_audio_ms,
+            stages: l.stages,
+        });
+    }
+    view
 }
 
 fn issue(i: &CallIssue) -> IssueView {
@@ -125,7 +188,7 @@ fn issue(i: &CallIssue) -> IssueView {
 }
 
 /// The control's view of a snapshot.
-pub(crate) fn panel_of(s: &CallSnapshot) -> CallPanel {
+pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
     let (activity, activity_devices) = match &s.routing.call_activity {
         ActivityJudgement::Unknown => (ActivityView::Unknown, String::new()),
         ActivityJudgement::Unavailable => (ActivityView::Unavailable, String::new()),
@@ -139,10 +202,11 @@ pub(crate) fn panel_of(s: &CallSnapshot) -> CallPanel {
         }
     };
     CallPanel {
+        translate_enabled: s.translate_enabled,
         phase: phase(&s.state),
         in_call_mode: s.routing.in_call_mode,
-        outgoing: lane(&s.directions[0]),
-        incoming: lane(&s.directions[1]),
+        outgoing: lane(&s.directions[0], trace.last(Direction::Outgoing)),
+        incoming: lane(&s.directions[1], trace.last(Direction::Incoming)),
         microphone: s.devices.microphone.clone().unwrap_or_default(),
         virtual_sink: s.devices.virtual_sink.clone().unwrap_or_default(),
         call_app: s.devices.call_app.clone().unwrap_or_default(),
@@ -172,6 +236,7 @@ mod tests {
             hears: OutputSource::Original,
             path,
             pipeline: None,
+            languages: None,
         };
         CallSnapshot {
             revision: 3,
@@ -221,7 +286,7 @@ mod tests {
 
     #[test]
     fn the_snapshot_becomes_the_controls_view() {
-        let p = panel_of(&snapshot());
+        let p = panel_of(&snapshot(), &TraceSlot::default());
         assert_eq!(p.phase, CallPhase::AudioReady);
         assert!(p.in_call_mode && p.default_input_ours);
         assert!(p.outgoing.running && !p.incoming.running);
@@ -304,5 +369,45 @@ mod tests {
             }
         }
         prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    }
+
+    #[test]
+    fn a_translating_direction_shows_captions_counters_languages_and_the_last_latency() {
+        use prxvc_session::pipeline::{ClauseSnapshot, Counters, DirectionSnapshot as Pipe, PartialSnapshot};
+        use prxvc_media::{ClauseId, Lang, SegmentId};
+        let seg = SegmentId::first(Direction::Outgoing);
+        let pipe = Pipe {
+            version: 1,
+            direction: Direction::Outgoing,
+            state: DirectionState::Running,
+            reasons: Default::default(),
+            output: OutputSource::Translation,
+            activity: prxvc_session::Activity::Recognizing,
+            partial: Some(PartialSnapshot { segment: seg, revision: 2, text: "你好吗".into(), stable_prefix_len: 3 }),
+            clauses: vec![ClauseSnapshot {
+                clause: ClauseId::new(seg, 0),
+                state: ClauseState::Translated,
+                source_text: "你好".into(),
+                translation: "Hello.".into(),
+                skipped: None,
+            }],
+            counters: Counters { late_dropped: 4, forced_cuts: 1, ..Counters::default() },
+            backlog_ms: 0,
+            last_error: None,
+        };
+        let mut s = snapshot();
+        s.translate_enabled = true;
+        s.directions[0].pipeline = Some(std::sync::Arc::new(pipe));
+        s.directions[0].languages = Some((Lang::Zh, Lang::En));
+        let lane = panel_of(&s, &TraceSlot::default()).outgoing;
+        assert!(lane.translating);
+        assert_eq!(lane.languages, Some(("zh".into(), "en".into())));
+        assert_eq!(lane.partial.as_ref().map(|p| p.stable_len), Some(3));
+        assert_eq!(lane.clauses[0].translation, "Hello.");
+        assert_eq!(lane.clauses[0].status, ClauseStatus::Translated);
+        let c = lane.counters.expect("counters");
+        assert_eq!((c.late_dropped, c.forced_cuts), (4, 1));
+        assert!(lane.latency.is_none(), "no clause finished yet");
+        assert!(!panel_of(&snapshot(), &TraceSlot::default()).incoming.translating);
     }
 }

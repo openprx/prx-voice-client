@@ -81,7 +81,9 @@ impl TtsStage {
             return;
         }
         if progress.announced != Some(clause) {
-            self.tracer.mark(clause, TraceStage::TtsRequestSent);
+            // With text: the first piece the synthesiser was asked to speak for the clause.
+            self.tracer
+                .mark_text(clause, TraceStage::TtsRequestSent, || text.clone());
         }
         let request = TtsRequest {
             clause,

@@ -21,6 +21,7 @@
 //!   fonts, the engine bridge and the repaint policy.
 
 mod app;
+mod call_captions_view;
 mod call_debug_view;
 pub mod call_view;
 mod context_menu;

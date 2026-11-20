@@ -96,9 +96,127 @@ pub struct IssueView {
     pub detail: String,
 }
 
+/// Where a committed clause is in its life, as the captions show it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ClauseStatus {
+    /// Committed, text not final.
+    #[default]
+    Committed,
+    /// Source text final.
+    Recognized,
+    /// Being translated.
+    Translating,
+    /// Translated.
+    Translated,
+    /// Being synthesised.
+    Synthesizing,
+    /// Playing.
+    Playing,
+    /// Played.
+    Played,
+    /// Cancelled.
+    Cancelled,
+    /// Skipped to keep up.
+    Skipped,
+    /// A stage failed.
+    Failed,
+}
+
+impl ClauseStatus {
+    /// The i18n key of the status.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Committed => "call.clause.committed",
+            Self::Recognized => "call.clause.recognized",
+            Self::Translating => "call.clause.translating",
+            Self::Translated => "call.clause.translated",
+            Self::Synthesizing => "call.clause.synthesizing",
+            Self::Playing => "call.clause.playing",
+            Self::Played => "call.clause.played",
+            Self::Cancelled => "call.clause.cancelled",
+            Self::Skipped => "call.clause.skipped",
+            Self::Failed => "call.clause.failed",
+        }
+    }
+}
+
+/// One committed clause of the captions.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CaptionView {
+    /// What was said.
+    pub source: String,
+    /// Its translation so far.
+    pub translation: String,
+    /// Where it is.
+    pub status: ClauseStatus,
+}
+
+/// The clause being spoken, not yet committed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PartialView {
+    /// The recogniser's current reading.
+    pub text: String,
+    /// Bytes at the start of `text` that will not change.
+    pub stable_len: usize,
+}
+
+/// Counters of one direction since it started.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CountersView {
+    /// Results dropped because their clause was cancelled or finished.
+    pub late_dropped: u64,
+    /// Clauses skipped by the backlog rule.
+    pub backlog_skips: u64,
+    /// Clauses skipped because they were stale when new speech began.
+    pub stale_skips: u64,
+    /// Segments cut at the maximum length.
+    pub forced_cuts: u64,
+    /// Finals that disagreed with committed text.
+    pub final_rewrites: u64,
+    /// Translations flagged as not being one.
+    pub mt_suspect: u64,
+    /// Synthesis stopped by the runaway guard.
+    pub runaway_synth: u64,
+    /// Audio frames dropped before recognition.
+    pub capture_overruns: u64,
+    /// Times playback ran dry (sink and translated lane).
+    pub underruns: u64,
+    /// Clauses that fell back to the streaming text.
+    pub refine_fallbacks: u64,
+}
+
+/// The last finished clause's latency figures.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LatencyView {
+    /// Speech detected until the first translated sample plays, milliseconds.
+    pub speech_start_to_first_audio_ms: Option<f64>,
+    /// The committing pause detected until the first translated sample plays, milliseconds.
+    pub pause_to_first_audio_ms: Option<f64>,
+    /// Every interval of the clause: name and milliseconds.
+    pub stages: Vec<(String, f64)>,
+}
+
 /// One audio path.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LaneView {
+    /// The direction translates (a pipeline runs).
+    pub translating: bool,
+    /// "zh" and "en" of the languages spoken and heard; empty when not translating.
+    pub languages: Option<(String, String)>,
+    /// The clause being spoken.
+    pub partial: Option<PartialView>,
+    /// The latest committed clauses, oldest first.
+    pub clauses: Vec<CaptionView>,
+    /// Counters; `None` when not translating.
+    pub counters: Option<CountersView>,
+    /// Latency of the last finished clause.
+    pub latency: Option<LatencyView>,
+    /// Peak of the translated speech as played, linear.
+    pub translated_peak: f32,
+    /// RMS of the translated speech as played, linear.
+    pub translated_rms: f32,
+    /// The echo gate is closed: "paused while you listen".
+    pub input_gated: bool,
     /// The path runs.
     pub running: bool,
     /// What its listener hears.
@@ -122,6 +240,8 @@ pub struct LaneView {
 /// Everything the control shows.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CallPanel {
+    /// Translation was requested for this call.
+    pub translate_enabled: bool,
     /// The call machine's phase.
     pub phase: CallPhase,
     /// Call mode is on (the default input was switched).

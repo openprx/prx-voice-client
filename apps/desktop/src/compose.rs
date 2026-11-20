@@ -29,6 +29,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     let config = initialize_config();
     let mut ui_state = prxvc_desktop_ui::DesktopUiState::new();
     ui_state.settings = settings::ui_settings_from_config(&config);
+    ui_state.call_translate = config.call.translate;
     let last_saved = settings::snapshot(&ui_state.settings);
 
     restore_window_geometry(cc, &mut ui_state);
