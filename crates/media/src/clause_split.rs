@@ -15,13 +15,13 @@
 //! lowercase continuation (`approx. five`). A mark whose meaning depends on
 //! the next character is held until that character arrives.
 //!
-//! Placement: this module is pure and depends on nothing but `Lang`. The
-//! layer table does not let the pipeline (L2) call `prxvc-adapters` (L3), so
-//! the module is meant to move to `prxvc-media` (L0, allowed for both) when
-//! the pipeline adopts it. Until then `commit_policy::decide_tts_commit`
-//! keeps its own, simpler first-sentence rule.
+//! Placement: this module is pure and depends on nothing but `Lang`, so it
+//! lives in `prxvc-media` (L0): the pipeline in `prxvc-session` (L2) and the
+//! translation adapters in `prxvc-adapters` (L3) both may use it, and
+//! `prxvc-session::decide_tts_commit` is built on [`first_clause_end`], so there
+//! is exactly one clause rule.
 
-use prxvc_media::Lang;
+use crate::lang::Lang;
 
 /// Marks that end a sentence.
 const SENTENCE_MARKS: [char; 8] = ['。', '！', '？', '；', '!', '?', ';', '…'];
@@ -135,12 +135,7 @@ impl ClauseSplitter {
         if !self.after_cut {
             return;
         }
-        let keep = self
-            .buf
-            .trim_start_matches(|c: char| {
-                c.is_whitespace() || CLOSERS.contains(&c) || SENTENCE_MARKS.contains(&c) || c == '.'
-            })
-            .len();
+        let keep = trim_stray_start(&self.buf).len();
         let skip = self.buf.len() - keep;
         self.buf.drain(..skip);
         if !self.buf.is_empty() {
@@ -311,6 +306,32 @@ fn count_units(text: &str) -> usize {
         }
     }
     units
+}
+
+/// The byte offset just after the first clause of `text`, when `text` already
+/// holds a complete one (the stream is still open: a mark that needs the next
+/// character to be judged does not count yet).
+///
+/// This is the rule of [`ClauseSplitter`] applied to a string, for callers
+/// that keep their own buffer.
+pub fn first_clause_end(lang: Lang, text: &str) -> Option<usize> {
+    let splitter = ClauseSplitter {
+        params: SplitParams::for_lang(lang),
+        buf: text.to_owned(),
+        after_cut: false,
+    };
+    match splitter.scan(false) {
+        Scan::Cut(end) => Some(end),
+        Scan::Wait | Scan::None => None,
+    }
+}
+
+/// `text` without the whitespace, closing quotes and marks that trail a clause
+/// just cut (they belong to that clause and are silent).
+pub fn trim_stray_start(text: &str) -> &str {
+    text.trim_start_matches(|c: char| {
+        c.is_whitespace() || CLOSERS.contains(&c) || SENTENCE_MARKS.contains(&c) || c == '.'
+    })
 }
 
 fn has_content(text: &str) -> bool {
@@ -497,5 +518,31 @@ mod tests {
     fn mixed_text_counts_words_and_characters_together() {
         let out = assert_boundary_independent(Lang::Zh, "请打开 Wi-Fi 设置。然后重启。");
         assert_eq!(out, ["请打开 Wi-Fi 设置。", "然后重启。"]);
+    }
+
+    #[test]
+    fn first_clause_end_follows_the_splitter_rule() {
+        assert_eq!(first_clause_end(Lang::En, "The total is 3.5 dollars"), None);
+        assert_eq!(
+            first_clause_end(Lang::En, "The total is 3.5 dollars. Then"),
+            Some("The total is 3.5 dollars.".len())
+        );
+        assert_eq!(
+            first_clause_end(Lang::En, "Hello."),
+            None,
+            "too short, and the dot waits"
+        );
+        assert_eq!(first_clause_end(Lang::En, "Dr. Smith said"), None);
+        assert_eq!(
+            first_clause_end(Lang::Zh, "今天天气很好。然后"),
+            Some("今天天气很好。".len())
+        );
+        assert_eq!(first_clause_end(Lang::En, "The U.S. economy grew"), None);
+    }
+
+    #[test]
+    fn stray_marks_after_a_cut_are_trimmed() {
+        assert_eq!(trim_stray_start(" ?! \"next"), "next");
+        assert_eq!(trim_stray_start("next"), "next");
     }
 }

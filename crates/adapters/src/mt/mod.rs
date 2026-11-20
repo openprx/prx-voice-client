@@ -6,11 +6,10 @@
 //! * `sse`: the incremental parser of the response stream.
 //! * `output`, `assess`: the structural clean-up of the model's output and the
 //!   cheap checks that detect output that is not a translation.
-//! * `clause_split`: the splitter from translated token stream to clauses.
+//! * `clause_split`: the splitter from translated token stream to clauses (lives in `prxvc-media`, re-exported here).
 //! * `report`: typed failures, quality flags and the observer that receives them.
 
 pub mod assess;
-pub mod clause_split;
 pub mod config;
 pub mod openai_chat;
 pub mod output;
@@ -19,10 +18,10 @@ pub mod report;
 pub mod sse;
 
 pub use assess::{AssessInput, assess, estimate_tokens, max_output_tokens};
-pub use clause_split::{ClauseSplitter, SplitParams};
 pub use config::{ApiKey, ConfigError, OpenAiChatConfig, Timeouts};
 pub use openai_chat::OpenAiChatMt;
 pub use output::OutputFilter;
 pub use prompt::{PromptLimits, PromptTemplate, UnknownTemplate};
+pub use prxvc_media::clause_split::{self, ClauseSplitter, SplitParams};
 pub use report::{MtFailure, MtObserver, MtReport, Stripped, Suspect};
 pub use sse::{SseEvent, SseParser};
