@@ -22,6 +22,9 @@ use crate::{AudioError, AudioFrame, AudioState};
 pub enum ProcessFilter {
     /// Capture only the audio rendered by this process id (the meeting app).
     IncludeApp(i32),
+    /// Capture only the audio rendered by the application with this bundle ID;
+    /// the capture follows the application across restarts.
+    IncludeBundle(String),
     // Future: ExcludeSelf — capture everything except our own process, using
     // CATapDescription's exclude mode / WASAPI EXCLUDE_TARGET_PROCESS_TREE.
 }

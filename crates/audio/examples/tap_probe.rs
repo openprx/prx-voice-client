@@ -1,35 +1,58 @@
 //! Validation probe for the Core Audio process tap (macOS 14.4+).
 //!
-//! Proves that we can capture a given process's audio and that the stream is
-//! non-silent (some apps can deliver silence through a tap). Run it against the
-//! meeting app while audio is playing.
+//! Proves that we can capture a given application's audio and that the stream
+//! is non-silent (some apps can deliver silence through a tap). Run it against
+//! the meeting app while audio is playing.
 //!
 //! Usage:
-//!   1. Find the meeting app's PID, e.g.:  pgrep -x zoom.us   (or 'ps aux | grep -i zoom')
-//!   2. cargo run -p prxvc-audio --example tap_probe -- <PID> [SECONDS]
+//!   cargo run -p prxvc-audio --example tap_probe -- <PID | bundle.id> [SECONDS] [--mute MODE]
 //!
-//! First run triggers the macOS audio-capture permission prompt. If denied or on
-//! macOS < 14.4, start() fails with a clear error.
+//! `MODE` is `unmuted` (default), `muted` or `muted-when-tapped`. The muted
+//! modes silence the target application on this computer while the probe runs;
+//! do not use them on an application someone is listening to.
+//!
+//! A first run may trigger the macOS system-audio-recording permission prompt.
+//! If denied or on macOS < 14.4, start fails with a message saying what to do.
 
 #[cfg(target_os = "macos")]
 fn main() {
     use std::time::{Duration, Instant};
 
     use prxvc_audio::core_audio_tap::{CoreAudioTap, frame_peak_amplitude};
+    use prxvc_audio::tap_types::{TapConfig, TapMuteMode, TapTarget};
 
+    let mut positional = Vec::new();
+    let mut mute = TapMuteMode::Unmuted;
     let mut args = std::env::args().skip(1);
-    let pid: i32 = match args.next().and_then(|s| s.parse().ok()) {
-        Some(p) => p,
-        None => {
-            eprintln!("usage: tap_probe <PID> [SECONDS]");
-            eprintln!("  find PID with e.g.  pgrep -x zoom.us");
-            std::process::exit(2);
+    while let Some(arg) = args.next() {
+        if arg == "--mute" {
+            let Some(mode) = args.next().as_deref().and_then(TapMuteMode::parse) else {
+                eprintln!("--mute needs one of: unmuted, muted, muted-when-tapped");
+                std::process::exit(2);
+            };
+            mute = mode;
+        } else {
+            positional.push(arg);
         }
+    }
+    let Some(target_arg) = positional.first() else {
+        eprintln!("usage: tap_probe <PID | bundle.id> [SECONDS] [--mute MODE]");
+        eprintln!("  find a PID with e.g.  pgrep -x zoom.us");
+        std::process::exit(2);
     };
-    let secs: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(5);
+    let target = match target_arg.parse::<i32>() {
+        Ok(pid) => TapTarget::Pid(pid),
+        Err(_) => TapTarget::BundleId(target_arg.clone()),
+    };
+    let secs: u64 = positional.get(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+    let label = target.describe();
 
-    println!("[tap_probe] starting tap on pid {pid} for {secs}s ...");
-    let (_tap, rx) = match CoreAudioTap::start(pid) {
+    println!(
+        "[tap_probe] starting tap on {label} for {secs}s, mute={mute:?}, bundle-id form available={}, permission={:?}",
+        prxvc_audio::core_audio_tap::bundle_form_available(),
+        prxvc_audio::core_audio_tap::permission_status(),
+    );
+    let (tap, mut rx) = match CoreAudioTap::start(TapConfig { target, mute }) {
         Ok(pair) => pair,
         Err(e) => {
             eprintln!("[tap_probe] failed to start tap: {e}");
@@ -46,7 +69,7 @@ fn main() {
 
     while Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(500)) {
-            Ok(frame) => {
+            Some(frame) => {
                 frames += 1;
                 sample_rate = frame.sample_rate;
                 channels = frame.channels;
@@ -57,19 +80,18 @@ fn main() {
                     peak = p;
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                println!("[tap_probe] ...no frames in last 500ms (is audio playing?)");
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                eprintln!("[tap_probe] capture channel disconnected");
-                break;
-            }
+            None => println!("[tap_probe] ...no frames in last 500ms (is audio playing?)"),
+        }
+        while let Ok(event) = tap.events().try_recv() {
+            println!("[tap_probe] event: {event:?}");
         }
     }
+    let stats = tap.stats();
 
     println!("--------------------------------------------------");
     println!("[tap_probe] frames={frames} samples={samples} format={sample_rate}Hz/{channels}ch");
     println!("[tap_probe] peak amplitude = {peak:.4}");
+    println!("[tap_probe] stats: {stats:?}");
     if frames == 0 {
         println!("[tap_probe] RESULT: NO FRAMES — tap not delivering (check pid / permission).");
         std::process::exit(1);
@@ -77,7 +99,7 @@ fn main() {
         println!("[tap_probe] RESULT: SILENT — tap delivers frames but no signal.");
         std::process::exit(1);
     } else {
-        println!("[tap_probe] RESULT: OK — capturing non-silent audio from pid {pid}. ✅");
+        println!("[tap_probe] RESULT: OK — capturing non-silent audio from {label}.");
     }
 }
 

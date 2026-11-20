@@ -23,6 +23,12 @@ pub mod pipeline;
 pub mod playback;
 pub mod resample;
 pub mod routing;
+pub mod tap_format;
+pub mod tap_ring;
+#[cfg(target_os = "macos")]
+mod tap_supervisor;
+pub mod tap_types;
+pub mod tap_watchdog;
 pub mod turn_policy;
 pub mod vad_window;
 #[cfg(feature = "whisper")]
@@ -141,6 +147,8 @@ pub enum AudioError {
     #[error("invalid state transition: {from} -> {to}")]
     InvalidStateTransition { from: String, to: String },
     #[error("{0}")]
+    Tap(#[from] crate::tap_types::TapError),
+    #[error("{0}")]
     InputPolicy(#[from] crate::input_policy::InputPolicyError),
 }
 
@@ -183,7 +191,7 @@ pub mod prelude {
     #[cfg(target_os = "macos")]
     pub use crate::blackhole_sink::BlackHoleSink;
     #[cfg(target_os = "macos")]
-    pub use crate::core_audio_tap::{CoreAudioTap, CoreAudioTapSource, frame_peak_amplitude};
+    pub use crate::core_audio_tap::{CoreAudioTap, CoreAudioTapSource, TapReceiver, frame_peak_amplitude};
     pub use crate::resample::{
         ASR_SAMPLE_RATE, MonoResampler, MonoResampler16k, downmix_to_mono, mono_16k_frame,
     };
