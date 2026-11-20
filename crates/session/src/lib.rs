@@ -8,25 +8,71 @@
 //! `error`, `event`, `turn`, `session` (the entity), `manager`; plus the
 //! interpreting machine in `interpret`, the `driver` that runs it and the
 //! `adapter` seam traits.
+//!
+//! The call-translation machines are pure and synchronous (no threads, no
+//! I/O, time only through events or an explicit timestamp):
+//!
+//! * `call_state`: the call session machine (table 3.6).
+//! * `direction_state`: the per-direction machine (table 3.7) with the
+//!   audible output of each state; `output` holds the output vocabulary.
+//! * `segment`: the segment and clause lifecycle tables (table 3.8);
+//!   `segment_book`: the per-direction registry that orders clauses and drops
+//!   late results.
+//! * `commit_policy`: when text commits to a clause and to synthesis.
+//! * `interrupt`: what an interruption cancels (D-P5).
+//! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
 
 pub mod adapter;
 pub mod driver;
 pub mod interpret;
 
+mod call_state;
+mod commit_policy;
 mod config;
+mod dir_set;
+mod direction_state;
 mod error;
 mod event;
+mod fault;
 mod ids;
+mod interrupt;
 mod manager;
+mod output;
+mod rejection;
+mod segment;
+mod segment_book;
 mod session;
 mod state;
 mod turn;
 
+pub use call_state::{
+    CallAction, CallEvent, CallReason, CallReasons, CallRejection, CallState, ProviderProgress,
+};
+pub use commit_policy::{
+    ClauseReason, CommitDecision, CommitParams, CutPoint, EndReason, RecognitionInput, Speculation,
+    TranslationProgress, TtsCommit, check_speculation, decide_recognition_commit,
+    decide_tts_commit, is_clause_sized,
+};
 pub use config::{InterruptMode, SessionConfig, TranscriptMode};
+pub use dir_set::DirSet;
+pub use direction_state::{
+    DirectionAction, DirectionEvent, DirectionRejection, DirectionState, Reasons,
+};
 pub use error::SessionError;
 pub use event::SessionEvent;
+pub use fault::{Blocker, DegradeReason, Endpoint, FaultKind, ProviderRole, Stage};
 pub use ids::{SessionId, TurnId};
+pub use interrupt::{CancelAction, InterruptParams, InterruptTrigger, decide_interrupt};
 pub use manager::SessionManager;
+pub use output::{DirectionConfig, OutputCause, OutputPolicy, OutputSource, Passthrough};
+pub use rejection::InvalidTransition;
+pub use segment::{
+    ClauseEventKind, ClauseState, ClauseView, Outcome, PlaybackState, SegmentEventKind,
+    SegmentState,
+};
+pub use segment_book::{
+    Activity, LateReason, SegmentAction, SegmentBook, SegmentEvent, SegmentRejection,
+};
 pub use session::Session;
 pub use state::SessionState;
 pub use turn::{Turn, TurnStatus};
