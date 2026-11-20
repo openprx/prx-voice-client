@@ -3,6 +3,8 @@
 //! Wraps the `tray-icon` crate to show a status-area icon with a context
 //! menu offering basic session control and window management actions.
 
+use std::sync::mpsc::{Receiver, channel};
+
 use tray_icon::{
     Icon, TrayIconBuilder,
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
@@ -37,11 +39,24 @@ pub struct TrayManager {
     stop_id: String,
     settings_id: String,
     quit_id: String,
+    /// Menu events forwarded by the global handler (see [`TrayManager::new`]).
+    events: Receiver<MenuEvent>,
 }
 
 impl TrayManager {
     /// Build the tray icon with a context menu.
-    pub fn new() -> Result<Self, String> {
+    ///
+    /// Menu events do not wake egui, so an event handler forwards each one to
+    /// a private channel and requests a repaint of `ctx`; that runs
+    /// `App::logic` even while the window is hidden. Once a handler is set
+    /// the crate's own `MenuEvent::receiver()` gets nothing.
+    pub fn new(ctx: egui::Context) -> Result<Self, String> {
+        let (tx, events) = channel();
+        MenuEvent::set_event_handler(Some(move |event| {
+            let _ = tx.send(event);
+            ctx.request_repaint();
+        }));
+
         let show_item = MenuItem::new(prxvc_i18n::t("tray.show"), true, None);
         let start_item = MenuItem::new(prxvc_i18n::t("session.start"), true, None);
         let stop_item = MenuItem::new(prxvc_i18n::t("session.stop"), true, None);
@@ -105,6 +120,7 @@ impl TrayManager {
             stop_id,
             settings_id,
             quit_id,
+            events,
         })
     }
 
@@ -119,7 +135,7 @@ impl TrayManager {
 
     /// Poll for a tray menu action (non-blocking).
     pub fn poll_action(&self) -> Option<TrayAction> {
-        if let Ok(event) = MenuEvent::receiver().try_recv() {
+        if let Ok(event) = self.events.try_recv() {
             let id = &event.id.0;
             if id == &self.show_id {
                 return Some(TrayAction::Show);

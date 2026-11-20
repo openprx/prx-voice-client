@@ -119,7 +119,7 @@ impl PrxVoiceApp {
             rt.block_on(run_engine_loop(shared_clone, engine_config));
         });
 
-        let hotkey_manager = match hotkey::HotkeyManager::new() {
+        let hotkey_manager = match hotkey::HotkeyManager::new(cc.egui_ctx.clone()) {
             Ok(m) => {
                 tracing::info!("Global hotkey registered: Ctrl+Shift+Space");
                 Some(m)
@@ -130,7 +130,7 @@ impl PrxVoiceApp {
             }
         };
 
-        let tray_manager = match tray::TrayManager::new() {
+        let tray_manager = match tray::TrayManager::new(cc.egui_ctx.clone()) {
             Ok(t) => {
                 tracing::info!("System tray created");
                 Some(t)
@@ -168,7 +168,10 @@ impl eframe::App for PrxVoiceApp {
         }
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    /// Non-drawing work. eframe calls this before every `ui` pass and also
+    /// while the window is hidden when a repaint was requested (the hotkey
+    /// and tray handlers request one).
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Sync state from async runtime
         self.ui_state.sync_from_shared(&self.shared);
 
@@ -216,8 +219,11 @@ impl eframe::App for PrxVoiceApp {
             }
         }
 
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Render the entire UI
-        prxvc_desktop_ui::render_app(ctx, &mut self.ui_state);
+        prxvc_desktop_ui::render_app(ui, &mut self.ui_state);
 
         // Apply pending theme change (if settings changed the theme)
         if let Some(theme_name) = self.ui_state.pending_theme.take() {

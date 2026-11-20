@@ -10,7 +10,7 @@
 
 use egui::{
     Align, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Pos2, Rect,
-    Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType,
+    Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo,
     pos2, vec2,
 };
 
@@ -192,7 +192,7 @@ pub fn button_with(
     let width = galley.size().x + 2.0 * layout::BUTTON_PAD_X;
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), sense);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, enabled, label));
 
     if ui.is_rect_visible(rect) {
         let hovered = enabled && response.hovered();
@@ -228,7 +228,7 @@ pub fn icon_button(ui: &mut Ui, tk: &Tokens, glyph: &str, label: &str) -> Respon
         Vec2::splat(layout::ICON_BUTTON),
         Sense::click(),
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         let fill = if response.is_pointer_button_down_on() {
             tk.selected
@@ -280,7 +280,7 @@ pub fn switch_with(ui: &mut Ui, tk: &Tokens, value: &mut bool, enabled: bool) ->
         response.mark_changed();
     }
     let on = *value;
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, ""));
+    response.widget_info(|| WidgetInfo::selected(egui::Role::Switch, enabled, on, ""));
 
     if ui.is_rect_visible(rect) {
         let (track, knob) = if !enabled {
@@ -351,9 +351,9 @@ pub fn segmented(ui: &mut Ui, tk: &Tokens, selected: usize, labels: &[&str]) -> 
     for (i, galley) in galleys.into_iter().enumerate() {
         let seg = Rect::from_min_size(pos2(x, track.top() + pad), vec2(seg_widths[i], seg_h));
         x += seg_widths[i] + space::S2;
-        let id = ui.id().with(("segment", i));
+        let id = ui.scope_id().with(("segment", i));
         let response = ui.interact(seg, id, Sense::click());
-        response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, i == selected, labels[i]));
+        response.widget_info(|| WidgetInfo::selected(egui::Role::RadioButton, true, i == selected, labels[i]));
         let is_selected = i == selected;
         if is_selected {
             ui.painter()
@@ -415,7 +415,7 @@ pub fn text_field(
                     .text_color(tk.text)
                     .background_color(fill)
                     .margin(Margin::symmetric(12, 0))
-                    .vertical_align(Align::Center)
+                    .align(egui::Align2::LEFT_CENTER)
                     .desired_width(ui.available_width())
                     .min_size(vec2(0.0, layout::FIELD_HEIGHT)),
             )
@@ -439,7 +439,7 @@ pub fn text_field(
 pub fn select(
     ui: &mut Ui,
     tk: &Tokens,
-    id_salt: impl std::hash::Hash,
+    id_salt: impl egui::AsIdSalt,
     width: f32,
     current: &str,
     options: &[String],
@@ -447,12 +447,12 @@ pub fn select(
 ) -> Option<usize> {
     let id = ui.make_persistent_id(id_salt);
     let (rect, response) = ui.allocate_exact_size(vec2(width, layout::FIELD_HEIGHT), Sense::click());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, current));
-    let popup_id = id.with("menu");
-    if response.clicked() {
-        ui.memory_mut(|m| m.toggle_popup(popup_id));
-    }
-    let open = ui.memory(|m| m.is_popup_open(popup_id));
+    response.widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, current));
+    let _ = id;
+    let popup_id = egui::Popup::default_response_id(&response);
+    // `Popup::menu` toggles on the click when it is shown below; account for
+    // that here so the trigger paints its open state in the same frame.
+    let open = egui::Popup::is_id_open(ui.ctx(), popup_id) != response.clicked();
 
     if ui.is_rect_visible(rect) {
         let fill = if response.is_pointer_button_down_on() {
@@ -483,12 +483,10 @@ pub fn select(
     }
 
     let mut chosen = None;
-    egui::popup::popup_below_widget(
-        ui,
-        popup_id,
-        &response,
-        egui::PopupCloseBehavior::CloseOnClick,
-        |ui| {
+    egui::Popup::menu(&response)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+        .width(width)
+        .show(|ui| {
             ui.set_min_width(width - 8.0);
             ui.spacing_mut().item_spacing.y = 0.0;
             for (i, option) in options.iter().enumerate() {
@@ -496,8 +494,7 @@ pub fn select(
                     chosen = Some(i);
                 }
             }
-        },
-    );
+        });
     chosen
 }
 
@@ -529,7 +526,7 @@ pub fn menu_item_colored(
         vec2(ui.available_width(), layout::MENU_ITEM_HEIGHT),
         Sense::click(),
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, label));
+    response.widget_info(|| WidgetInfo::selected(egui::Role::MenuItem, true, selected, label));
     if ui.is_rect_visible(rect) {
         let corner = CornerRadius::same(radius::SM);
         if response.is_pointer_button_down_on() {
@@ -625,7 +622,7 @@ pub fn setting_row(
             .max_rect(control_rect)
             .layout(Layout::right_to_left(Align::Center)),
     );
-    add_control(&mut control_ui);
+    control_ui.name_inputs(label, add_control);
 
     ui.add_space(space::S12);
     if !last {

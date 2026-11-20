@@ -449,6 +449,11 @@ pub fn style_for(tk: &Tokens, dark: bool) -> egui::Style {
     sp.text_edit_width = layout::FIELD_WIDTH;
     sp.combo_width = 120.0;
     sp.combo_height = 320.0;
+    // Defaults that changed after egui 0.31 and are not part of the RF
+    // standard: pinned to their 0.31 values so the look does not move with
+    // the egui version.
+    sp.scroll.fade.strength = 0.0;
+    style.animation_time = 1.0 / 12.0;
 
     let v = &mut style.visuals;
     v.dark_mode = dark;
@@ -557,7 +562,7 @@ pub fn apply(ctx: &Context, theme: &crate::Theme) {
 ///
 /// Called every frame by the app entry point; the check is a single lookup.
 pub fn ensure_installed(ctx: &Context, theme: &crate::Theme) {
-    let id = egui::Id::new("prxvc_applied_theme");
+    let id = egui::Id::unique("prxvc_applied_theme");
     let applied: Option<String> = ctx.data(|d| d.get_temp(id));
     if applied.as_deref() != Some(theme.name) {
         apply(ctx, theme);
@@ -695,7 +700,7 @@ mod tests {
         apply(&ctx, &theme);
 
         ctx.set_theme(EguiTheme::Light);
-        let light = ctx.style();
+        let light = ctx.global_style();
         assert!(!light.visuals.dark_mode);
         assert_eq!(light.visuals.window_fill, LIGHT.overlay);
         assert_eq!(light.visuals.panel_fill, LIGHT.bg);
@@ -707,7 +712,7 @@ mod tests {
         assert_eq!(light.spacing.interact_size.y, layout::CONTROL_HEIGHT);
 
         ctx.set_theme(EguiTheme::Dark);
-        let dark = ctx.style();
+        let dark = ctx.global_style();
         assert!(dark.visuals.dark_mode);
         assert_eq!(dark.visuals.window_fill, DARK.overlay);
         assert_eq!(dark.visuals.panel_fill, DARK.bg);
@@ -736,6 +741,6 @@ mod tests {
         // A different theme is applied.
         ensure_installed(&ctx, &crate::Theme::midnight());
         assert_eq!(ctx.options(|o| o.theme_preference), ThemePreference::Dark);
-        assert_eq!(ctx.style().visuals.window_fill, crate::Theme::midnight().tokens().overlay);
+        assert_eq!(ctx.global_style().visuals.window_fill, crate::Theme::midnight().tokens().overlay);
     }
 }

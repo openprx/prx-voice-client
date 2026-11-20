@@ -327,7 +327,8 @@ pub fn show(
         .with_decorations(true)
         .with_transparent(false);
 
-    ctx.show_viewport_immediate(kind.viewport_id(), builder, |ctx, class| {
+    ctx.show_viewport_immediate(kind.viewport_id(), builder, |ui, class| {
+        let ctx = ui.ctx().clone();
         let frame = egui::Frame::NONE
             .fill(tk.bg)
             .inner_margin(egui::Margin::same(WINDOW_PADDING as i8));
@@ -336,20 +337,6 @@ pub fn show(
                 .auto_shrink([false, false])
                 .show(ui, |ui| add_body(ui));
         };
-        if class == ViewportClass::Embedded {
-            // No native windows (tests, backends without viewport support).
-            let mut open = true;
-            egui::Window::new(title.as_str())
-                .id(egui::Id::new(("prxvc-tool-window", kind)))
-                .open(&mut open)
-                .frame(frame)
-                .show(ctx, body);
-            if !open {
-                state.close();
-            }
-            return;
-        }
-
         let (close_requested, escape) = ctx.input(|i| {
             (
                 i.viewport().close_requested(),
@@ -358,11 +345,18 @@ pub fn show(
         });
         // Escape closes this window only: not while a drop-down is open or a
         // text field has the keyboard (the first press leaves the field).
-        let escape = escape && !ctx.memory(|m| m.any_popup_open()) && !ctx.wants_keyboard_input();
+        let escape = escape && !ctx.any_popup_open() && !ctx.egui_wants_keyboard_input();
         if close_requested || escape {
             state.close();
             return;
         }
+        if class == ViewportClass::EmbeddedWindow {
+            // No native windows (tests, backends without viewport support):
+            // egui has already wrapped this callback in a `Window`.
+            frame.show(ui, body);
+            return;
+        }
+
         if state.take_focus() {
             ctx.send_viewport_cmd(ViewportCommand::Focus);
         }
@@ -370,7 +364,7 @@ pub fn show(
         if let (Some(outer), Some(inner)) = (outer, inner) {
             state.observe(Geometry { pos: outer.min, size: inner.size() });
         }
-        egui::CentralPanel::default().frame(frame).show(ctx, body);
+        egui::CentralPanel::default().frame(frame).show(ui, body);
     });
 }
 
