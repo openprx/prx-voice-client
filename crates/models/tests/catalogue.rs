@@ -47,7 +47,7 @@ fn mac16() -> HardwareInfo {
 fn embedded_catalogue_parses_and_validates() {
     let cat = Catalogue::embedded();
     assert_eq!(cat.schema_version, 1);
-    assert_eq!(cat.catalogue_version, 2026112004);
+    assert_eq!(cat.catalogue_version, 2026112005);
     let warnings = cat.validate(&semver::Version::new(0, 2, 0), &ALL_RUNTIMES);
     assert!(warnings.is_empty(), "{warnings:?}");
     let ids: Vec<_> = cat.models().iter().map(|m| m.id.0.as_str()).collect();
@@ -527,11 +527,11 @@ fn candidate_order_is_rule_rank_then_name_and_non_streaming_is_not_selectable() 
         [
             "asr-batch",
             "qwen3-asr-0.6b-q8",
+            "qwen3-asr-1.7b-q8",
             "asr-rank1",
             "asr-rank5",
             "whisper-small",
             "asr-alpha",
-            "qwen3-asr-1.7b-q8",
             "asr-zeta"
         ]
     );
@@ -548,4 +548,53 @@ fn candidate_order_is_rule_rank_then_name_and_non_streaming_is_not_selectable() 
         )
         .unwrap();
     assert_eq!(rec.id.0, "qwen3-asr-0.6b-q8");
+}
+
+#[test]
+fn the_recognisers_of_the_call_say_redecode_and_the_vocabulary_round_trips() {
+    use prxvc_models::catalogue::Streaming;
+    let cat = Catalogue::embedded();
+    let streaming = |id: &str| cat.get(&ModelId::new(id)).unwrap().streaming;
+    assert_eq!(streaming("qwen3-asr-0.6b-q8"), Streaming::Redecode);
+    assert_eq!(streaming("qwen3-asr-1.7b-q8"), Streaming::Redecode);
+    // A recogniser that returns only a final per segment keeps the older value.
+    assert_eq!(streaming("whisper-small"), Streaming::Segmented);
+    let json = serde_json::to_value(cat.get(&ModelId::new("qwen3-asr-0.6b-q8")).unwrap()).unwrap();
+    assert_eq!(json["streaming"], "redecode");
+}
+
+#[test]
+fn redecode_is_valid_only_for_recognition_models() {
+    // The first VAD entry claims it re-decodes: rejected, naming the model and the value.
+    let errs = rejected(|v| v["models"][0]["streaming"] = json!("redecode"));
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("silero-vad-6.2") && e.contains("redecode")),
+        "{errs:?}"
+    );
+    // An unknown value is a parse error, not silently accepted.
+    let mut v = embedded_json();
+    v["models"][2]["streaming"] = json!("incremental-ish");
+    assert!(parse(&v).is_err());
+}
+
+#[test]
+fn a_redecode_recogniser_is_selectable_for_the_live_role() {
+    let mut v = embedded_json();
+    let mut m = v["models"][2].clone();
+    m["id"] = json!("asr-redecode");
+    m["display_name"] = json!("Redecode");
+    m["files"][0]["name"] = json!("asr-redecode.bin");
+    m["streaming"] = json!("redecode");
+    m["recommended_for"] = json!([]);
+    v["models"].as_array_mut().unwrap().push(m);
+    let cat = parse(&v).unwrap();
+    let c = cat.candidates(
+        Role::Asr,
+        &LangKey::Lang("en".into()),
+        &mac16(),
+        ALL_RUNTIMES.as_slice(),
+    );
+    let entry = c.iter().find(|c| c.entry.id.0 == "asr-redecode").unwrap();
+    assert!(entry.selectable && entry.reason.is_none());
 }

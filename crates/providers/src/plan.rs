@@ -5,7 +5,7 @@ use prxvc_media::{Direction, Lang};
 
 use crate::keys::{BadLanguage, CallLanguages, other, parse_lang};
 use crate::problem::{Problem, ProblemKind, Slot};
-use crate::resolve::{AsrNeeds, Resolver, VoiceChoice};
+use crate::resolve::{Resolver, VoiceChoice};
 use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec};
 
 /// How recognition is arranged (`pipeline.recognition_mode`, PD-2.5.2).
@@ -15,7 +15,8 @@ pub enum RecognitionMode {
     Streaming,
     /// Streaming partials, a refine decode of each committed clause.
     TwoPass,
-    /// A model that re-decodes a growing buffer.
+    /// A refine-class model that re-decodes a growing buffer behind the streaming port; for the
+    /// registry it needs the same `redecode` model as the other modes.
     Segmented,
 }
 
@@ -180,14 +181,7 @@ impl Resolver<'_> {
                 return Err(dedupe(c.problems));
             }
         };
-        let this = Resolver {
-            asr_needs: if mode == RecognitionMode::Segmented {
-                AsrNeeds::SegmentedAllowed
-            } else {
-                AsrNeeds::Native
-            },
-            ..*self
-        };
+        let this = self;
         let mut direction = |d: Direction| {
             let (source, target) = languages.pair(d);
             let asr = c.take(this.asr(source));

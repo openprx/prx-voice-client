@@ -180,11 +180,11 @@ impl QwenAsr {
                 ));
             }
         };
-        // Truthful capability: partials come from re-decoding a growing buffer, which is the
-        // `Segmented` kind (design PD-2.5.2, mode `segmented`). It passes `require_live` and
-        // refuses `require_native`; see the crate documentation of this module for what the
-        // descriptor cannot say.
-        let descriptor = ProviderDescriptor::new(cfg.id, cfg.model, StreamingKind::Segmented)
+        // Truthful capability: partials come from re-decoding the growing audio of the open
+        // segment and every partial carries a stable prefix that later partials never retract.
+        // It passes `require_live` and `require_partials` and refuses `require_native`.
+        let descriptor = ProviderDescriptor::new(cfg.id, cfg.model, StreamingKind::Redecode)
+            .with_stable_prefix(true)
             .with_languages([Lang::Zh, Lang::En])
             .with_sample_rates([SampleRate::HZ_16000]);
         Ok(Self {

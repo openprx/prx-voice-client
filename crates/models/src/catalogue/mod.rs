@@ -185,8 +185,16 @@ pub struct Licence {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Streaming {
+    /// Incremental streaming: output while input arrives.
     Native,
+    /// Partial results while audio arrives, produced by re-decoding the growing
+    /// audio of the open segment with a stable prefix (recognition models only).
+    /// Eligible as the live recogniser; not incremental streaming.
+    Redecode,
+    /// A result per bounded segment, no partial results while audio arrives:
+    /// serves per-clause roles (the refine pass), not the live recogniser.
     Segmented,
+    /// Whole utterances only.
     None,
 }
 

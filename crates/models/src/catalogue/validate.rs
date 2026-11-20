@@ -236,4 +236,10 @@ fn check_model(m: &ModelEntry, e: &mut Vec<String>) {
     if m.runtime.name.is_empty() {
         e.push(format!("{ctx}: runtime name is empty"));
     }
+    if m.streaming == Streaming::Redecode && m.role != Role::Asr {
+        e.push(format!(
+            "{ctx}: streaming 'redecode' is only meaningful for recognition models (role {:?})",
+            m.role
+        ));
+    }
 }

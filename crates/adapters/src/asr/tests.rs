@@ -67,11 +67,13 @@ fn token() -> CancellationToken {
 }
 
 #[test]
-fn the_descriptor_says_segmented_and_is_live_but_not_native() {
+fn the_descriptor_says_redecode_with_a_stable_prefix_and_is_not_native() {
     let f = fixture(AsrParams::default());
     let d = StreamingAsr::descriptor(&f.asr);
-    assert_eq!(d.streaming, prxvc_ports::StreamingKind::Segmented);
+    assert_eq!(d.streaming, prxvc_ports::StreamingKind::Redecode);
+    assert!(d.stable_prefix);
     assert!(d.require_live().is_ok());
+    assert!(d.require_partials().is_ok());
     assert!(d.require_native().is_err());
     assert!(d.supports_lang(Lang::Zh) && d.supports_lang(Lang::En));
     assert!(d.require_rate(SampleRate::HZ_16000).is_ok());

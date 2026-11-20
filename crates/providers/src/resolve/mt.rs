@@ -221,7 +221,7 @@ impl Resolver<'_> {
         if let Some(t) = template {
             match t.streaming {
                 Streaming::Native => {}
-                Streaming::Segmented | Streaming::None => {
+                Streaming::Redecode | Streaming::Segmented | Streaming::None => {
                     problems.push(ProblemKind::NotStreaming {
                         id: pid.clone(),
                         reason: t.ineligible_reason.as_ref().map_or_else(

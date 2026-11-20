@@ -171,7 +171,9 @@ fn the_default_binary_builds_no_recognition_provider() {
     let Err(err) = bare.build_vad(&plan.vad.primary) else {
         panic!()
     };
-    assert!(matches!(err, BuildError::NotBuiltIn { ref runtime, .. } if runtime == "transcribe"));
+    assert!(
+        matches!(err, BuildError::NotBuiltIn { ref runtime, .. } if runtime == "transcribe.cpp")
+    );
     let Err(err) = bare.build_asr(&plan.outgoing.asr.primary) else {
         panic!()
     };

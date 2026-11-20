@@ -7,8 +7,7 @@ pub enum Runtime {
     LlamaServer,
     /// In-process `qwentts.cpp` (cargo feature `qwentts`).
     QwenTts,
-    /// In-process `transcribe.cpp`: recognition and VAD. The adapters arrive with CT-11 (see
-    /// `recognition.rs`).
+    /// In-process `transcribe.cpp`: recognition and VAD (cargo feature `transcribe`).
     Transcribe,
     /// The retired `whisper.cpp` binding (removed in CT-20); no call role uses it.
     WhisperCpp,
@@ -36,7 +35,7 @@ impl Runtime {
         match self {
             Self::LlamaServer => "llama-server",
             Self::QwenTts => "qwentts.cpp",
-            Self::Transcribe => "transcribe",
+            Self::Transcribe => "transcribe.cpp",
             Self::WhisperCpp => "whisper.cpp",
             Self::OnnxRuntime => "onnxruntime",
             Self::Other(n) => n,
@@ -73,7 +72,7 @@ mod tests {
         for name in [
             "llama-server",
             "qwentts.cpp",
-            "transcribe",
+            "transcribe.cpp",
             "whisper.cpp",
             "onnxruntime",
         ] {

@@ -6,7 +6,7 @@ use prxvc_ports::ProviderId;
 
 use super::protocol::Protocol;
 use super::voice::VoiceChoice;
-use super::{AsrNeeds, Resolver, languages_cover};
+use super::{Resolver, languages_cover};
 use crate::fingerprint::model_fingerprint;
 use crate::keys::CallRole;
 use crate::problem::ProblemKind;
@@ -14,8 +14,11 @@ use crate::runtime::Runtime;
 use crate::spec::{LocalModelSpec, TtsFiles, TtsSpec};
 
 const NO_STREAM_REASON: &str = "The model returns only whole utterances and does not stream.";
-const SEGMENTED_REASON: &str =
-    "The model works per segment and does not produce partial results while audio arrives.";
+/// A recogniser that returns one result per segment: it can refine a clause, it cannot be the
+/// live recogniser.
+const FINALS_ONLY_REASON: &str = "The model returns only a final result per segment and does not produce partial results while audio arrives; it can serve the refine pass.";
+/// Translation and synthesis must stream incrementally.
+const NOT_INCREMENTAL_REASON: &str = "The model does not stream incrementally while input arrives.";
 
 /// The catalogue role that serves a call role.
 fn catalogue_role(role: CallRole) -> Role {
@@ -100,14 +103,19 @@ impl Resolver<'_> {
     }
 
     /// The streaming requirement of `role` against what the entry offers.
+    ///
+    /// * Voice activity detection runs on every kind.
+    /// * Streaming recognition needs partial results while audio arrives: `native` or `redecode`.
+    /// * The refine pass takes any model that is not whole-utterance only.
+    /// * Translation and synthesis need incremental (`native`) streaming.
     fn streaming_problem(&self, entry: &ModelEntry, role: CallRole) -> Option<ProblemKind> {
         let reason = match (entry.streaming, role) {
-            (Streaming::None, CallRole::Vad) => None,
+            (_, CallRole::Vad) => None,
             (Streaming::None, _) => Some(NO_STREAM_REASON),
-            (Streaming::Segmented, CallRole::Asr) if self.asr_needs == AsrNeeds::Native => {
-                Some(SEGMENTED_REASON)
+            (Streaming::Segmented, CallRole::Asr) => Some(FINALS_ONLY_REASON),
+            (Streaming::Redecode | Streaming::Segmented, CallRole::Mt | CallRole::Tts) => {
+                Some(NOT_INCREMENTAL_REASON)
             }
-            (Streaming::Segmented, CallRole::Mt | CallRole::Tts) => Some(SEGMENTED_REASON),
             _ => None,
         }?;
         Some(ProblemKind::NotStreaming {

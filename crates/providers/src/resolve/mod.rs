@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 
 use prxvc_config::{AppConfig, NetworkPolicy};
 use prxvc_media::Lang;
-use prxvc_models::{Catalogue, HardwareInfo, LangKey, Role, Streaming};
+use prxvc_models::{Badge, Candidate, Catalogue, HardwareInfo, LangKey, Role, Streaming};
 use prxvc_ports::ProviderId;
 
 use crate::credentials::CredentialReader;
@@ -37,15 +37,6 @@ pub const DEFAULT_MT_PROVIDER: &str = "local-llama-server";
 /// The catalogue template of [`DEFAULT_MT_PROVIDER`].
 pub(crate) const DEFAULT_MT_TEMPLATE: &str = "llama-server";
 
-/// How strictly the streaming recogniser must stream (pipeline-design PD-2.5.2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AsrNeeds {
-    /// Partial results while audio arrives: `streaming` and `two_pass` modes.
-    Native,
-    /// A model that re-decodes a growing buffer is acceptable: `segmented` mode.
-    SegmentedAllowed,
-}
-
 /// Everything resolution reads.
 pub(crate) struct Resolver<'a> {
     pub cfg: &'a AppConfig,
@@ -56,7 +47,6 @@ pub(crate) struct Resolver<'a> {
     pub hardware: &'a HardwareInfo,
     pub dirs: &'a VoiceDirs,
     pub built: &'a crate::runtime::BuiltRuntimes,
-    pub asr_needs: AsrNeeds,
     /// Whether a cloned voice must already be prepared for the model. Preparing it is the one
     /// operation that resolves without.
     pub require_prepared: bool,
@@ -104,17 +94,25 @@ impl Resolver<'_> {
             RoleKey::Asr(l) => recommended(Role::Asr, &LangKey::Lang(l.code().to_owned())),
             RoleKey::Tts(l) => recommended(Role::Tts, &LangKey::Lang(l.code().to_owned())),
             RoleKey::Mt { .. } => Some(DEFAULT_MT_PROVIDER.to_owned()),
-            RoleKey::AsrRefine(l) => self
-                .catalogue
-                .candidates(
+            RoleKey::AsrRefine(l) => {
+                let candidates = self.catalogue.candidates(
                     Role::Asr,
                     &LangKey::Lang(l.code().to_owned()),
                     self.hardware,
                     &runtimes,
-                )
-                .into_iter()
-                .find(|c| c.entry.streaming == Streaming::Segmented)
-                .map(|c| c.entry.id.as_str().to_owned()),
+                );
+                // The refine model is the most accurate recogniser the call can run: a model
+                // that re-decodes (it has a call adapter) and carries the `most_accurate` badge,
+                // else the first such model. A finals-only model is never a default: it is
+                // chosen explicitly or not at all.
+                let redecode = |c: &&Candidate<'_>| c.entry.streaming == Streaming::Redecode;
+                candidates
+                    .iter()
+                    .filter(redecode)
+                    .find(|c| c.badge == Some(Badge::MostAccurate))
+                    .or_else(|| candidates.iter().find(redecode))
+                    .map(|c| c.entry.id.as_str().to_owned())
+            }
         }
     }
 

@@ -128,9 +128,9 @@ fn a_cloud_protocol_without_a_client_is_not_built_in() {
 #[test]
 fn a_model_that_is_not_installed_names_the_model_for_the_download() {
     let rig = Rig::new();
-    let id = ModelId::new("qwen3-asr-0.6b");
+    let id = ModelId::new("qwen3-asr-0.6b-q8");
     rig.models.set(
-        "qwen3-asr-0.6b",
+        "qwen3-asr-0.6b-q8",
         NotReady::NotInstalled {
             id: id.clone(),
             size: 1234,
@@ -182,13 +182,13 @@ fn a_model_that_is_not_installed_names_the_model_for_the_download() {
 #[test]
 fn a_model_that_failed_verification_is_not_reported_as_missing() {
     let rig = Rig::new();
-    let id = ModelId::new("qwen3-asr-0.6b");
+    let id = ModelId::new("qwen3-asr-0.6b-q8");
     rig.models.set(
-        "qwen3-asr-0.6b",
+        "qwen3-asr-0.6b-q8",
         NotReady::Failed {
             id: id.clone(),
             reason: FailReason::ChecksumMismatch {
-                file: "asr06.gguf".into(),
+                file: "Qwen3-ASR-0.6B-Q8_0.gguf".into(),
             },
         },
     );
@@ -197,11 +197,11 @@ fn a_model_that_failed_verification_is_not_reported_as_missing() {
         p.kind,
         ProblemKind::ModelFailedVerification {
             model: id.clone(),
-            file: Some("asr06.gguf".into())
+            file: Some("Qwen3-ASR-0.6B-Q8_0.gguf".into())
         }
     );
     rig.models.set(
-        "qwen3-asr-0.6b",
+        "qwen3-asr-0.6b-q8",
         NotReady::Failed {
             id: id.clone(),
             reason: FailReason::Offline,
@@ -282,21 +282,63 @@ fn a_provider_that_cannot_stream_is_not_eligible_and_says_why() {
 }
 
 #[test]
-fn a_segmented_model_streams_only_in_segmented_mode() {
+fn eligibility_for_streaming_recognition_follows_the_partials_the_model_produces() {
+    let mut rig = Rig::new();
+    // A re-decoding model produces partial results while audio arrives: eligible, in every mode.
+    for mode in ["two_pass", "streaming", "segmented"] {
+        rig.cfg.pipeline.recognition_mode = mode.into();
+        let r = rig.registry().resolve_asr(Lang::Zh).unwrap();
+        assert_eq!(r.primary.id.as_str(), "qwen3-asr-0.6b-q8");
+        assert_eq!(r.primary.streaming, prxvc_models::Streaming::Redecode);
+    }
+    // A model that returns only a final per segment is not, in any mode, and says why.
+    rig.cfg
+        .providers
+        .active
+        .asr
+        .insert("zh".into(), "final-only-asr".into());
+    for mode in ["two_pass", "streaming", "segmented"] {
+        rig.cfg.pipeline.recognition_mode = mode.into();
+        let p = only(rig.registry().resolve_asr(Lang::Zh));
+        let ProblemKind::NotStreaming { id, reason } = p.kind else {
+            panic!("expected NotStreaming");
+        };
+        assert_eq!(id, pid("final-only-asr"));
+        assert!(reason.contains("partial results"), "{reason}");
+    }
+    // The same model serves the refine pass.
+    rig.cfg
+        .providers
+        .active
+        .asr_refine
+        .insert("zh".into(), "final-only-asr".into());
+    let refine = rig.registry().resolve_asr_refine(Lang::Zh).unwrap();
+    assert_eq!(refine.primary.id.as_str(), "final-only-asr");
+    // The refine pass takes a re-decoding model too, and the mode never changes eligibility.
+    let mut rig = Rig::new();
+    rig.cfg.pipeline.recognition_mode = "segmented".into();
+    let plan = rig.registry().resolve_call().unwrap();
+    assert_eq!(plan.recognition, RecognitionMode::Segmented);
+    assert_eq!(plan.outgoing.asr.primary.id.as_str(), "qwen3-asr-0.6b-q8");
+}
+
+#[test]
+fn a_model_without_any_streaming_is_refused_for_both_recognition_roles() {
     let mut rig = Rig::new();
     rig.cfg
         .providers
         .active
         .asr
-        .insert("zh".into(), "qwen3-asr-1.7b".into());
-    let p = only(rig.registry().resolve_asr(Lang::Zh));
-    assert!(matches!(p.kind, ProblemKind::NotStreaming { .. }));
-    rig.cfg.pipeline.recognition_mode = "segmented".into();
-    assert!(rig.registry().resolve_asr(Lang::Zh).is_ok());
-    assert_eq!(
-        RecognitionMode::Segmented,
-        rig.registry().resolve_call().unwrap().recognition
-    );
+        .insert("zh".into(), "whole-asr".into());
+    rig.cfg
+        .providers
+        .active
+        .asr_refine
+        .insert("zh".into(), "whole-asr".into());
+    let reg = rig.registry();
+    for p in [reg.resolve_asr(Lang::Zh), reg.resolve_asr_refine(Lang::Zh)] {
+        assert!(matches!(only(p).kind, ProblemKind::NotStreaming { .. }));
+    }
 }
 
 #[test]

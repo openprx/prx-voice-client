@@ -63,40 +63,34 @@ fn zh_en() -> Value {
     json!([{"kind": "lang", "code": "zh"}, {"kind": "lang", "code": "en"}])
 }
 
-/// The embedded catalogue with the recognition runtime of the end state (CT-11), a few models
-/// that each fail one check, and voice presets.
+/// The embedded catalogue, a few extra models that each fail one check, and voice presets.
 pub fn fixture_catalogue(preset_size: u64) -> Catalogue {
     let mut value = serde_json::to_value(Catalogue::embedded()).unwrap();
     let models = value["models"].as_array_mut().unwrap();
-    for m in models.iter_mut() {
-        if m["id"] == "silero-vad-6.2" {
-            m["runtime"] = json!({"name": "transcribe"});
-        }
-    }
     models.extend([
         model(
-            "qwen3-asr-0.6b",
+            "final-only-asr",
             "asr",
-            "transcribe",
-            "native",
-            zh_en(),
-            Some(("recommended", 0)),
-            vec![file("asr06.gguf", "model", 10, 'a')],
-        ),
-        model(
-            "qwen3-asr-1.7b",
-            "asr",
-            "transcribe",
+            "transcribe.cpp",
             "segmented",
             zh_en(),
-            Some(("smallest", 5)),
-            vec![file("asr17.gguf", "model", 10, 'b')],
+            None,
+            vec![file("finalonly.gguf", "model", 10, 'b')],
+        ),
+        model(
+            "whole-asr",
+            "asr",
+            "transcribe.cpp",
+            "none",
+            zh_en(),
+            None,
+            vec![file("whole.gguf", "model", 10, '7')],
         ),
         model(
             "zh-only-asr",
             "asr",
-            "transcribe",
-            "native",
+            "transcribe.cpp",
+            "redecode",
             json!([{"kind": "lang", "code": "zh"}]),
             None,
             vec![file("zhasr.gguf", "model", 10, 'c')],

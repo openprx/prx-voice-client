@@ -26,7 +26,7 @@ use crate::model_source::ModelSource;
 use crate::plan::CallPlan;
 use crate::problem::{BuildError, Problem};
 use crate::recognition::{BuiltInRecognition, RecognitionLoader};
-use crate::resolve::{AsrNeeds, Resolver, VoiceChoice, VoiceDirs};
+use crate::resolve::{Resolver, VoiceChoice, VoiceDirs};
 use crate::runtime::BuiltRuntimes;
 use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec, VoicePlan};
 use crate::tts_loader::{BuiltInTts, TtsLoader, check_capabilities, register_voice};
@@ -176,11 +176,6 @@ impl ProviderRegistry {
         f: impl FnOnce(&Resolver<'_>) -> R,
     ) -> R {
         let state = self.state.read();
-        let needs = if state.cfg.pipeline.recognition_mode == "segmented" {
-            AsrNeeds::SegmentedAllowed
-        } else {
-            AsrNeeds::Native
-        };
         let built = self.built();
         let resolver = Resolver {
             cfg: &state.cfg,
@@ -191,7 +186,6 @@ impl ProviderRegistry {
             hardware: &self.hardware,
             dirs: &self.dirs,
             built: &built,
-            asr_needs: needs,
             require_prepared,
         };
         f(&resolver)

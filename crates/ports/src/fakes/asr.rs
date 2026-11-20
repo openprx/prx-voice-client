@@ -124,6 +124,7 @@ impl FakeStreamingAsr {
     /// A provider whose streams play `script`, timed on `clock`.
     pub fn new(clock: impl Clock + 'static, script: AsrScript) -> Self {
         let descriptor = ProviderDescriptor::new("fake-asr", "fake", StreamingKind::Native)
+            .with_stable_prefix(true)
             .with_languages([Lang::Zh, Lang::En])
             .with_sample_rates([SampleRate::HZ_16000]);
         Self {

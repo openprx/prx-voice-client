@@ -30,10 +30,10 @@ fn a_fresh_config_resolves_to_the_catalogue_defaults() {
     assert_eq!((out.source, out.target), (Lang::Zh, Lang::En));
     assert_eq!((inc.source, inc.target), (Lang::En, Lang::Zh));
     for d in [out, inc] {
-        assert_eq!(d.asr.primary.id.as_str(), "qwen3-asr-0.6b");
+        assert_eq!(d.asr.primary.id.as_str(), "qwen3-asr-0.6b-q8");
         assert_eq!(
             d.refine.as_ref().unwrap().primary.id.as_str(),
-            "qwen3-asr-1.7b"
+            "qwen3-asr-1.7b-q8"
         );
         assert_eq!(d.mt.primary.id.as_str(), DEFAULT_MT_PROVIDER);
         assert_eq!(d.mt.primary.model, "gemma-4-e4b-it-qat-q4-0");
@@ -100,10 +100,22 @@ fn without_the_native_features_the_native_roles_are_typed_not_built_in_problems(
             _ => None,
         })
         .collect();
-    assert!(not_built_in.contains(&(RoleKey::Vad, "silero-vad-6.2", "transcribe")));
-    assert!(not_built_in.contains(&(RoleKey::Asr(Lang::Zh), "qwen3-asr-0.6b", "transcribe")));
-    assert!(not_built_in.contains(&(RoleKey::Asr(Lang::En), "qwen3-asr-0.6b", "transcribe")));
-    assert!(not_built_in.contains(&(RoleKey::AsrRefine(Lang::Zh), "qwen3-asr-1.7b", "transcribe")));
+    assert!(not_built_in.contains(&(RoleKey::Vad, "silero-vad-6.2", "transcribe.cpp")));
+    assert!(not_built_in.contains(&(
+        RoleKey::Asr(Lang::Zh),
+        "qwen3-asr-0.6b-q8",
+        "transcribe.cpp"
+    )));
+    assert!(not_built_in.contains(&(
+        RoleKey::Asr(Lang::En),
+        "qwen3-asr-0.6b-q8",
+        "transcribe.cpp"
+    )));
+    assert!(not_built_in.contains(&(
+        RoleKey::AsrRefine(Lang::Zh),
+        "qwen3-asr-1.7b-q8",
+        "transcribe.cpp"
+    )));
     assert_eq!(
         not_built_in.contains(&(RoleKey::Tts(Lang::En), TTS, "qwentts.cpp")),
         !cfg!(feature = "qwentts"),
@@ -339,4 +351,37 @@ fn a_valid_fallback_is_resolved_and_validated_like_the_primary() {
     assert_eq!(fb.id.as_str(), "qwen3-tts-0.6b-base-q8");
     assert_ne!(fb.fingerprint, tts.primary.fingerprint);
     assert!(tts.warnings.is_empty());
+}
+
+#[test]
+fn whisper_is_never_the_default_for_a_call_role_on_any_machine() {
+    for (gb, os, arch) in [
+        (8, prxvc_models::Os::Macos, prxvc_models::Arch::Aarch64),
+        (64, prxvc_models::Os::Linux, prxvc_models::Arch::X86_64),
+        (16, prxvc_models::Os::Windows, prxvc_models::Arch::X86_64),
+    ] {
+        let rig = Rig::new();
+        let registry = rig
+            .registry()
+            .with_hardware(prxvc_models::HardwareInfo::new(gb, os, arch));
+        for lang in [Lang::Zh, Lang::En] {
+            assert_eq!(
+                registry.resolve_asr(lang).unwrap().primary.id.as_str(),
+                "qwen3-asr-0.6b-q8"
+            );
+            assert_eq!(
+                registry
+                    .resolve_asr_refine(lang)
+                    .unwrap()
+                    .primary
+                    .id
+                    .as_str(),
+                "qwen3-asr-1.7b-q8"
+            );
+        }
+        assert_eq!(
+            registry.resolve_vad().unwrap().primary.id.as_str(),
+            "silero-vad-6.2"
+        );
+    }
 }

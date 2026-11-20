@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalogue_version": 2026112004,
+  "catalogue_version": 2026112005,
   "min_app_version": "0.2.0",
   "models": [
     {
@@ -137,7 +137,7 @@
         "weights_url": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B"
       },
       "memory_mb": 1100,
-      "streaming": "segmented",
+      "streaming": "redecode",
       "recommended_for": [
         {
           "badge": "recommended",
@@ -187,8 +187,13 @@
         "weights_url": "https://huggingface.co/Qwen/Qwen3-ASR-1.7B"
       },
       "memory_mb": 2400,
-      "streaming": "segmented",
-      "recommended_for": []
+      "streaming": "redecode",
+      "recommended_for": [
+        {
+          "badge": "most_accurate",
+          "rank": 1
+        }
+      ]
     },
     {
       "id": "whisper-small",
