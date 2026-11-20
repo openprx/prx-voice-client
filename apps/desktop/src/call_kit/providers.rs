@@ -109,7 +109,7 @@ impl ProviderHost {
             tracing::warn!(%warning, "a fallback provider cannot be used");
         }
         check_servers(&plan.directions)?;
-        let built = build(&registry, &config, &plan);
+        let built = build_directions(&registry, &config, &plan);
         // Keep the registry only when something was built, so that `release` can report the engines.
         self.registry = Some(Arc::clone(&registry));
         let directions = built?;
@@ -177,7 +177,7 @@ pub(crate) fn probe_server(spec: &MtSpec) -> Result<(), String> {
 }
 
 /// Build every provider the plan names; the first failures of a role are reported together.
-fn build(
+pub(crate) fn build_directions(
     registry: &ProviderRegistry,
     config: &AppConfig,
     plan: &prxvc_providers::DirectionsPlan,

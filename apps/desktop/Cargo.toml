@@ -11,6 +11,12 @@ autobins = false
 name = "prxvc-desktop"
 path = "src/main.rs"
 
+# One direction of the real pipeline on a WAV file, with a latency report (design CT-15). A development
+# tool: it needs the native features and the models installed (scripts/dev). Not part of the bundle.
+[[bin]]
+name = "call_harness"
+path = "src/bin/call_harness/main.rs"
+
 # Development helpers for this machine (scripts/dev); not part of the product bundle.
 [[bin]]
 name = "prxvc-dev"

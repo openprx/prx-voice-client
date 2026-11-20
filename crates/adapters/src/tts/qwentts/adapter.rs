@@ -269,7 +269,7 @@ impl QwenTts {
             tts.workers.push(handle);
         }
         // On failure `tts` drops here, which stops the workers and frees the engine.
-        tts.warm_up = tts.run_warm_up().map_err(LoadError::WarmUp)?;
+        tts.warm_up = tts.run_warm_up_retrying().map_err(LoadError::WarmUp)?;
         Ok(tts)
     }
 
@@ -406,6 +406,25 @@ impl QwenTts {
             .insert(VoiceKey::of(selection), spk.into());
     }
 
+    /// The warm-up speaks with a synthetic voice nobody chose, which now and then does not
+    /// end its sentence (a runaway, caught by the cap). That says nothing about the engine, so
+    /// the throw-away is tried again, at most [`WARM_UP_ATTEMPTS`] times; any other failure,
+    /// and a runaway on the last attempt, fails the load.
+    fn run_warm_up_retrying(&self) -> Result<Duration, TtsError> {
+        let started = Instant::now();
+        let mut attempt = 1;
+        loop {
+            match self.run_warm_up() {
+                Ok(_) => return Ok(started.elapsed()),
+                Err(TtsError::Runaway { .. }) if attempt < WARM_UP_ATTEMPTS => {
+                    tracing::warn!(attempt, "warm-up synthesis ran away; trying again");
+                    attempt += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     fn run_warm_up(&self) -> Result<Duration, TtsError> {
         let started = Instant::now();
         let reference = VoiceReference {
@@ -469,6 +488,9 @@ impl QwenTts {
         Ok(QwenStream::new(rx, outcome, flags, voice))
     }
 }
+
+/// How many times the warm-up may run away before the load fails.
+const WARM_UP_ATTEMPTS: u32 = 4;
 
 /// A short voiced signal for the warm-up's voice: harmonics of a gliding 120 Hz fundamental with
 /// a syllable-rate envelope. It only has to be valid input for the speaker encoder.

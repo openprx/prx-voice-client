@@ -39,6 +39,8 @@ pub(super) struct TestEngine {
     script: Script,
     probe: Probe,
     fail_warm_up: bool,
+    /// The first this many warm-up calls never end their sentence.
+    runaway_warm_ups: AtomicUsize,
     embedding_dim: usize,
 }
 
@@ -49,9 +51,16 @@ impl TestEngine {
             script,
             probe: probe.clone(),
             fail_warm_up: false,
+            runaway_warm_ups: AtomicUsize::new(0),
             embedding_dim: 8,
         };
         (engine, probe)
+    }
+
+    /// The first `n` warm-up calls produce audio until the cap stops them.
+    pub(super) fn running_away_in_warm_up(self, n: usize) -> Self {
+        self.runaway_warm_ups.store(n, Ordering::SeqCst);
+        self
     }
 
     pub(super) fn failing_warm_up(mut self) -> Self {
@@ -79,6 +88,18 @@ impl SynthEngine for TestEngine {
                     status: -3,
                     message: "warm-up failed".to_owned(),
                 });
+            }
+            if self
+                .runaway_warm_ups
+                .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+                .is_ok()
+            {
+                for _ in 0..1000 {
+                    if ctl.should_abort() {
+                        return Ok(CallEnd::Aborted);
+                    }
+                    ctl.on_chunk(&[0.1; 1920]);
+                }
             }
             ctl.on_chunk(&[0.1; 1920]);
             return Ok(CallEnd::Completed);

@@ -568,6 +568,24 @@ fn a_failed_warm_up_means_the_engine_is_not_ready_and_is_freed() {
 }
 
 #[test]
+fn a_warm_up_that_runs_away_is_tried_again_and_a_persistent_runaway_fails_the_load() {
+    // Two runaways, then good: the engine becomes ready (a bug fix: the load used to fail).
+    let (engine, probe) = TestEngine::new(steady(1, 10));
+    let ready = QwenTts::start(Arc::new(engine.running_away_in_warm_up(2)), cfg());
+    assert!(ready.is_ok(), "{:?}", ready.err());
+    assert!(probe.warm_up_calls.load(Ordering::SeqCst) > 3);
+    drop(ready);
+    // A warm-up that always runs away is a failed load, with the typed runaway.
+    let (engine, probe) = TestEngine::new(steady(1, 10));
+    let result = QwenTts::start(Arc::new(engine.running_away_in_warm_up(1000)), cfg());
+    assert!(matches!(
+        result,
+        Err(LoadError::WarmUp(TtsError::Runaway { .. }))
+    ));
+    assert!(probe.dropped.load(Ordering::SeqCst));
+}
+
+#[test]
 fn start_refuses_settings_that_cannot_work() {
     let (engine, _p) = TestEngine::new(steady(1, 10));
     let engine = Arc::new(engine);
