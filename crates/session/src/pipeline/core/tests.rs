@@ -39,10 +39,8 @@ struct Harness {
 struct Wiring2 {
     tree: Arc<TokenTree>,
     mt_in: Arc<BoundedQueue<MtItem>>,
-    tts_in: Arc<BoundedQueue<TtsItem>>,
     events: Arc<BoundedQueue<PipelineEvent>>,
     gate: Arc<Gate>,
-    stats: Arc<Stats>,
 }
 
 fn voice() -> VoiceSelection {
@@ -68,7 +66,7 @@ fn harness(customize: impl FnOnce(&mut PipelineParams)) -> Harness {
         audio_in: Arc::new(BoundedQueue::new("audio", 16, Policy::DropOldest)),
         refine_in: Arc::new(BoundedQueue::new("refine", 8, Policy::DropOldest)),
         mt_in: Arc::clone(&mt_in),
-        tts_in: Arc::clone(&tts_in),
+        tts_in,
         events: Arc::clone(&events),
         gate: Arc::clone(&gate),
         snapshots: publisher,
@@ -83,10 +81,8 @@ fn harness(customize: impl FnOnce(&mut PipelineParams)) -> Harness {
         w: Wiring2 {
             tree,
             mt_in,
-            tts_in,
             events,
             gate,
-            stats,
         },
         snaps,
         clock,
@@ -504,10 +500,4 @@ fn a_refine_failure_falls_back_to_the_streaming_text_and_three_in_a_row_degrade(
         },
     );
     assert_eq!(h.late(), before + 1);
-    let _ = (
-        AsrError::Cancelled,
-        &h.w.stats,
-        &h.w.tts_in,
-        Ordering::SeqCst,
-    );
 }

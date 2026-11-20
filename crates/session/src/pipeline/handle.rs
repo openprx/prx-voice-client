@@ -111,6 +111,57 @@ pub struct Started {
     pub snapshots: SnapshotSubscriber,
 }
 
+/// The queues of the module table, built from the configured capacities.
+struct Queues {
+    audio_in: Arc<BoundedQueue<AudioFrame>>,
+    inbox: Arc<BoundedQueue<Inbound>>,
+    refine_in: Arc<BoundedQueue<prxvc_media::Envelope<super::messages::RefineJob>>>,
+    mt_in: Arc<BoundedQueue<MtItem>>,
+    tts_in: Arc<BoundedQueue<TtsItem>>,
+    events: Arc<BoundedQueue<PipelineEvent>>,
+}
+
+impl Queues {
+    fn new(params: &PipelineParams) -> Self {
+        let caps = params.queues;
+        let audio_ms = usize::try_from(caps.audio_in.as_millis()).unwrap_or(usize::MAX);
+        Self {
+            audio_in: Arc::new(BoundedQueue::weighted(
+                "audio_in",
+                audio_ms,
+                Policy::DropOldest,
+                |f: &AudioFrame| {
+                    usize::try_from(f.duration().as_millis())
+                        .unwrap_or(1)
+                        .max(1)
+                },
+            )),
+            inbox: Arc::new(BoundedQueue::new("inbox", caps.inbox, Policy::Block)),
+            refine_in: Arc::new(BoundedQueue::new(
+                "refine_in",
+                caps.refine_in,
+                Policy::DropOldest,
+            )),
+            mt_in: Arc::new(BoundedQueue::new("mt_in", caps.mt_in, Policy::DropOldest)),
+            tts_in: Arc::new(BoundedQueue::new("tts_in", caps.tts_in, Policy::Block)),
+            events: Arc::new(BoundedQueue::new(
+                "events_out",
+                caps.events_out,
+                Policy::Block,
+            )),
+        }
+    }
+}
+
+/// What every stage thread of one direction shares.
+struct StageContext {
+    params: PipelineParams,
+    tree: Arc<TokenTree>,
+    tracer: Tracer,
+    stats: Arc<Stats>,
+    gate: Arc<Gate>,
+}
+
 /// One direction of the call as a running pipeline. See the module
 /// documentation for the threads and queues.
 pub struct DirectionPipeline {
@@ -143,45 +194,21 @@ impl DirectionPipeline {
         if params.refines() && providers.refine.is_none() {
             return Err(PipelineError::MissingRefine);
         }
-        let caps = params.queues;
-        let audio_in = Arc::new(BoundedQueue::weighted(
-            "audio_in",
-            usize::try_from(caps.audio_in.as_millis()).unwrap_or(usize::MAX),
-            Policy::DropOldest,
-            |f: &AudioFrame| {
-                usize::try_from(f.duration().as_millis())
-                    .unwrap_or(1)
-                    .max(1)
-            },
-        ));
-        let inbox = Arc::new(BoundedQueue::new("inbox", caps.inbox, Policy::Block));
-        let refine_in = Arc::new(BoundedQueue::new(
-            "refine_in",
-            caps.refine_in,
-            Policy::DropOldest,
-        ));
-        let mt_in = Arc::new(BoundedQueue::new("mt_in", caps.mt_in, Policy::DropOldest));
-        let tts_in = Arc::new(BoundedQueue::new("tts_in", caps.tts_in, Policy::Block));
-        let events = Arc::new(BoundedQueue::new(
-            "events_out",
-            caps.events_out,
-            Policy::Block,
-        ));
+        let q = Queues::new(&params);
         let tree = TokenTree::new(call.child_token());
         let stats = Arc::new(Stats::default());
         let gate = Arc::new(Gate::default());
         let tracer = Tracer::new(trace, Arc::clone(&clock));
         let (publisher, subscriber) = snapshot_channel();
-        let outbox = Outbox::new(Arc::clone(&inbox));
         let core = Core::new(
             Wiring {
                 tree: Arc::clone(&tree),
-                inbox: Arc::clone(&inbox),
-                audio_in: Arc::clone(&audio_in),
-                refine_in: Arc::clone(&refine_in),
-                mt_in: Arc::clone(&mt_in),
-                tts_in: Arc::clone(&tts_in),
-                events: Arc::clone(&events),
+                inbox: Arc::clone(&q.inbox),
+                audio_in: Arc::clone(&q.audio_in),
+                refine_in: Arc::clone(&q.refine_in),
+                mt_in: Arc::clone(&q.mt_in),
+                tts_in: Arc::clone(&q.tts_in),
+                events: Arc::clone(&q.events),
                 gate: Arc::clone(&gate),
                 snapshots: publisher,
                 stats: Arc::clone(&stats),
@@ -190,15 +217,15 @@ impl DirectionPipeline {
             params.clone(),
         );
         let pipeline = Self {
-            input: AudioInput::new(Arc::clone(&audio_in), Arc::clone(&stats)),
+            input: AudioInput::new(Arc::clone(&q.audio_in), Arc::clone(&stats)),
             tree: Arc::clone(&tree),
-            inbox: Arc::clone(&inbox),
-            audio_in: Arc::clone(&audio_in),
-            refine_in: Arc::clone(&refine_in),
-            mt_in: Arc::clone(&mt_in),
-            tts_in: Arc::clone(&tts_in),
-            events: Arc::clone(&events),
-            outbox: outbox.clone(),
+            inbox: Arc::clone(&q.inbox),
+            audio_in: Arc::clone(&q.audio_in),
+            refine_in: Arc::clone(&q.refine_in),
+            mt_in: Arc::clone(&q.mt_in),
+            tts_in: Arc::clone(&q.tts_in),
+            events: Arc::clone(&q.events),
+            outbox: Outbox::new(Arc::clone(&q.inbox)),
             stats: Arc::clone(&stats),
             workers: Arc::new(Threads::new()),
             control: Threads::new(),
@@ -207,49 +234,72 @@ impl DirectionPipeline {
         // `Start` is the first item of the inbox, before any worker can report.
         pipeline.command(Command::Start);
         let name = |stage: &str| format!("prxvc-{:?}-{stage}", params.direction).to_lowercase();
-        let control_clock = Arc::clone(&clock);
-        let control_inbox = Arc::clone(&inbox);
+        let control_inbox = Arc::clone(&q.inbox);
         pipeline
             .control
             .spawn(name("control"), move || {
-                let mut core = run_control(core, &control_inbox, &*control_clock);
+                let mut core = run_control(core, &control_inbox, &*clock);
                 core.shutdown();
             })
             .map_err(|e| spawn_error("control", &e))?;
-        let w = &pipeline.workers;
+        let ctx = StageContext {
+            params,
+            tree,
+            tracer,
+            stats,
+            gate,
+        };
+        pipeline.spawn_workers(&ctx, providers, &q)?;
+        Ok(Started {
+            pipeline,
+            events: EventReceiver { queue: q.events },
+            snapshots: subscriber,
+        })
+    }
+
+    /// Start the stage threads: recognise, translate, synthesise and, in two-pass mode, refine.
+    fn spawn_workers(
+        &self,
+        ctx: &StageContext,
+        providers: PipelineProviders,
+        q: &Queues,
+    ) -> Result<(), PipelineError> {
+        let (params, tree, tracer, stats) = (&ctx.params, &ctx.tree, &ctx.tracer, &ctx.stats);
+        let name = |stage: &str| format!("prxvc-{:?}-{stage}", params.direction).to_lowercase();
+        let w = &self.workers;
         let recognizer = RecognizerThread {
             vad: providers.vad,
             asr: providers.asr,
             p: params.clone(),
-            tree: Arc::clone(&tree),
+            tree: Arc::clone(tree),
             tracer: tracer.clone(),
-            stats: Arc::clone(&stats),
-            outbox: outbox.clone(),
-            audio_in: Arc::clone(&audio_in),
-            gate,
+            stats: Arc::clone(stats),
+            outbox: self.outbox.clone(),
+            audio_in: Arc::clone(&q.audio_in),
+            gate: Arc::clone(&ctx.gate),
         };
         w.spawn(name("recognize"), move || recognizer.run())
             .map_err(|e| spawn_error("recognize", &e))?;
         let mt = MtStage {
             mt: providers.mt,
             p: params.clone(),
-            outbox: outbox.clone(),
-            input: Arc::clone(&mt_in),
-            tts_in: Arc::clone(&tts_in),
+            outbox: self.outbox.clone(),
+            input: Arc::clone(&q.mt_in),
+            tts_in: Arc::clone(&q.tts_in),
             call: tree.call().clone(),
             tracer: tracer.clone(),
-            stats: Arc::clone(&stats),
+            stats: Arc::clone(stats),
         };
         w.spawn(name("translate"), move || mt.run())
             .map_err(|e| spawn_error("translate", &e))?;
         let tts = TtsStage {
             tts: providers.tts,
             p: params.clone(),
-            outbox: outbox.clone(),
-            input: Arc::clone(&tts_in),
+            outbox: self.outbox.clone(),
+            input: Arc::clone(&q.tts_in),
             call: tree.call().clone(),
             tracer: tracer.clone(),
-            stats: Arc::clone(&stats),
+            stats: Arc::clone(stats),
         };
         w.spawn(name("synthesize"), move || tts.run())
             .map_err(|e| spawn_error("synthesize", &e))?;
@@ -258,19 +308,14 @@ impl DirectionPipeline {
                 refine,
                 lang: params.source,
                 hotwords: params.hotwords.clone(),
-                outbox,
-                input: Arc::clone(&refine_in),
-                tracer,
+                outbox: self.outbox.clone(),
+                input: Arc::clone(&q.refine_in),
+                tracer: tracer.clone(),
             };
             w.spawn(name("refine"), move || stage.run())
                 .map_err(|e| spawn_error("refine", &e))?;
         }
-        let events_rx = EventReceiver { queue: events };
-        Ok(Started {
-            pipeline,
-            events: events_rx,
-            snapshots: subscriber,
-        })
+        Ok(())
     }
 
     /// The audio input. Frames must be at the VAD engine's rate.

@@ -167,7 +167,11 @@ mod tests {
             s.push("Then").is_empty(),
             "not enough tokens after the mark yet"
         );
-        let rest = s.push(" go");
+        assert!(
+            s.push(" go").is_empty(),
+            "one token after the mark, two are needed"
+        );
+        let rest = s.push(" on");
         assert_eq!(rest, vec!["Pay now please sir."]);
     }
 }

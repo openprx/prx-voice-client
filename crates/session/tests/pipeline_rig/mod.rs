@@ -144,6 +144,8 @@ pub fn summarize(events: &[PipelineEvent]) -> String {
 struct PlayJob {
     clause: ClauseId,
     end: MonoTime,
+    /// When the clause's last chunk arrived (its `AudioEnd`).
+    released_at: MonoTime,
     generation: u64,
 }
 
@@ -221,7 +223,7 @@ impl Rig {
             fakes,
             params(Direction::Outgoing),
             &call,
-            FakeTraceSink::new(true),
+            FakeTraceSink::new(false),
         )
     }
 
@@ -255,7 +257,7 @@ impl Rig {
         let mut p = params(direction);
         customize(&mut p);
         let call = CancellationToken::new();
-        Self::launch(clock.clone(), fakes, p, &call, FakeTraceSink::new(true))
+        Self::launch(clock.clone(), fakes, p, &call, FakeTraceSink::new(false))
     }
 
     /// Start on existing fakes (two rigs may share a translator and a synthesiser).
@@ -479,6 +481,7 @@ fn spawn_recorder(
                         jobs.0.push_back(PlayJob {
                             clause,
                             end: started.saturating_add(total),
+                            released_at: clock.now(),
                             generation: recorder.flushes.load(Ordering::SeqCst),
                         });
                         play.changed.notify_all();
@@ -520,7 +523,8 @@ fn spawn_player(
             let abandoned = || flushes.load(Ordering::SeqCst) != job.generation;
             let stopped = || play.jobs.lock().1;
             if clock.sleep_until(job.end, &|| abandoned() || stopped()) {
-                pipeline.playback_finished(job.clause, job.end);
+                // Playing cannot end before the last chunk exists.
+                pipeline.playback_finished(job.clause, job.end.max(job.released_at));
             }
         }
     })
@@ -668,3 +672,17 @@ pub fn assert_every_request_ended(log: &prxvc_ports::fakes::EventLog) {
         );
     }
 }
+
+/// Stages that follow each other causally when the translation is not split: their times never go backwards.
+/// (`TtsDone` is left out: playback starts at the first chunk, while synthesis goes on.)
+pub const OUTPUT_CHAIN: [TraceStage; 9] = [
+    TraceStage::ClauseCommitted,
+    TraceStage::AsrFinalReady,
+    TraceStage::MtRequestSent,
+    TraceStage::MtFirstToken,
+    TraceStage::MtDone,
+    TraceStage::TtsRequestSent,
+    TraceStage::TtsFirstChunk,
+    TraceStage::PlayoutStart,
+    TraceStage::PlayoutEnd,
+];
