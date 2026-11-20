@@ -48,3 +48,47 @@ documents every transformation.
   instantiated as static fonts at weights 400 and 600 (fontTools). The
   Reserved Font Name 'Source' is not used as, or in, the name of the modified
   fonts, which keep the family name "Noto Sans SC".
+
+## Virtual microphone driver
+
+The macOS virtual microphone driver (`driver/macos/PrxVoiceMicrophoneDriver.c`, built as
+`PrxVoiceMicrophone.driver` and carried in the app bundle under
+`Contents/Resources/Drivers/`) is adapted from the MIT-licensed Hex microphone
+driver. The same text is in `driver/macos/NOTICE` and inside the driver bundle
+(`Contents/Resources/NOTICE`).
+
+### Hex microphone driver
+
+- Used for: the audio server plug-in that exposes "PRX Voice Microphone".
+- Source: `HexMicrophoneDriver.c` of the Hex project (https://github.com/anomalyco/hex).
+- Licence: MIT.
+- Copyright: Copyright (c) 2026 Kit Langton; Copyright (c) 2026 Christopher
+  Langton (the name given in the Hex repository LICENSE file).
+- Modification: identifiers, device names, device and box UIDs, manufacturer
+  string, bundle identifier and factory UUID replaced; the reported transport
+  type is a build-time option. The driver logic is otherwise unchanged.
+
+```text
+MIT License
+
+Copyright (c) 2026 Kit Langton
+Copyright (c) 2026 Christopher Langton (as named in the Hex repository LICENSE)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
