@@ -269,17 +269,9 @@ mod tests {
         assert!(g.neg_threshold <= g.threshold);
     }
 
-    #[cfg(not(feature = "transcribe"))]
     #[test]
-    fn without_the_feature_the_loader_is_unavailable() {
-        assert!(!BuiltInRecognition.available());
-        assert!(!TRANSCRIBE_BUILT_IN);
-    }
-
-    #[cfg(feature = "transcribe")]
-    #[test]
-    fn with_the_feature_the_loader_is_available() {
-        assert!(BuiltInRecognition.available());
-        assert!(TRANSCRIBE_BUILT_IN);
+    fn the_loader_is_available_exactly_when_the_feature_is_on() {
+        assert_eq!(BuiltInRecognition.available(), cfg!(feature = "transcribe"));
+        assert_eq!(TRANSCRIBE_BUILT_IN, BuiltInRecognition.available());
     }
 }
