@@ -13,6 +13,9 @@
 //!   [`virtual_mic::VirtualMicSink`] opens the virtual microphone driver's
 //!   hidden sink by UID, checked by [`driver_status::DriverStatus`].
 //!
+//! * Mixing: [`mix::Mixer`] combines the translated speech and the original
+//!   voice of one direction into the stream a sink plays.
+//!
 //! Frames are the `prxvc-media` types: mono `f32`, a sample rate, a monotonic
 //! timestamp and a sequence number.
 //!
@@ -72,6 +75,7 @@ pub mod endpoint;
 pub mod input_devices;
 pub mod input_policy;
 pub mod input_supervisor;
+pub mod mix;
 pub mod mock;
 pub mod output;
 pub mod pipeline;
