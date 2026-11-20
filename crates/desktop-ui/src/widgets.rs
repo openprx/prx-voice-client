@@ -400,6 +400,7 @@ pub fn text_field(
 ) -> Response {
     ui.label(text(label, size::SECONDARY, tk.secondary));
     ui.add_space(space::S6 - ui.spacing().item_spacing.y.min(space::S6));
+    let name = label;
     let border_color = if invalid { tk.danger } else { tk.input_border };
     let fill = if invalid { tk.danger_bg } else { tk.input };
     let response = ui
@@ -419,6 +420,7 @@ pub fn text_field(
                     .desired_width(ui.available_width())
                     .min_size(vec2(0.0, layout::FIELD_HEIGHT)),
             )
+            .accessible_name(name)
         })
         .inner;
     if let Some(helper) = helper {
