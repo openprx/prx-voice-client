@@ -464,7 +464,8 @@ fn live_refine_decode_accuracy_on_the_benchmark_files() {
         ("en_read", "English WER", 6.8),
     ] {
         let (mut e, mut n, mut decode_ms) = (0, 0, Vec::new());
-        for r in rows(subset) {
+        let (mut e10, mut n10) = (0, 0);
+        for (i, r) in rows(subset).into_iter().enumerate() {
             let a = audio(&r);
             let t = Instant::now();
             let h = asr
@@ -477,10 +478,20 @@ fn live_refine_decode_accuracy_on_the_benchmark_files() {
                 )
                 .unwrap();
             decode_ms.push(t.elapsed().as_secs_f64() * 1000.0 / (a.len() as f64 / 16_000.0));
+            transcribe_support::dump("PRXVC_DUMP_REFINE", &r.id, &r.lang, &r.reference, &h.text);
             let (ee, nn) = errors(&r.reference, &h.text);
             e += ee;
             n += nn;
+            if i < 10 {
+                println!("  {} plain {ee}/{nn}: {}", r.id, h.text);
+                e10 += ee;
+                n10 += nn;
+            }
         }
+        println!(
+            "{label} on the first ten files (the ones of the real-time runs) through the refine port: {:.2}% ({e10}/{n10})",
+            100.0 * e10 as f64 / n10 as f64
+        );
         println!(
             "{label} over {} files through the refine port: {:.2}% ({e}/{n}); benchmark {benchmark}% (its normaliser also converts numbers and traditional characters); decode time per second of audio median {:.0} ms",
             rows(subset).len(),

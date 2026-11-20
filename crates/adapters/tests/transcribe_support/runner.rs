@@ -8,7 +8,7 @@ use prxvc_adapters::vad::{GateParams, VadEvent, VadGate};
 use prxvc_media::{Lang, MonoTime};
 use prxvc_ports::{AsrContext, AsrHypothesis, CancellationToken, StreamingAsr, VadProvider};
 
-use super::{errors, sleep_until, tokens};
+use super::{dump, errors, sleep_until, tokens};
 
 const CHUNK: usize = 320; // 20 ms
 const TAIL_SILENCE: Duration = Duration::from_millis(1400);
@@ -150,6 +150,13 @@ pub fn run(
     u.final_text = fin.text.clone();
     (u.errors, u.ref_len) = errors(reference, &fin.text);
     u.segments = segments + 1;
+    dump(
+        "PRXVC_DUMP_STREAM",
+        id,
+        lang.code(),
+        reference,
+        &u.final_text,
+    );
     let fin = AsrHypothesis {
         text: last_text,
         ..fin

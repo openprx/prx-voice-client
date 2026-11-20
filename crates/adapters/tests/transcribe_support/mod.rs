@@ -152,3 +152,19 @@ pub fn sleep_until(at: Instant) {
 pub fn ms(d: Duration) -> f64 {
     d.as_secs_f64() * 1000.0
 }
+
+/// Append `id`, language, reference and hypothesis as one TSV line to the file named by the
+/// environment variable `var`, when it is set: the lines can be scored with the benchmark's own
+/// normaliser (bench/asr `common.error_counts`).
+pub fn dump(var: &str, id: &str, lang: &str, reference: &str, hyp: &str) {
+    use std::io::Write;
+    if let Some(path) = std::env::var_os(var) {
+        let clean = |s: &str| s.replace(['\t', '\n'], " ");
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("dump file");
+        writeln!(f, "{id}\t{lang}\t{}\t{}", clean(reference), clean(hyp)).expect("dump");
+    }
+}
