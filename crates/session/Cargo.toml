@@ -22,8 +22,5 @@ parking_lot = { workspace = true }
 # Scriptable fakes of every port (CS-5): the pipeline tests run on them.
 prxvc-ports = { workspace = true, features = ["fakes"] }
 
-[dev-dependencies]
-parking_lot = { workspace = true }
-
 [lints]
 workspace = true
