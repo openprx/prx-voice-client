@@ -27,6 +27,7 @@ impl Core {
             backlog_ms: self.backlog_ms,
             recent_skips: self.skips.iter().cloned().collect(),
             last_error: self.last_error.clone(),
+            ledger: self.ledger.snapshot(),
         }
     }
 

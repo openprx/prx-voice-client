@@ -160,20 +160,85 @@ impl ClauseStatus {
     }
 }
 
+/// Why a clause was skipped, as the captions say it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SkipView {
+    /// Not skipped.
+    #[default]
+    None,
+    /// Dropped to keep up with the speaker (stale or backlog or a full queue): "not spoken".
+    NotSpoken,
+    /// Already in the listener's language: not translated, the original voice passes through.
+    AlreadyInTarget,
+}
+
+/// A way a finished translation looks wrong (reported, the clause was spoken all the same).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CaptionFlag {
+    /// Mostly in the wrong script for the target language.
+    WrongLanguage,
+    /// Far longer than a translation can be.
+    TooLong,
+    /// Stopped at the provider's limit.
+    Truncated,
+    /// Reads as a refusal.
+    Refusal,
+    /// Reads as an answer, not a translation.
+    AnswerLike,
+    /// A thinking tag was left in.
+    ThinkResidue,
+}
+
+impl CaptionFlag {
+    /// Every kind, in the order the counters list them.
+    pub const ALL: [Self; 6] = [
+        Self::WrongLanguage,
+        Self::TooLong,
+        Self::Truncated,
+        Self::Refusal,
+        Self::AnswerLike,
+        Self::ThinkResidue,
+    ];
+
+    /// The i18n key of the flag's short name.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::WrongLanguage => "callwin.flag.wrong_language",
+            Self::TooLong => "callwin.flag.too_long",
+            Self::Truncated => "callwin.flag.truncated",
+            Self::Refusal => "callwin.flag.refusal",
+            Self::AnswerLike => "callwin.flag.answer_like",
+            Self::ThinkResidue => "callwin.flag.think_residue",
+        }
+    }
+}
+
 /// One committed clause of the captions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CaptionView {
+    /// The utterance (segment) the clause belongs to, counted from 1 in its direction.
+    pub utterance: u64,
+    /// The clause's index inside its utterance.
+    pub index: u16,
     /// What was said.
     pub source: String,
     /// Its translation so far.
     pub translation: String,
     /// Where it is.
     pub status: ClauseStatus,
+    /// Why it was skipped, when it was.
+    pub skip: SkipView,
+    /// How its translation looked wrong, when it did.
+    pub flags: Vec<CaptionFlag>,
+    /// The first translation came back in the wrong language and it was translated again.
+    pub retried: bool,
 }
 
 /// The clause being spoken, not yet committed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PartialView {
+    /// The utterance (segment) it belongs to.
+    pub utterance: u64,
     /// The recogniser's current reading.
     pub text: String,
     /// Bytes at the start of `text` that will not change.
@@ -207,6 +272,25 @@ pub struct CountersView {
     pub filler_dropped: u64,
     /// Translated pieces with nothing to say aloud that never reached the synthesiser.
     pub unspeakable_dropped: u64,
+    /// Clauses already in the listener's language: not translated, the original passed through.
+    pub in_target_passed: u64,
+    /// Translations asked for again after a reply in the wrong language.
+    pub mt_retries: u64,
+    /// Finished translations flagged, by kind, in the order of [`CaptionFlag::ALL`].
+    pub flags: [u64; 6],
+}
+
+impl CountersView {
+    /// The count of one flag kind.
+    pub fn flag(&self, flag: CaptionFlag) -> u64 {
+        let i = CaptionFlag::ALL.iter().position(|f| *f == flag).unwrap_or(0);
+        self.flags[i]
+    }
+
+    /// All flagged translations.
+    pub fn flags_total(&self) -> u64 {
+        self.flags.iter().sum()
+    }
 }
 
 /// The last finished clause's latency figures.

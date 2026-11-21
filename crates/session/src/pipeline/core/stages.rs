@@ -18,6 +18,8 @@ impl Core {
             StageEvent::MtStarted { clause } => self.translation_started(clause),
             StageEvent::MtText { clause, delta } => self.translation_text(clause, &delta),
             StageEvent::MtDone { clause } => self.translation_done(clause),
+            StageEvent::MtRetry { clause } => self.translation_retry(clause),
+            StageEvent::MtFlagged { clause, flags } => self.translation_flagged(clause, flags),
             StageEvent::MtFailed {
                 clause,
                 failure,
@@ -25,6 +27,7 @@ impl Core {
             } => {
                 if suspect {
                     Stats::add(&self.w.stats.mt_suspect, 1);
+                    self.tallies.entry(clause.segment()).or_default().suspect += 1;
                 }
                 self.fail_clause(clause, Stage::Mt, &failure, true);
             }
@@ -120,6 +123,36 @@ impl Core {
         }
         if let Some(info) = self.clauses.get_mut(&clause) {
             info.target_text.push_str(delta);
+        }
+    }
+
+    /// The first translation came back in the wrong language before it was spoken: its text is void
+    /// and the clause stays in translation while it is requested again.
+    fn translation_retry(&mut self, clause: ClauseId) {
+        if !self.clause_is_live(clause) {
+            self.drop_late();
+            return;
+        }
+        self.tallies.entry(clause.segment()).or_default().retried += 1;
+        if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
+            c.translation.clear();
+            c.retried = true;
+        }
+        if let Some(info) = self.clauses.get_mut(&clause) {
+            info.target_text.clear();
+        }
+    }
+
+    /// The finished translation carries quality flags; they are counted by the stage and shown in
+    /// the caption.
+    fn translation_flagged(&mut self, clause: ClauseId, flags: Vec<prxvc_ports::MtFlag>) {
+        self.tallies
+            .entry(clause.segment())
+            .or_default()
+            .flags
+            .extend(flags.iter().copied());
+        if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
+            c.flags = flags;
         }
     }
 

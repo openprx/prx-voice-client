@@ -47,7 +47,7 @@ pub use descriptor::{CapabilityError, Egress, ProviderDescriptor, ProviderId, St
 pub use endpoint::{
     AudioSink, AudioSource, EndpointError, EndpointHealth, SinkInfo, SourceInfo, WriteOutcome,
 };
-pub use mt::{MtDelta, MtError, MtPhase, MtRequest, MtStream, Translator};
+pub use mt::{MtDelta, MtError, MtFlag, MtPhase, MtRequest, MtStream, Translator};
 pub use routing::{
     BundleId, CallActivity, DeviceUid, RoutingChange, RoutingError, SystemAudioRouting,
 };

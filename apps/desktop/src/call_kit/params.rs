@@ -105,6 +105,8 @@ pub(crate) fn pipeline_params(
     params.min_speech_dbfs = p.min_speech_dbfs;
     params.pad = ms(p.pad_ms);
     params.drop_filler = p.drop_filler;
+    params.skip_source_in_target = p.skip_source_in_target;
+    params.retry_wrong_language = p.retry_wrong_language;
     params.mt_context_clauses = p.mt_context_clauses as usize;
     params.backlog = BacklogParams {
         enabled: p.backlog_skipping,
@@ -158,6 +160,7 @@ mod tests {
             PlannedMode::TwoPass,
         );
         assert!(params.drop_filler);
+        assert!(params.skip_source_in_target && params.retry_wrong_language);
         assert_eq!(params.min_speech_dbfs, -75.0);
         let mut config = AppConfig::default();
         config.pipeline.drop_filler = false;

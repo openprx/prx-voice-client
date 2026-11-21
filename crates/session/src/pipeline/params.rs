@@ -111,6 +111,12 @@ pub struct PipelineParams {
     pub pad: Duration,
     /// `pipeline.drop_filler`: a recognised unit that is only filler is not translated or spoken.
     pub drop_filler: bool,
+    /// `pipeline.skip_source_in_target`: a recognised clause that is already in the language the
+    /// listener hears is not translated or spoken; the original voice is passed through.
+    pub skip_source_in_target: bool,
+    /// `pipeline.retry_wrong_language`: a translation that starts in the wrong language is
+    /// requested once more with a stricter instruction before the clause fails.
+    pub retry_wrong_language: bool,
     /// `pipeline.mt_context_clauses`: previous source/target pairs sent as context.
     pub mt_context_clauses: usize,
     /// `pipeline.backlog_skipping`, `max_backlog_ms` and `max_lag_ms`.
@@ -159,6 +165,8 @@ impl PipelineParams {
             min_speech_dbfs: -75.0,
             pad: Duration::from_millis(200),
             drop_filler: true,
+            skip_source_in_target: true,
+            retry_wrong_language: true,
             mt_context_clauses: 4,
             backlog: BacklogParams::default(),
             jitter_buffer: Duration::from_millis(150),

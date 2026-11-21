@@ -160,6 +160,7 @@ pub fn test_translator(
         text: TEST_SENTENCE.to_owned(),
         context: Vec::new(),
         glossary: Vec::new(),
+        strict_language: false,
     };
     let (outcome, timed_out) = with_deadline(timeout, |cancel| {
         let mut stream = provider.translate(request)?;

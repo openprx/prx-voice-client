@@ -55,6 +55,7 @@ fn translating_lane(hears: Heard) -> LaneView {
         rms: 0.05,
         peak: 0.3,
         partial: Some(PartialView {
+            utterance: 3,
             text: "今天天气很好我们去".into(),
             stable_len: 18,
         }),
@@ -63,11 +64,13 @@ fn translating_lane(hears: Heard) -> LaneView {
                 source: "你好，今天的会议改到下午三点".into(),
                 translation: "Hello, today's meeting has moved to three in the afternoon.".into(),
                 status: ClauseStatus::Played,
+                ..CaptionView::default()
             },
             CaptionView {
                 source: "我们开会".into(),
                 translation: String::new(),
                 status: ClauseStatus::Translating,
+                ..CaptionView::default()
             },
         ],
         counters: Some(CountersView {

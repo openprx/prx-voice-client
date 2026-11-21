@@ -214,6 +214,7 @@ impl Coordinator {
                 }
             }
             PipelineEvent::Output { from, to, cause } => self.announce_output(d, from, to, cause),
+            PipelineEvent::Passthrough { on } => self.on_passthrough(d, on),
             PipelineEvent::Degraded(reason) => {
                 self.mark_problem(d);
                 self.feed(CallEvent::DirectionDegraded {
@@ -285,6 +286,7 @@ impl Coordinator {
             let _ = handle.join();
         }
         self.collect_translation();
+        self.capture_totals(d);
         let lane = &mut self.lanes[slot(d)];
         if let Some(path) = lane.path.as_mut() {
             path.disconnect();

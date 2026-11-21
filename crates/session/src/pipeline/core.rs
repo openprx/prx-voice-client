@@ -39,6 +39,7 @@ use super::snapshot::{
     Stats,
 };
 use super::trace::Tracer;
+use super::utterance::{LedgerBook, SegmentTally};
 use super::tree::TokenTree;
 use crate::direction_state::DirectionState;
 use crate::interrupt::{CancelAction, InterruptTrigger, decide_interrupt};
@@ -126,6 +127,13 @@ pub(crate) struct Core {
     commit_stash: Option<Commit>,
     skip_reason: Option<SkipReason>,
     skipping: bool,
+    /// The segment whose original voice is passed through because it is already in the target
+    /// language (`pipeline.skip_source_in_target`).
+    passthrough: Option<prxvc_media::SegmentId>,
+    /// What happened to the clauses of the open segments, for the utterance log line.
+    tallies: BTreeMap<prxvc_media::SegmentId, SegmentTally>,
+    /// The figures of the finished utterances.
+    ledger: LedgerBook,
     refine_failures: u32,
     last_error: Option<ErrorSnapshot>,
     recovery: Option<Recovery>,
@@ -155,6 +163,9 @@ impl Core {
             commit_stash: None,
             skip_reason: None,
             skipping: false,
+            passthrough: None,
+            tallies: BTreeMap::new(),
+            ledger: LedgerBook::default(),
             refine_failures: 0,
             last_error: None,
             recovery: None,
@@ -203,6 +214,9 @@ impl Core {
         let (segment, revision, onset) = (e.segment, e.revision, e.source_ts);
         match e.payload {
             RecognitionEvent::SpeechStarted => {
+                if self.passthrough.is_some_and(|s| s != segment) {
+                    self.set_passthrough(None);
+                }
                 self.apply_segment(SegmentEvent::SpeechStarted { at: onset });
                 let live = self
                     .w
@@ -222,6 +236,7 @@ impl Core {
                 stable_prefix_len,
             } => {
                 if self.apply_segment(SegmentEvent::Hypothesis { segment, revision }) {
+                    self.hypothesis_in_target(segment, &text);
                     self.partial = Some(PartialSnapshot {
                         segment,
                         revision,
@@ -243,6 +258,9 @@ impl Core {
             }
             RecognitionEvent::EndSegment => {
                 self.partial = None;
+                if self.passthrough == Some(segment) {
+                    self.set_passthrough(None);
+                }
                 self.apply_segment(SegmentEvent::EndSegment(segment));
             }
         }

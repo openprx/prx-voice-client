@@ -12,6 +12,7 @@
 //! * `ids`: [`Direction`], [`SegmentId`] and [`ClauseId`].
 //! * `clause_split`: the incremental splitter from translated text to clauses.
 //! * `speakable`: whether a text has anything to say aloud.
+//! * `script`: which of Chinese and English a text is written in, from its script.
 //! * `text_units`: the comparison units of a transcript (one per CJK character, one per other word).
 //! * `envelope`: [`Envelope`] and the [`RevisionTracker`] that drops late results.
 
@@ -21,6 +22,7 @@ pub mod envelope;
 pub mod ids;
 pub mod lang;
 pub mod rate;
+pub mod script;
 pub mod speakable;
 pub mod text_units;
 pub mod time;

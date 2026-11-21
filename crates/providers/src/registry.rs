@@ -326,7 +326,18 @@ impl ProviderRegistry {
     pub fn build_tts(&self, spec: &TtsSpec) -> Result<Box<dyn SpeechSynth>, BuildError> {
         let key = (spec.id.as_str().to_owned(), spec.fingerprint.clone());
         let lease = self.tts_engine(spec, key)?;
-        register_voice(lease.engine(), spec)?;
+        let started = std::time::Instant::now();
+        let cache_hit = register_voice(lease.engine(), spec)?;
+        tracing::info!(
+            provider = spec.id.as_str(),
+            voice = match &spec.voice {
+                VoicePlan::Cloned { .. } => "cloned",
+                VoicePlan::Preset { .. } => "preset",
+            },
+            cache_hit = ?cache_hit,
+            ready_ms = elapsed_ms(started),
+            "voice ready"
+        );
         Ok(Box::new(SharedSynth { lease }))
     }
 
@@ -366,8 +377,15 @@ impl ProviderRegistry {
             });
         }
         self.tts.acquire(key, || {
+            let started = std::time::Instant::now();
             let engine = self.tts_loader.load(spec)?;
             check_capabilities(&engine, spec)?;
+            tracing::info!(
+                provider = spec.id.as_str(),
+                load_ms = elapsed_ms(started),
+                warm_up_ms = engine.warm_up_duration().as_millis() as u64,
+                "synthesis engine loaded"
+            );
             Ok(engine)
         })
     }
@@ -382,6 +400,11 @@ impl ProviderRegistry {
             vad: self.vad.live(),
         }
     }
+}
+
+/// Whole milliseconds since `started`.
+fn elapsed_ms(started: std::time::Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// The key of a recognition engine: the model and the parameters it was started with, so that a

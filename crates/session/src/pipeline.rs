@@ -79,6 +79,7 @@ mod synth;
 mod trace;
 mod translate;
 mod tree;
+mod utterance;
 mod workers;
 
 pub use events::{ClauseAudio, PipelineEvent};
@@ -89,7 +90,8 @@ pub use handle::{
 pub use input::{AudioInput, PushOutcome};
 pub use params::{PipelineParams, QueueCaps, RecognitionMode, RecoveryParams};
 pub use queue::{Policy, QueueStats};
+pub use utterance::Percentiles;
 pub use snapshot::{
-    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, PartialSnapshot, SkipReason, SkippedClause,
+    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, Ledger, PartialSnapshot, SkipReason, SkippedClause,
     SnapshotSubscriber,
 };

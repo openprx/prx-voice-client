@@ -181,14 +181,18 @@ pub fn params(direction: Direction) -> PipelineParams {
         Direction::Outgoing => (Lang::Zh, Lang::En),
         Direction::Incoming => (Lang::En, Lang::Zh),
     };
-    PipelineParams::new(
+    let mut p = PipelineParams::new(
         direction,
         source,
         target,
         VoiceSelection::Preset {
             name: "preset-a".to_owned(),
         },
-    )
+    );
+    // Most fixtures script an English translation for the incoming direction, whatever its
+    // target; the wrong-language retry has its own tests, which switch it on.
+    p.retry_wrong_language = false;
+    p
 }
 
 impl Rig {

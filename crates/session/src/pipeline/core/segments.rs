@@ -7,6 +7,8 @@ use crate::pipeline::messages::{MtItem, TtsItem};
 use crate::pipeline::queue::Pushed;
 use crate::pipeline::snapshot::{ClauseSnapshot, SkipReason};
 use crate::segment::{ClauseEventKind, ClauseState};
+use crate::direction_state::DirectionState;
+use crate::pipeline::utterance::{Ms, Utterance, notes, skip_name};
 use crate::segment_book::{SegmentAction, SegmentEvent};
 use prxvc_media::ClauseId;
 use prxvc_media::Envelope;
@@ -46,7 +48,10 @@ impl Core {
                 self.on_clause_advanced(clause, state);
             }
             SegmentAction::ReleaseForPlayback(clause) => self.release(clause),
-            SegmentAction::SegmentDone(segment) => self.w.tree.forget_segment(segment),
+            SegmentAction::SegmentDone(segment) => {
+                self.w.tree.forget_segment(segment);
+                self.finish_utterance(segment);
+            }
             SegmentAction::Cancel(action) => self.execute_cancel(action),
         }
     }
@@ -64,6 +69,7 @@ impl Core {
         );
         let token = self.w.tree.clause(clause);
         Stats::add(&self.w.stats.clauses_committed, 1);
+        self.tallies.entry(clause.segment()).or_default().clauses += 1;
         self.w
             .tracer
             .mark_text(clause, prxvc_ports::TraceStage::ClauseCommitted, || {
@@ -93,6 +99,8 @@ impl Core {
             source_text: commit.text.clone(),
             translation: String::new(),
             skipped: None,
+            flags: Vec::new(),
+            retried: false,
         });
         while self.captions.len() > self.p.snapshot_clauses {
             self.captions.pop_front();
@@ -113,6 +121,54 @@ impl Core {
                 self.queue_refine(job);
             }
             _ => self.recognized(clause, commit.text),
+        }
+    }
+
+    /// The segment is over: log its one line (figures and flags, never text) and keep its latency.
+    fn finish_utterance(&mut self, segment: prxvc_media::SegmentId) {
+        let tally = self.tallies.remove(&segment).unwrap_or_default();
+        let times = self.w.tracer.take_times(segment);
+        if tally.clauses == 0 {
+            return;
+        }
+        let u = Utterance::new(segment, tally, &times);
+        tracing::info!(
+            direction = ?self.p.direction,
+            segment = segment.seq(),
+            clauses = u.tally.clauses,
+            outcome = u.outcome(),
+            speech_ms = %Ms(u.speech_ms),
+            asr_final_ms = %Ms(u.asr_final_ms),
+            mt_first_token_ms = %Ms(u.mt_first_token_ms),
+            first_audio_ms = %Ms(u.first_audio_ms),
+            playback_end_ms = %Ms(u.playback_end_ms),
+            notes = %notes(&u.tally),
+            "utterance finished"
+        );
+        self.ledger.record(&u);
+        self.dirty = true;
+    }
+
+    /// Start passing the original voice through while the open clause of `segment` is already in
+    /// the language the listener hears, without waiting for the clause to commit.
+    pub(super) fn hypothesis_in_target(&mut self, segment: prxvc_media::SegmentId, text: &str) {
+        if self.p.skip_source_in_target
+            && self.passthrough.is_none()
+            && matches!(self.state, DirectionState::Running)
+            && prxvc_media::script::is_written_in(text, self.p.target)
+        {
+            self.set_passthrough(Some(segment));
+        }
+    }
+
+    /// Record and announce that the original voice passes through (`Some`) or no longer does.
+    pub(super) fn set_passthrough(&mut self, segment: Option<prxvc_media::SegmentId>) {
+        let was = self.passthrough.is_some();
+        self.passthrough = segment;
+        if was != segment.is_some() {
+            self.emit(PipelineEvent::Passthrough {
+                on: segment.is_some(),
+            });
         }
     }
 
@@ -138,6 +194,21 @@ impl Core {
             });
         if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
             c.source_text.clone_from(&text);
+        }
+        if self.p.skip_source_in_target
+            && prxvc_media::script::is_written_in(&text, self.p.target)
+        {
+            // Already in the language the listener hears: nothing to translate or speak; the
+            // original voice is heard for as long as the speaker goes on.
+            self.set_passthrough(Some(clause.segment()));
+            self.cancel_with(
+                CancelAction::CancelClause(clause),
+                SkipReason::SourceInTarget,
+            );
+            return;
+        }
+        if self.passthrough.is_some() {
+            self.set_passthrough(None);
         }
         let Some(job) = self.live_clause_job(clause, text) else {
             return;
@@ -165,30 +236,45 @@ impl Core {
                 if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
                     c.skipped = Some(reason);
                 }
-                Stats::add(&self.w.stats.skipped, 1);
-                self.record_skip(clause, reason);
+                // A clause already in the target language is passed through, not lost: it is
+                // counted on its own and does not appear among what was not said.
+                *self
+                    .tallies
+                    .entry(clause.segment())
+                    .or_default()
+                    .skipped
+                    .entry(skip_name(reason))
+                    .or_default() += 1;
+                if reason != SkipReason::SourceInTarget {
+                    Stats::add(&self.w.stats.skipped, 1);
+                    self.record_skip(clause, reason);
+                }
                 match reason {
                     SkipReason::Backlog => Stats::add(&self.w.stats.backlog_skips, 1),
                     SkipReason::Stale => Stats::add(&self.w.stats.stale_skips, 1),
                     SkipReason::QueueFull => {}
+                    SkipReason::SourceInTarget => Stats::add(&self.w.stats.in_target_passed, 1),
                 }
                 self.w.tracer.mark(clause, prxvc_ports::TraceStage::Skipped);
                 self.emit(PipelineEvent::ClauseSkipped { clause, reason });
                 self.drop_clause(clause);
             }
             ClauseState::Cancelled => {
+                self.tallies.entry(clause.segment()).or_default().cancelled += 1;
                 self.w
                     .tracer
                     .mark(clause, prxvc_ports::TraceStage::Cancelled);
                 self.drop_clause(clause);
             }
             ClauseState::Failed(stage) => {
+                self.tallies.entry(clause.segment()).or_default().failed += 1;
                 Stats::add(&self.w.stats.clauses_failed, 1);
                 self.w.tracer.mark(clause, prxvc_ports::TraceStage::Failed);
                 self.emit(PipelineEvent::ClauseFailed { clause, stage });
                 self.drop_clause(clause);
             }
             ClauseState::Played => {
+                self.tallies.entry(clause.segment()).or_default().played += 1;
                 Stats::add(&self.w.stats.clauses_played, 1);
                 self.drop_clause(clause);
             }

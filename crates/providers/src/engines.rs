@@ -53,6 +53,12 @@ impl<T> Lease<T> {
         self.shared.failed.load(Ordering::Acquire)
     }
 
+    /// Whether no other lease (nor a stream holding one) is on the engine: dropping this one
+    /// frees it.
+    pub fn is_last(&self) -> bool {
+        Arc::strong_count(&self.shared) == 1
+    }
+
     /// Whether two leases are on the same engine.
     pub fn same_engine(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.shared, &other.shared)

@@ -118,6 +118,7 @@ fn translate_one(
             text: text.into(),
             context,
             glossary: Vec::new(),
+            strict_language: false,
         })
         .expect("request accepted");
     let cancel = CancellationToken::new();

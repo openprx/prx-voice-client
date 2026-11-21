@@ -48,6 +48,7 @@ mod ownership;
 mod runner;
 mod snapshot;
 mod start;
+mod summary;
 mod translation;
 
 #[cfg(test)]

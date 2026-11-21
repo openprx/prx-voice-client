@@ -397,6 +397,14 @@ pub struct PipelineConfig {
     /// hmm, mhm, and punctuation only). A real one-word "嗯" or "Mm." acknowledgement is dropped
     /// with them; content words such as 好, 对, yes, no and ok are never affected.
     pub drop_filler: bool,
+    /// Do not translate or speak a recognised clause that is already in the language the listener
+    /// hears (the other party spoke the listener's language): its original voice is passed through
+    /// and the caption says "not translated: already in <language>".
+    pub skip_source_in_target: bool,
+    /// When a translation starts in the wrong language, ask for it once more with a stricter
+    /// instruction before anything of it is spoken; a second miss fails the clause visibly and the
+    /// direction's `*_on_failure` setting applies.
+    pub retry_wrong_language: bool,
     /// Translate a stable partial ahead of its commit.
     pub speculative_mt: bool,
     /// Previous clauses given to translation as context.
@@ -440,6 +448,8 @@ impl Default for PipelineConfig {
             early_max_wait_ms: 2_500,
             split_target_clauses: false,
             drop_filler: true,
+            skip_source_in_target: true,
+            retry_wrong_language: true,
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,

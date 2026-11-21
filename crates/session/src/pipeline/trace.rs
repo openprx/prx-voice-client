@@ -2,8 +2,12 @@
 
 use std::sync::Arc;
 
-use prxvc_media::{ClauseId, Clock, MonoTime};
+use parking_lot::Mutex;
+
+use prxvc_media::{ClauseId, Clock, MonoTime, SegmentId};
 use prxvc_ports::{TraceEvent, TraceSink, TraceStage};
+
+use super::utterance::{OpenTimes, SegmentTimes};
 
 /// Writes stage-boundary events to a [`TraceSink`], stamped by the shared clock.
 ///
@@ -14,11 +18,22 @@ use prxvc_ports::{TraceEvent, TraceSink, TraceStage};
 pub(crate) struct Tracer {
     sink: Arc<dyn TraceSink>,
     clock: Arc<dyn Clock>,
+    /// The times of the open segments, for the utterance log line (never any text).
+    times: Arc<Mutex<OpenTimes>>,
 }
 
 impl Tracer {
     pub(crate) fn new(sink: Arc<dyn TraceSink>, clock: Arc<dyn Clock>) -> Self {
-        Self { sink, clock }
+        Self {
+            sink,
+            clock,
+            times: Arc::default(),
+        }
+    }
+
+    /// The stage times of `segment` seen so far; they are forgotten.
+    pub(crate) fn take_times(&self, segment: SegmentId) -> SegmentTimes {
+        self.times.lock().take(segment)
     }
 
     /// The current time on the pipeline clock.
@@ -48,6 +63,7 @@ impl Tracer {
     }
 
     fn record(&self, clause: ClauseId, stage: TraceStage, at: MonoTime, text: Option<String>) {
+        self.times.lock().note(clause.segment(), stage, at);
         self.sink.record(TraceEvent {
             clause,
             at,

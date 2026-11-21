@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use super::log::EventLog;
 use super::paced::{PacedStream, Step};
 use crate::descriptor::{ProviderDescriptor, StreamingKind};
-use crate::mt::{MtDelta, MtError, MtRequest, MtStream, Translator};
+use crate::mt::{MtDelta, MtError, MtFlag, MtRequest, MtStream, Translator};
 
 /// What the fake translator streams for one source text.
 #[derive(Clone, Debug)]
@@ -28,6 +28,8 @@ pub struct MtScript {
     pub open_error: Option<MtError>,
     /// Flag the output as suspect (with this reason) once `Done` was delivered.
     pub suspect: Option<String>,
+    /// Quality flags reported once `Done` was delivered.
+    pub flags: Vec<MtFlag>,
 }
 
 impl MtScript {
@@ -42,7 +44,15 @@ impl MtScript {
             fail_after: None,
             open_error: None,
             suspect: None,
+            flags: Vec::new(),
         }
+    }
+
+    /// Report `flags` once `Done` was delivered.
+    #[must_use]
+    pub fn with_flags(mut self, flags: impl IntoIterator<Item = MtFlag>) -> Self {
+        self.flags = flags.into_iter().collect();
+        self
     }
 
     /// Flag the translation as suspect (with `reason`) once `Done` was delivered.
@@ -103,6 +113,7 @@ struct MtShared {
     clock: Arc<dyn Clock>,
     descriptor: Mutex<ProviderDescriptor>,
     by_text: Mutex<HashMap<String, MtScript>>,
+    strict_by_text: Mutex<HashMap<String, MtScript>>,
     default_script: Mutex<Option<MtScript>>,
     requests: Mutex<Vec<MtRequest>>,
     log: EventLog,
@@ -128,6 +139,7 @@ impl FakeTranslator {
                 clock: Arc::new(clock),
                 descriptor: Mutex::new(descriptor),
                 by_text: Mutex::new(HashMap::new()),
+                strict_by_text: Mutex::new(HashMap::new()),
                 default_script: Mutex::new(None),
                 requests: Mutex::new(Vec::new()),
                 log: EventLog::new(),
@@ -139,6 +151,17 @@ impl FakeTranslator {
     #[must_use]
     pub fn with_script(self, text: &str, script: MtScript) -> Self {
         self.shared.by_text.lock().insert(text.to_owned(), script);
+        self
+    }
+
+    /// Requests for `text` that carry the stricter language instruction (a retry) play `script`
+    /// instead of the script of `with_script`.
+    #[must_use]
+    pub fn with_strict_script(self, text: &str, script: MtScript) -> Self {
+        self.shared
+            .strict_by_text
+            .lock()
+            .insert(text.to_owned(), script);
         self
     }
 
@@ -173,12 +196,12 @@ impl Translator for FakeTranslator {
     }
 
     fn translate(&self, req: MtRequest) -> Result<Box<dyn MtStream>, MtError> {
-        let script = self
-            .shared
-            .by_text
-            .lock()
-            .get(&req.text)
-            .cloned()
+        let strict = req
+            .strict_language
+            .then(|| self.shared.strict_by_text.lock().get(&req.text).cloned())
+            .flatten();
+        let script = strict
+            .or_else(|| self.shared.by_text.lock().get(&req.text).cloned())
             .or_else(|| self.shared.default_script.lock().clone())
             .ok_or_else(|| MtError::Unavailable {
                 reason: format!("no script for `{}`", req.text),
@@ -200,6 +223,8 @@ impl Translator for FakeTranslator {
             paced,
             will_flag: script.suspect.clone(),
             flagged: None,
+            will_report: script.flags.clone(),
+            reported: Vec::new(),
         }))
     }
 }
@@ -208,6 +233,8 @@ struct FakeMtStream {
     paced: PacedStream<MtDelta, MtError>,
     will_flag: Option<String>,
     flagged: Option<String>,
+    will_report: Vec<MtFlag>,
+    reported: Vec<MtFlag>,
 }
 
 impl MtStream for FakeMtStream {
@@ -215,12 +242,17 @@ impl MtStream for FakeMtStream {
         let item = self.paced.next(cancel);
         if matches!(item, Some(Ok(MtDelta::Done { .. }))) {
             self.flagged = self.will_flag.take();
+            self.reported = std::mem::take(&mut self.will_report);
         }
         item
     }
 
     fn suspect(&self) -> Option<String> {
         self.flagged.clone()
+    }
+
+    fn flags(&self) -> Vec<MtFlag> {
+        self.reported.clone()
     }
 }
 
@@ -247,6 +279,7 @@ mod tests {
             text: text.to_owned(),
             context: vec![("before".to_owned(), "earlier".to_owned())],
             glossary: Vec::new(),
+            strict_language: false,
         }
     }
 

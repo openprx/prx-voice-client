@@ -5,12 +5,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::{Condvar, Mutex};
 use prxvc_media::{ClauseId, Direction, MonoTime, SegmentId};
+use prxvc_ports::MtFlag;
 
 use crate::direction_state::{DirectionState, Reasons};
 use crate::fault::{FaultKind, Stage};
 use crate::output::OutputSource;
 use crate::segment::ClauseState;
 use crate::segment_book::Activity;
+
+pub use super::utterance::Ledger;
 
 /// Why a queued clause was skipped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -22,6 +25,9 @@ pub enum SkipReason {
     Backlog,
     /// A queue ahead of the clause was full.
     QueueFull,
+    /// The recognised text is already in the language the listener hears: nothing to translate or
+    /// speak, the original voice is passed through (`pipeline.skip_source_in_target`). Not a loss.
+    SourceInTarget,
 }
 
 /// The recogniser's reading of the clause being spoken.
@@ -50,6 +56,10 @@ pub struct ClauseSnapshot {
     pub translation: String,
     /// Set when the clause was skipped.
     pub skipped: Option<SkipReason>,
+    /// Quality flags of its translation (see [`MtFlag`]); the clause was spoken all the same.
+    pub flags: Vec<MtFlag>,
+    /// The first translation came back in the wrong language and the clause was translated again.
+    pub retried: bool,
 }
 
 /// A clause that was skipped and will not be spoken, kept after it left the captions so that the
@@ -127,6 +137,42 @@ pub struct Counters {
     /// Translated pieces with nothing to say aloud (punctuation or symbols only) that were never
     /// sent to the synthesiser.
     pub unspeakable_dropped: u64,
+    /// Clauses already in the language the listener hears: not translated, the original passed
+    /// through (`pipeline.skip_source_in_target`).
+    pub in_target_passed: u64,
+    /// Translations that came back in the wrong language and were requested again.
+    pub mt_retries: u64,
+    /// Finished translations flagged as the wrong language (reported, not acted on).
+    pub flag_wrong_language: u64,
+    /// Finished translations flagged as far too long.
+    pub flag_too_long: u64,
+    /// Finished translations that stopped at the provider's token limit.
+    pub flag_truncated: u64,
+    /// Finished translations that read as a refusal.
+    pub flag_refusal: u64,
+    /// Finished translations that read as an answer or a chat opener.
+    pub flag_answer_like: u64,
+    /// Finished translations with a thinking tag left in.
+    pub flag_think_residue: u64,
+}
+
+impl Counters {
+    /// The count of one flag kind.
+    pub fn flag(&self, flag: MtFlag) -> u64 {
+        match flag {
+            MtFlag::WrongLanguage => self.flag_wrong_language,
+            MtFlag::TooLong => self.flag_too_long,
+            MtFlag::Truncated => self.flag_truncated,
+            MtFlag::Refusal => self.flag_refusal,
+            MtFlag::AnswerLike => self.flag_answer_like,
+            MtFlag::ThinkResidue => self.flag_think_residue,
+        }
+    }
+
+    /// All flagged translations of every kind.
+    pub fn flags_total(&self) -> u64 {
+        MtFlag::ALL.iter().map(|f| self.flag(*f)).sum()
+    }
 }
 
 /// Everything the UI shows of one direction, published on change.
@@ -157,6 +203,8 @@ pub struct DirectionSnapshot {
     pub recent_skips: Vec<SkippedClause>,
     /// The last failure, kept after recovery.
     pub last_error: Option<ErrorSnapshot>,
+    /// The figures of the utterances finished so far (counts and latency percentiles).
+    pub ledger: Ledger,
 }
 
 /// Atomic counters shared by the threads of one pipeline.
@@ -182,6 +230,14 @@ pub(crate) struct Stats {
     pub(crate) clauses_failed: AtomicU64,
     pub(crate) filler_dropped: AtomicU64,
     pub(crate) unspeakable_dropped: AtomicU64,
+    pub(crate) in_target_passed: AtomicU64,
+    pub(crate) mt_retries: AtomicU64,
+    pub(crate) flag_wrong_language: AtomicU64,
+    pub(crate) flag_too_long: AtomicU64,
+    pub(crate) flag_truncated: AtomicU64,
+    pub(crate) flag_refusal: AtomicU64,
+    pub(crate) flag_answer_like: AtomicU64,
+    pub(crate) flag_think_residue: AtomicU64,
     /// Frames the recogniser consumed; tests use it to pace their input.
     pub(crate) frames_consumed: AtomicU64,
 }
@@ -214,7 +270,28 @@ impl Stats {
             clauses_failed: get(&self.clauses_failed),
             filler_dropped: get(&self.filler_dropped),
             unspeakable_dropped: get(&self.unspeakable_dropped),
+            in_target_passed: get(&self.in_target_passed),
+            mt_retries: get(&self.mt_retries),
+            flag_wrong_language: get(&self.flag_wrong_language),
+            flag_too_long: get(&self.flag_too_long),
+            flag_truncated: get(&self.flag_truncated),
+            flag_refusal: get(&self.flag_refusal),
+            flag_answer_like: get(&self.flag_answer_like),
+            flag_think_residue: get(&self.flag_think_residue),
         }
+    }
+
+    /// Count one flagged translation of `flag`.
+    pub(crate) fn add_flag(&self, flag: MtFlag) {
+        let counter = match flag {
+            MtFlag::WrongLanguage => &self.flag_wrong_language,
+            MtFlag::TooLong => &self.flag_too_long,
+            MtFlag::Truncated => &self.flag_truncated,
+            MtFlag::Refusal => &self.flag_refusal,
+            MtFlag::AnswerLike => &self.flag_answer_like,
+            MtFlag::ThinkResidue => &self.flag_think_residue,
+        };
+        Self::add(counter, 1);
     }
 }
 

@@ -40,6 +40,15 @@ pub enum PipelineEvent {
         /// Why.
         cause: OutputCause,
     },
+    /// Speech that is already in the language the listener hears began or stopped passing
+    /// through in its original voice (`pipeline.skip_source_in_target`). It is not a change of
+    /// the direction machine's output: the executor sets the listener's source to the original
+    /// while `on` and back to what the machine says when it ends, and any [`PipelineEvent::Output`]
+    /// ends it.
+    Passthrough {
+        /// The original voice is heard now.
+        on: bool,
+    },
     /// A reduced mode began.
     Degraded(DegradeReason),
     /// A reduced mode ended.

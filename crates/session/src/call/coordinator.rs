@@ -86,10 +86,15 @@ pub(super) struct Lane {
     pub machine: DirectionState,
     pub cfg: DirectionConfig,
     pub hears: OutputSource,
+    /// The listener hears the original because the speaker is already in the listener's language
+    /// (a pipeline's passthrough); any announced output change ends it.
+    pub passthrough: bool,
     pub path: Option<Box<dyn AudioPath>>,
     pub stats: Option<PathStats>,
     /// The translation pipeline of this direction, when it runs one.
     pub running: Option<Running>,
+    /// What the direction came to, captured as its pipeline stopped (for the call summary).
+    pub totals: super::summary::DirectionTotals,
 }
 
 impl Lane {
@@ -98,9 +103,11 @@ impl Lane {
             machine: DirectionState::Off,
             cfg: DirectionConfig { direction, policy },
             hears: OutputSource::Original,
+            passthrough: false,
             path: None,
             stats: None,
             running: None,
+            totals: super::summary::DirectionTotals::default(),
         }
     }
 }
@@ -145,6 +152,8 @@ pub struct Coordinator {
     pub(super) call_cancel: CancellationToken,
     /// A path failed to stop in time during the current stop.
     pub(super) leaked: bool,
+    /// When the call that is running began (for the summary at its end).
+    pub(super) call_began: Option<MonoTime>,
     published: Option<CallSnapshot>,
     revision: u64,
 }
@@ -188,6 +197,7 @@ impl Coordinator {
             prepared: None,
             call_cancel: CancellationToken::new(),
             leaked: false,
+            call_began: None,
             published: None,
             revision: 0,
         }
@@ -346,6 +356,9 @@ impl Coordinator {
         if let Some((from, to)) = transition(previous, &next) {
             tracing::info!(from = ?from, to = ?to, "call state");
             self.since = self.now();
+            if matches!(next, CallState::Idle) {
+                self.log_call_summary();
+            }
         }
         self.state = next;
         // A snapshot per transition: the UI sees `Initializing` while the
@@ -362,6 +375,7 @@ impl Coordinator {
         self.prepared = None;
         self.new_call_token();
         self.leaked = false;
+        self.call_began = Some(self.now());
         self.recovery = None;
         self.routing.restored_to = None;
         self.routing.call_activity = ActivityJudgement::Unknown;

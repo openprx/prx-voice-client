@@ -81,6 +81,7 @@ fn req(index: u16, text: &str) -> MtRequest {
         text: text.into(),
         context: Vec::new(),
         glossary: Vec::new(),
+        strict_language: false,
     }
 }
 
@@ -430,6 +431,7 @@ fn cancelling_mid_stream_closes_the_connection_while_another_request_completes()
             text: "other".into(),
             context: Vec::new(),
             glossary: Vec::new(),
+            strict_language: false,
         })
         .unwrap();
     let cancel_b = CancellationToken::new();

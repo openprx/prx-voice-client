@@ -18,6 +18,8 @@ use crate::output::{OutputCause, OutputSource};
 use crate::segment::ClauseState;
 
 const SOURCE_TEXT: &str = "今天天气很好";
+/// What the remote party says in the incoming direction (English, translated into Chinese).
+const INCOMING_TEXT: &str = "The weather is very nice today";
 
 fn clause(direction: Direction, seg: u64, index: u16) -> ClauseId {
     ClauseId::new(SegmentId::new(direction, seg).expect("seq >= 1"), index)
@@ -33,22 +35,29 @@ fn one_utterance() -> VadScript {
     )
 }
 
-/// Both directions say `SOURCE_TEXT` once and get a two-chunk translation back.
+/// Each direction says one clause in its own language (`SOURCE_TEXT` outgoing, `INCOMING_TEXT`
+/// incoming) and gets a two-chunk translation back.
 fn script_one_utterance(rig: &Rig) {
     rig.world.with_translation(|t| {
         for d in [Direction::Outgoing, Direction::Incoming] {
             t.vad.insert(d, one_utterance());
+            let said = match d {
+                Direction::Outgoing => SOURCE_TEXT,
+                Direction::Incoming => INCOMING_TEXT,
+            };
             t.asr
-                .insert(d, AsrScript::new([], SOURCE_TEXT).then_round([], ""));
+                .insert(d, AsrScript::new([], said).then_round([], ""));
         }
         t.mt = std::mem::replace(
             &mut t.mt,
             prxvc_ports::fakes::FakeTranslator::new(rig.clock.clone()),
         )
         .with_script(SOURCE_TEXT, MtScript::tokens(["Nice ", "weather."]))
+        .with_script(INCOMING_TEXT, MtScript::tokens(["今天", "天气很好。"]))
         .with_script("Hello.", MtScript::tokens(["Hello."]));
         t.tts = prxvc_ports::fakes::FakeSpeechSynth::new(rig.clock.clone())
             .with_script("Nice weather.", TtsScript::chunks(2, 2400))
+            .with_script("今天天气很好。", TtsScript::chunks(2, 2400))
             .with_script("Hello.", TtsScript::chunks(1, 2400));
     });
 }
@@ -412,6 +421,48 @@ fn both_directions_translate_at_once_without_touching_each_other() {
             .all(|p| !matches!(p, Played::Chunk(c, _) | Played::End(c) if c.segment().direction() != Direction::Outgoing)),
         "the outgoing lane carries only outgoing clauses"
     );
+}
+
+#[test]
+fn speech_already_in_the_listeners_language_is_heard_as_the_original_and_the_translation_returns() {
+    let mut rig = Rig::new();
+    script_one_utterance(&rig);
+    // The remote party speaks Chinese to a Chinese listener: nothing to translate.
+    rig.world.with_translation(|t| {
+        t.asr.insert(
+            Direction::Incoming,
+            AsrScript::new([], SOURCE_TEXT).then_round([], ""),
+        );
+    });
+    rig.start_translating();
+    translating_both(&mut rig);
+    speak(&rig, "incoming", 55);
+    rig.until_world("the original is heard and the translation returns", |w| {
+        w.log()
+            .iter()
+            .filter(|l| *l == "incoming.hears:Translation")
+            .count()
+            >= 2
+    });
+    let heard: Vec<String> = rig
+        .log()
+        .into_iter()
+        .filter(|l| l.starts_with("incoming.hears:"))
+        .collect();
+    assert_eq!(
+        heard[heard.len() - 3..],
+        [
+            "incoming.hears:Translation",
+            "incoming.hears:Original",
+            "incoming.hears:Translation"
+        ]
+    );
+    assert!(rig.world.played("incoming").is_empty(), "nothing was synthesised");
+    let s = rig.until("incoming hears the translation again", |s| {
+        s.direction(Direction::Incoming).hears == OutputSource::Translation
+    });
+    let pipeline = s.direction(Direction::Incoming).pipeline.as_ref().unwrap();
+    assert_eq!(pipeline.counters.in_target_passed, 1);
 }
 
 #[test]

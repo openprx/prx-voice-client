@@ -55,6 +55,7 @@ fn run_clause(
         text: recognised.clone(),
         context: Vec::new(),
         glossary: Vec::new(),
+        strict_language: false,
     };
     let mut translation = mt.translate(request).expect("translate");
     let mut translated = String::new();
