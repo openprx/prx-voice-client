@@ -160,7 +160,7 @@ fn end_button(
     stop_clicked
 }
 
-/// Orb click (start or interrupt) and drag (move the frameless window).
+/// Orb click (start, interrupt while the assistant speaks, otherwise end) and drag (move the frameless window).
 fn handle_orb_interactions(
     ui: &mut egui::Ui,
     state: &mut DesktopUiState,
@@ -178,6 +178,9 @@ fn handle_orb_interactions(
             state.pending_commands.push("StartSession".into());
         } else if state.session_state == "AssistantSpeaking" {
             state.pending_commands.push("InterruptPlayback".into());
+        } else {
+            // Listening or thinking: a second click ends the session, as the end button does.
+            state.pending_commands.push("StopSession".into());
         }
     }
 
