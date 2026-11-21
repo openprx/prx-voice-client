@@ -29,9 +29,11 @@ enum Scenario {
     EditOpen,
     /// A running call with the details open.
     TranslatingDetailsOpen,
+    /// A graceful stop: the chip, the hint with the seconds and "Stop now".
+    Finishing,
 }
 
-const SCENARIOS: [Scenario; 8] = [
+const SCENARIOS: [Scenario; 9] = [
     Scenario::IdleEmpty,
     Scenario::IdleAfterCall,
     Scenario::Translating,
@@ -40,6 +42,7 @@ const SCENARIOS: [Scenario; 8] = [
     Scenario::DetailsOpen,
     Scenario::EditOpen,
     Scenario::TranslatingDetailsOpen,
+    Scenario::Finishing,
 ];
 
 fn finished_call() -> CallPanel {
@@ -77,6 +80,7 @@ fn state_for_panel(scenario: Scenario, caption_size: &str) -> DesktopUiState {
             finished_call()
         }
         Scenario::Translating | Scenario::TranslatingDetailsOpen => call_fixtures::live_panel(),
+        Scenario::Finishing => CallPanel { finishing_s: Some(4), ..call_fixtures::live_panel() },
         Scenario::Degraded => call_fixtures::degraded_panel(),
         Scenario::Blocked => call_fixtures::blocked_panel(),
     };

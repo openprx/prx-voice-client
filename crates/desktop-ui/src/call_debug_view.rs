@@ -124,7 +124,8 @@ fn lane(ui: &mut egui::Ui, tk: &Tokens, title_key: &str, hear_key: &str, lane: &
             &lane.frames.to_string(),
             &lane.overruns.to_string(),
             &lane.drops.to_string(),
-            &lane.underruns.to_string(),
+            &lane.gaps.to_string(),
+            &lane.gap_ms.to_string(),
         ],
     );
     ui.label(widgets::text(counters, size::META, tk.text));

@@ -60,7 +60,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ("call.path.level", "level {0} dBFS, peak {1} dBFS"),
     (
         "call.path.counters",
-        "frames {0}, overruns {1}, drops {2}, underruns {3}",
+        "frames {0}, overruns {1}, drops {2}, audible gaps {3} ({4} ms)",
     ),
     ("call.issues", "Issues"),
     ("call.no_issues", "No issues"),
@@ -304,7 +304,7 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ),
     (
         "call.path.counters",
-        "\u{5e27} {0}\u{ff0c}\u{6ea2}\u{51fa} {1}\u{ff0c}\u{4e22}\u{5f03} {2}\u{ff0c}\u{6b20}\u{8f7d} {3}",
+        "\u{5e27} {0}\u{ff0c}\u{6ea2}\u{51fa} {1}\u{ff0c}\u{4e22}\u{5f03} {2}\u{ff0c}\u{53ef}\u{542c}\u{89c1}\u{7684}\u{4e2d}\u{65ad} {3} \u{6b21}\u{ff08}{4} \u{6beb}\u{79d2}\u{ff09}",
     ),
     ("call.issues", "\u{95ee}\u{9898}"),
     ("call.no_issues", "\u{6ca1}\u{6709}\u{95ee}\u{9898}"),

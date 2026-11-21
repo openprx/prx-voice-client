@@ -1,4 +1,4 @@
-//! The spoken notice to the other party in the Call translation window: one quiet line saying where it stands (getting ready, plays before your first sentence, played at ...), the "say it again" action, and, when the notice is off, a line saying the other party is not being told. The switch itself is in the details.
+//! The spoken notice to the other party in the Call translation window: one quiet line saying where it stands (getting ready, plays when you first speak, played at ...), the "say it again" action, and, when the notice is off, a line saying the other party is not being told. The switch itself is in the details.
 
 use crate::call_transcript::mmss;
 use crate::call_view::{CallPanel, CallPhase, NoticeState, command};

@@ -7,9 +7,12 @@ use crate::state::UiSettings;
 use crate::theme::{Tokens, layout, size, space};
 use crate::widgets::{self, ButtonKind, Tone};
 
-/// The state chip's words.
-fn chip_text(phase: CallPhase) -> String {
-    prxvc_i18n::t(match phase {
+/// The state chip's words; a graceful stop in progress is "Finishing" whatever the phase.
+fn chip_text(panel: &CallPanel) -> String {
+    if panel.finishing_s.is_some() {
+        return prxvc_i18n::t("callwin.chip.finishing");
+    }
+    prxvc_i18n::t(match panel.phase {
         CallPhase::Idle => "callwin.chip.idle",
         CallPhase::Initializing => "callwin.chip.loading",
         CallPhase::AudioReady => "callwin.chip.audio",
@@ -84,6 +87,14 @@ pub(crate) fn header(
     actions: &mut Vec<CallWindowAction>,
 ) {
     status_row(ui, tk, panel, settings, w);
+    if let Some(seconds) = panel.finishing_s {
+        ui.add_space(space::S8);
+        ui.add(egui::Label::new(widgets::text(
+            prxvc_i18n::t_with("callwin.finishing.hint", &[&seconds.to_string()]),
+            size::SECONDARY,
+            tk.secondary,
+        )));
+    }
     ui.add_space(space::S8);
     controls(ui, tk, panel, translate, actions);
 }
@@ -102,7 +113,7 @@ fn status_row(
         &[&language_name(&own), &language_name(&peer)],
     );
     ui.horizontal_wrapped(|ui| {
-        widgets::chip(ui, tk, chip_tone(panel.phase), &chip_text(panel.phase))
+        widgets::chip(ui, tk, chip_tone(panel.phase), &chip_text(panel))
             .on_hover_text(crate::call_window_view::state_text(panel));
         if panel.phase != CallPhase::Idle {
             ui.label(widgets::text(
@@ -181,7 +192,11 @@ fn controls(
     };
     ui.horizontal_wrapped(|ui| {
         let (label, cmd, enabled) = if running {
-            ("callwin.stop", command::STOP, panel.can_stop())
+            (
+                if panel.finishing_s.is_some() { "callwin.stop_now" } else { "callwin.stop" },
+                command::STOP,
+                panel.can_stop(),
+            )
         } else {
             ("callwin.start", start, panel.can_start())
         };
@@ -241,7 +256,11 @@ fn controls(
                 );
             }
         });
-        ui.label(widgets::text(&label, size::SECONDARY, tk.text));
+        // Whole or on the next row, never split across two rows next to the buttons.
+        ui.add(
+            egui::Label::new(widgets::text(&label, size::SECONDARY, tk.text))
+                .wrap_mode(egui::TextWrapMode::Extend),
+        );
     });
 }
 

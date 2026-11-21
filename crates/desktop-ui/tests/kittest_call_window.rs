@@ -308,13 +308,39 @@ fn the_footer_shows_the_delay_when_there_is_room_and_drops_it_before_running_ove
 }
 
 #[test]
+fn a_graceful_stop_shows_the_chip_the_hint_and_stop_now() {
+    let _guard = lock_locale();
+    for (locale, chip, hint, stop_now) in [
+        (prxvc_i18n::Locale::En, "Finishing", "Press Stop again to end now (4 s at most)", "Stop now"),
+        (prxvc_i18n::Locale::ZhCn, "正在收尾", "最多 4 秒", "立即停止"),
+    ] {
+        prxvc_i18n::set_locale(locale);
+        let mut panel = panel("translating");
+        panel.finishing_s = Some(4);
+        let mut h = app_harness(state_with(panel), 420.0);
+        h.run_steps(3);
+        assert!(has_label(&h, chip), "{chip}");
+        assert!(has_label(&h, hint), "{hint}");
+        h.get_by_role_and_label(Role::Button, stop_now).click();
+        h.run_steps(2);
+        assert_eq!(h.state().pending_commands, [command::STOP]);
+    }
+    // Without a graceful stop the button says Stop and no hint is shown.
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    let mut h = app_harness(state_with(panel("translating")), 420.0);
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Stop");
+    assert!(!has_label(&h, "Press Stop again"));
+}
+
+#[test]
 fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     // Ready: it plays before the first translated sentence; the repeat is offered.
     let mut h = app_harness(state_with(call_fixtures::listening_panel()), 420.0);
     h.run_steps(3);
-    assert!(has_label(&h, "Plays before your first translated sentence."));
+    assert!(has_label(&h, "Plays when you first speak."));
     h.get_by_role_and_label(Role::Button, "Say it again").click();
     h.run_steps(2);
     assert_eq!(h.state().pending_commands, [command::SAY_DISCLOSURE]);

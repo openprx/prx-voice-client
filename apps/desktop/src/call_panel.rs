@@ -154,7 +154,8 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
         view.peak = path.peak;
         view.overruns = path.overruns;
         view.drops = path.drops;
-        view.underruns = path.underruns;
+        view.gaps = path.translated_underruns;
+        view.gap_ms = path.translated_gap_ms;
         view.translated_peak = path.translated_peak;
         view.translated_rms = path.translated_rms;
         view.input_gated = path.input_gated;
@@ -339,7 +340,8 @@ mod tests {
                         rms: 0.1,
                         overruns: 1,
                         drops: 2,
-                        underruns: 3,
+                        translated_underruns: 3,
+                        translated_gap_ms: 900,
                         ..PathStats::default()
                     }),
                 ),
@@ -389,7 +391,7 @@ mod tests {
                 p.outgoing.frames,
                 p.outgoing.overruns,
                 p.outgoing.drops,
-                p.outgoing.underruns
+                p.outgoing.gaps
             ),
             (5, 1, 2, 3)
         );

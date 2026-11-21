@@ -343,8 +343,11 @@ pub struct LaneView {
     pub overruns: u64,
     /// Samples dropped on the way out.
     pub drops: u64,
-    /// Times the output ran dry.
-    pub underruns: u64,
+    /// Audible gaps in the translated speech: times its lane ran dry while a clause was still
+    /// being made (a dry sink or capture lane is not heard as one and is not counted here).
+    pub gaps: u64,
+    /// Milliseconds of silence in those gaps, in total.
+    pub gap_ms: u64,
 }
 
 /// Where the spoken notice to the other party stands.
@@ -355,7 +358,7 @@ pub enum NoticeState {
     Off,
     /// Being prepared.
     Preparing,
-    /// Ready, plays before the first translated sentence.
+    /// Ready, plays when the user first speaks.
     Ready,
     /// Playing now.
     Playing,
