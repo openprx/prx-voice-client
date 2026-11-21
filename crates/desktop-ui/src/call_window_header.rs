@@ -112,6 +112,27 @@ fn status_row(
             ));
         }
         ui.label(widgets::text(pair, size::SECONDARY, tk.text));
+        if !panel.translation.engine_key.is_empty() {
+            let name = widgets::text(
+                prxvc_i18n::t(panel.translation.engine_key),
+                size::META,
+                tk.secondary,
+            );
+            // Quiet and optional: only where it fits on the row (the details always name it).
+            let width = egui::WidgetText::from(name.clone())
+                .into_galley(
+                    ui,
+                    Some(egui::TextWrapMode::Extend),
+                    f32::INFINITY,
+                    egui::TextStyle::Body,
+                )
+                .size()
+                .x;
+            let left = ui.max_rect().right() - ui.next_widget_position().x;
+            if width + ui.spacing().item_spacing.x <= left {
+                ui.label(name);
+            }
+        }
         if panel.can_start() {
             if widgets::button_with(
                 ui,

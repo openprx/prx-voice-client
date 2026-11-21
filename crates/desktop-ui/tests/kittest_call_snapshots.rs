@@ -19,6 +19,12 @@ fn state_with(panel: CallPanel, elapsed_s: u64) -> DesktopUiState {
     let mut st = DesktopUiState::new();
     st.idle_animation = false;
     st.call = panel;
+    st.call.translation = prxvc_desktop_ui::call_view::TranslationView {
+        engine: "system".into(),
+        engine_key: "callwin.engine.system",
+        no_context: true,
+        actions: Vec::new(),
+    };
     // Take the panel in (a start would stamp the time), then make the call look as old as wanted.
     let seen = st.call.clone();
     st.call_window.sync(&seen);

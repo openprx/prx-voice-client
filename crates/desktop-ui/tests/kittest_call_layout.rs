@@ -48,6 +48,22 @@ fn finished_call() -> CallPanel {
 
 /// The state with the panel the scenario shows; a finished call keeps its captions.
 fn state_for(scenario: Scenario, caption_size: &str) -> DesktopUiState {
+    let mut st = state_for_panel(scenario, caption_size);
+    // The engine's name, its note and the three actions are part of every state.
+    st.call.translation = prxvc_desktop_ui::call_view::TranslationView {
+        engine: "system".into(),
+        engine_key: "callwin.engine.system",
+        no_context: true,
+        actions: vec![
+            prxvc_desktop_ui::call_view::EngineAction::OpenTranslationLanguages,
+            prxvc_desktop_ui::call_view::EngineAction::SwitchToLlm,
+            prxvc_desktop_ui::call_view::EngineAction::SwitchToSystem,
+        ],
+    };
+    st
+}
+
+fn state_for_panel(scenario: Scenario, caption_size: &str) -> DesktopUiState {
     let mut st = DesktopUiState::new();
     st.idle_animation = false;
     st.settings.call_captions_size = caption_size.to_owned();

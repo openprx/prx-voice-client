@@ -124,10 +124,31 @@ fn languages(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut U
     }
 }
 
+/// "Translation engine: <name>" and, for an engine without the conversation as context, a note.
+fn engine(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel) {
+    let view = &panel.translation;
+    if view.engine_key.is_empty() {
+        return;
+    }
+    ui.label(widgets::text(
+        format!(
+            "{}: {}",
+            prxvc_i18n::t("callwin.engine.label"),
+            prxvc_i18n::t(view.engine_key)
+        ),
+        size::META,
+        tk.text,
+    ));
+    if view.no_context {
+        small(ui, tk, prxvc_i18n::t("callwin.engine.no_context"));
+    }
+}
+
 /// The details content.
 pub(crate) fn details(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut UiSettings) {
     ui.spacing_mut().item_spacing.y = space::S4;
     languages(ui, tk, panel, settings);
+    engine(ui, tk, panel);
     crate::call_window_notice::switch_row(ui, tk, settings);
     ui.add_space(space::S8);
     lane(ui, tk, "callwin.lane.out", "call.they_hear", &panel.outgoing);

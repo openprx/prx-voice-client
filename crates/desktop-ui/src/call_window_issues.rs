@@ -35,6 +35,17 @@ fn action_of(action: IssueAction) -> Option<(&'static str, CallWindowAction)> {
     }
 }
 
+/// The issue keys that concern the translation engine; the engine's actions go under them.
+const ENGINE_ISSUES: [&str; 7] = [
+    "call.issue.provider.language_pack_missing",
+    "call.issue.provider.os_too_old",
+    "call.issue.provider.server_failed",
+    "call.issue.provider.server_unreachable",
+    "call.issue.provider.runtime_not_built_in",
+    "call.issue.provider.start_failed",
+    "call.issue.provider.unsupported",
+];
+
 fn tone_of(severity: IssueSeverity) -> Tone {
     match severity {
         IssueSeverity::Blocking => Tone::Danger,
@@ -61,16 +72,22 @@ pub(crate) fn issues(
     ui.add_space(space::S12);
     ui.spacing_mut().item_spacing.y = space::S4;
     for (i, issue) in panel.issues.iter().enumerate() {
-        ui.push_id(("issue", i), |ui| card(ui, tk, issue, actions));
+        ui.push_id(("issue", i), |ui| card(ui, tk, panel, issue, actions));
     }
     if let Some(error) = &panel.last_error
         && !panel.issues.iter().any(|i| i.key == error.key)
     {
-        ui.push_id("last_error", |ui| card(ui, tk, error, actions));
+        ui.push_id("last_error", |ui| card(ui, tk, panel, error, actions));
     }
 }
 
-fn card(ui: &mut egui::Ui, tk: &Tokens, issue: &IssueView, actions: &mut Vec<CallWindowAction>) {
+fn card(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    panel: &CallPanel,
+    issue: &IssueView,
+    actions: &mut Vec<CallWindowAction>,
+) {
     let tone = tone_of(issue.severity);
     let (fill, glyph) = match tone {
         Tone::Danger => (tk.danger_bg, tk.danger),
@@ -117,6 +134,23 @@ fn card(ui: &mut egui::Ui, tk: &Tokens, issue: &IssueView, actions: &mut Vec<Cal
                         .clicked()
                         {
                             actions.push(action);
+                        }
+                    }
+                    if ENGINE_ISSUES.contains(&issue.key.as_str()) {
+                        for engine_action in &panel.translation.actions {
+                            ui.add_space(space::S4);
+                            if widgets::button_with(
+                                ui,
+                                tk,
+                                ButtonKind::Secondary,
+                                &prxvc_i18n::t(engine_action.label_key()),
+                                layout::CONTROL_HEIGHT_SMALL,
+                                true,
+                            )
+                            .clicked()
+                            {
+                                actions.push(CallWindowAction::Command(engine_action.command()));
+                            }
                         }
                     }
                 });

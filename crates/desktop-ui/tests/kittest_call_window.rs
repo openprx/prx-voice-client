@@ -471,3 +471,83 @@ fn a_second_orb_click_ends_the_session_unless_the_assistant_is_speaking() {
         ["CreateSession", "StartSession"]
     );
 }
+
+fn with_engine(mut panel: CallPanel, engine: &str) -> CallPanel {
+    let (key, no_context) = if engine == "llm" {
+        ("callwin.engine.llm", false)
+    } else {
+        ("callwin.engine.system", true)
+    };
+    panel.translation = prxvc_desktop_ui::call_view::TranslationView {
+        engine: engine.into(),
+        engine_key: key,
+        no_context,
+        actions: Vec::new(),
+    };
+    panel
+}
+
+#[test]
+fn the_engine_name_is_in_the_head_and_in_the_details_for_both_engines_and_languages() {
+    let _guard = lock_locale();
+    for locale in [prxvc_i18n::Locale::En, prxvc_i18n::Locale::ZhCn] {
+        prxvc_i18n::set_locale(locale);
+        for engine in ["system", "llm"] {
+            let key = format!("callwin.engine.{engine}");
+            let name = prxvc_i18n::t(&key);
+            let mut st = DesktopUiState::new();
+            st.idle_animation = false;
+            st.call = with_engine(panel("translating"), engine);
+            let mut h = common::builder(egui::vec2(430.0, 700.0), Theme::Light).build_ui_state(
+                |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_call_window(ui, st),
+                st,
+            );
+            h.run_steps(3);
+            assert!(has_label(&h, &name), "{engine}: {name} in the head");
+            assert!(!has_label(&h, &prxvc_i18n::t("callwin.engine.no_context")));
+            h.state_mut().call_window.details_open = true;
+            h.run_steps(3);
+            let line = format!("{}: {name}", prxvc_i18n::t("callwin.engine.label"));
+            assert!(has_label(&h, &line), "{engine}: {line} in the details");
+            assert_eq!(
+                has_label(&h, &prxvc_i18n::t("callwin.engine.no_context")),
+                engine == "system",
+                "{engine}: the no-context note"
+            );
+        }
+    }
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+}
+
+#[test]
+fn each_engine_action_under_an_engine_issue_sends_its_command() {
+    use prxvc_desktop_ui::call_view::EngineAction;
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    let all = [
+        EngineAction::SwitchToLlm,
+        EngineAction::SwitchToSystem,
+        EngineAction::OpenTranslationLanguages,
+    ];
+    for action in all {
+        let mut p = with_engine(panel("degraded"), "system");
+        p.translation.actions = vec![action];
+        let mut h = app_harness(state_with(p), 420.0);
+        h.run_steps(3);
+        h.get_by_role_and_label(Role::Button, &prxvc_i18n::t(action.label_key()))
+            .click();
+        h.run_steps(2);
+        assert_eq!(h.state().pending_commands, [action.command()]);
+    }
+    // No engine issue: no engine button.
+    let mut p = with_engine(panel("translating"), "system");
+    p.translation.actions = all.to_vec();
+    let mut h = app_harness(state_with(p), 420.0);
+    h.run_steps(3);
+    for action in all {
+        assert!(
+            h.query_by_role_and_label(Role::Button, &prxvc_i18n::t(action.label_key()))
+                .is_none()
+        );
+    }
+}
