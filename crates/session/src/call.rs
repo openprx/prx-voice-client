@@ -44,6 +44,7 @@ mod directions;
 mod disclosure;
 mod error;
 mod events;
+mod finishing;
 mod host;
 mod ownership;
 mod runner;

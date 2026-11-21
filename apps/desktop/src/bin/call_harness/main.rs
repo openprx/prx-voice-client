@@ -4,6 +4,7 @@
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
 //!              [--engine system|llm] [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--conversation N [--gap-ms 900]] [--no-catch-up] [--no-trim] [--recognition streaming|two_pass] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -22,6 +23,20 @@
 //!   `DIR/own/<id>.wav`); `--no-barge-in` sets `call.barge_in = false` for the run.
 //! * `--engine system|llm` sets `call.translation_engine` for the run (system translation needs the
 //!   `apple-translation` feature and the language packs; the language model needs a server on port 8080).
+//! * `--notice speech|audio` plays the spoken notice of the call (the built-in wording of the target
+//!   language, or with `--notice-old-text` the earlier, longer one) on the translated lane, queued as
+//!   the speech begins (`speech`, the product's behaviour) or just before the first translated audio
+//!   (`audio`, the earlier behaviour); every utterance is its own session. It shows in
+//!   "speech START -> first translated audio".
+//! * `--conversation N` lays the first `N` utterances of the set one after the other (`--gap-ms`
+//!   of silence between them, 900 by default) and runs them through ONE pipeline, so that
+//!   translated speech queues behind translated speech as in a call. It prints a row per
+//!   segment, the wait between a clause's synthesised audio and its playout, and how long the
+//!   translation ran on after the last speech. `--no-catch-up` switches the speed-up off
+//!   (`pipeline.catch_up`), `--no-trim` the silence trimming (`pipeline.trim_silence`).
+//! * `--recognition streaming|two_pass` sets `pipeline.recognition_mode` for the run (the default
+//!   is `streaming`, one model per direction; `two_pass` adds the refine decode of every clause).
+//!   The table then has the error rate of the text that was translated against the reference.
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
@@ -32,6 +47,8 @@
 #[path = "../../call_kit/mod.rs"]
 mod call_kit;
 
+mod conversation;
+mod notice;
 mod report;
 mod run;
 mod sinks;
@@ -44,6 +61,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use prxvc_audio::mix::MixerConfig;
 use prxvc_media::{Direction, Lang, SystemClock};
 use prxvc_session::EarlyCommit;
 
@@ -83,6 +101,14 @@ struct Options {
     peer: String,
     vad_profile: bool,
     engine: Option<String>,
+    no_adaptive_preroll: bool,
+    notice: notice::NoticeMode,
+    notice_old_text: bool,
+    conversation: Option<usize>,
+    gap_ms: u64,
+    no_catch_up: bool,
+    no_trim: bool,
+    recognition: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -107,6 +133,14 @@ fn parse(args: &[String]) -> Result<Options, String> {
         peer: "en".into(),
         vad_profile: false,
         engine: None,
+        no_adaptive_preroll: false,
+        notice: notice::NoticeMode::Off,
+        notice_old_text: false,
+        conversation: None,
+        gap_ms: 900,
+        no_catch_up: false,
+        no_trim: false,
+        recognition: None,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -162,6 +196,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 }
                 o.engine = Some(engine);
             }
+            "--no-adaptive-preroll" => o.no_adaptive_preroll = true,
+            "--notice" => o.notice = notice::NoticeMode::parse(&value(arg, &mut it)?)?,
+            "--notice-old-text" => o.notice_old_text = true,
+            "--conversation" => {
+                o.conversation = Some(value(arg, &mut it)?.parse().map_err(|_| "bad --conversation")?)
+            }
+            "--gap-ms" => o.gap_ms = value(arg, &mut it)?.parse().map_err(|_| "bad --gap-ms")?,
+            "--no-catch-up" => o.no_catch_up = true,
+            "--no-trim" => o.no_trim = true,
+            "--recognition" => o.recognition = Some(value(arg, &mut it)?),
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -296,6 +340,15 @@ fn execute(o: &Options) -> Result<bool, String> {
     if o.no_backlog_skip {
         config.pipeline.backlog_skipping = false;
     }
+    if let Some(mode) = &o.recognition {
+        config.pipeline.recognition_mode.clone_from(mode);
+    }
+    if o.no_catch_up {
+        config.pipeline.catch_up = false;
+    }
+    if o.no_trim {
+        config.pipeline.trim_silence = false;
+    }
     if let Some(ms) = o.max_backlog_ms {
         config.pipeline.max_backlog_ms = ms;
     }
@@ -405,14 +458,74 @@ fn execute(o: &Options) -> Result<bool, String> {
     } else {
         Output::Wav(out_dir.clone())
     };
+    let notice = if o.notice == notice::NoticeMode::Off {
+        None
+    } else {
+        let text = if o.notice_old_text {
+            match direction_plan.target {
+                Lang::En => "This call is being translated in real time. You are hearing a synthesized voice.".to_owned(),
+                Lang::Zh => "本次通话正在实时翻译，你听到的是合成语音。".to_owned(),
+            }
+        } else {
+            call_kit::disclosure::disclosure_text(&config, direction_plan.target)
+        };
+        let (chunks, seconds) = notice::synthesise(
+            build.providers.tts.as_ref(),
+            o.direction,
+            &text,
+            direction_plan.target,
+            params.voice.clone(),
+        )?;
+        println!("notice ({:?}): {:.1} s of speech", o.notice, seconds);
+        Some(notice::Notice {
+            mode: o.notice,
+            chunks: Arc::new(chunks),
+        })
+    };
     let rig = Rig {
         clock: Arc::new(SystemClock::new()),
+        notice,
         params,
         providers: build.providers.clone(),
         output,
-        jitter: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+        mixer: MixerConfig {
+            jitter_buffer: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+            adaptive_preroll: config.pipeline.adaptive_preroll && !o.no_adaptive_preroll,
+            preroll_max: Duration::from_millis(u64::from(config.pipeline.preroll_max_ms)),
+            trim_silence: config.pipeline.trim_silence,
+            silence_keep: Duration::from_millis(u64::from(config.pipeline.silence_keep_ms)),
+            catch_up_max_speed: config.pipeline.catch_up_max_speed,
+            ..MixerConfig::default()
+        },
     };
     let mut runs: Vec<UtteranceRun> = Vec::new();
+    if let Some(n) = o.conversation {
+        let mut params = Vec::new();
+        for item in items.iter().take(n) {
+            let rec = Recording::read(&item.path)?;
+            let bounds = speech_bounds(build.providers.vad.as_ref(), &rec)?.unwrap_or((0.0, 0.0));
+            params.push((rec, bounds));
+        }
+        let joined = conversation::join(&params, Duration::from_millis(o.gap_ms))?;
+        eprintln!(
+            "conversation of {} utterances, {:.1} s, speech {:.2}..{:.2} s",
+            params.len(),
+            joined.recording.seconds(),
+            joined.bounds.0,
+            joined.bounds.1
+        );
+        for (i, (a, b)) in joined.spans.iter().enumerate() {
+            eprintln!("  utterance {}: speech {a:.2}..{b:.2} s", i + 1);
+        }
+        let whole = run_utterance(&rig, "conversation", "", &joined.recording, joined.bounds)?;
+        runs = conversation::split(&whole);
+        println!("{}", conversation::summary(&runs, &whole, whole.speech_end_ns));
+        println!("counters: {}", whole.counters);
+        println!("{}", sysinfo::snapshot("machine after"));
+        println!("\n{}", table(&runs));
+        println!("utterances measured: {} of the set", runs.len());
+        return Ok(!runs.is_empty());
+    }
     for item in &items {
         let rec = Recording::read(&item.path)?;
         let found = speech_bounds(build.providers.vad.as_ref(), &rec)?;
@@ -444,6 +557,11 @@ fn execute(o: &Options) -> Result<bool, String> {
                     r.audio_seconds.iter().sum::<f64>()
                 );
                 println!("    reference: {}", r.reference);
+                println!(
+                    "    recognised: {} (error rate {})",
+                    r.recognised,
+                    r.recognition_error.map_or("-".to_owned(), |e| format!("{e:.3}"))
+                );
                 for c in &r.clauses {
                     let text = |s| {
                         c.texts

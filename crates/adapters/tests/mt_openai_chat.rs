@@ -157,7 +157,7 @@ fn the_request_has_the_documented_shape_and_no_key_header_without_a_key() {
     assert_eq!(r.body["model"], "test-model");
     assert_eq!(r.body["stream"], true);
     assert_eq!(r.body["temperature"], 0);
-    assert_eq!(r.body["messages"][1]["content"], "你好。");
+    assert_eq!(r.body["messages"][1]["content"], "<source>你好。</source>");
     assert_eq!(r.body["messages"][0]["role"], "system");
 }
 
@@ -387,7 +387,7 @@ fn cancelling_mid_stream_closes_the_connection_while_another_request_completes()
     let gate = Gate::new();
     let held = gate.clone();
     let server = FakeServer::start(move |r| {
-        if r.body["messages"][1]["content"] == "slow" {
+        if r.body["messages"][1]["content"] == "<source>slow</source>" {
             Script::ok(vec![sse_token("Partial"), Step::HoldUntilClosed])
         } else {
             Script::ok(vec![

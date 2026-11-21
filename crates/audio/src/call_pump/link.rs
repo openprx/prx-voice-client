@@ -28,7 +28,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use prxvc_media::{AudioFrame, ClauseId, Clock, MonoTime, PcmChunk, SampleRate};
 
-use crate::mix::{Mixer, MixerStats};
+use crate::mix::{Mixer, MixerStats, Pace};
 use crate::resample::MonoResampler;
 
 /// Most translated audio the feed holds before it drops the excess, in samples
@@ -79,6 +79,7 @@ enum FeedItem {
     Audio(ClauseId, AudioFrame),
     End(ClauseId),
     Flush,
+    Pace(Pace),
 }
 
 #[derive(Default)]
@@ -113,6 +114,12 @@ impl TranslatedFeed {
     /// The audio of `clause` is complete.
     pub fn end_clause(&self, clause: ClauseId) {
         self.0.items.lock().push(FeedItem::End(clause));
+    }
+
+    /// How the clauses queued from now on are played: the speed (above 1 while a backlog is
+    /// caught up) and whether pauses are cut short. Applied in order with the audio before it.
+    pub fn set_pace(&self, pace: Pace) {
+        self.0.items.lock().push(FeedItem::Pace(pace));
     }
 
     /// Throw away what has not reached the mixer and what the mixer holds.
@@ -248,6 +255,7 @@ impl LinkState {
                         }),
                     }
                 }
+                FeedItem::Pace(pace) => mixer.set_translated_pace(pace),
                 FeedItem::Flush => {
                     mixer.flush_translated();
                     self.markers.clear();

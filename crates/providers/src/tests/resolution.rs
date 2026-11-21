@@ -31,10 +31,7 @@ fn a_fresh_config_resolves_to_the_catalogue_defaults() {
     assert_eq!((inc.source, inc.target), (Lang::En, Lang::Zh));
     for d in [out, inc] {
         assert_eq!(d.asr.primary.id.as_str(), "qwen3-asr-0.6b-q8");
-        assert_eq!(
-            d.refine.as_ref().unwrap().primary.id.as_str(),
-            "qwen3-asr-1.7b-q8"
-        );
+        assert!(d.refine.is_none(), "single-pass is the default: no refine model is resolved");
         assert_eq!(d.mt.primary.id.as_str(), DEFAULT_MT_PROVIDER);
         assert_eq!(d.mt.primary.model, "gemma-4-e4b-it-qat-q4-0");
         assert_eq!(d.mt.primary.base_url, "http://127.0.0.1:8080/v1");
@@ -73,7 +70,8 @@ fn a_fresh_config_resolves_to_the_catalogue_defaults() {
 
 #[test]
 fn without_the_native_features_the_native_roles_are_typed_not_built_in_problems() {
-    let rig = Rig::new();
+    let mut rig = Rig::new();
+    rig.cfg.pipeline.recognition_mode = "two_pass".into();
     let registry = crate::registry::ProviderRegistry::new(
         &rig.cfg,
         rig.catalogue.clone(),

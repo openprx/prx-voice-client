@@ -37,8 +37,9 @@ enum Ended {
     Done,
     Cancelled,
     Failed,
-    /// The translation started in the wrong language and nothing of it was spoken yet.
-    WrongLanguage,
+    /// The translation started in the wrong language, or opened like an answer or a refusal, and
+    /// nothing of it was spoken yet: it can be asked for once more with the strict instruction.
+    Retry,
 }
 
 impl MtStage {
@@ -77,8 +78,10 @@ impl MtStage {
         {
             return;
         }
-        // A reply in the wrong language is caught before any of it is spoken and asked for once
-        // more with the strict instruction (`pipeline.retry_wrong_language`).
+        // A reply in the wrong language, or one that opens like an answer or a refusal, is caught
+        // before any of it is spoken and asked for once more with the strict instruction
+        // (`pipeline.retry_wrong_language`). After the retry a reply in the wrong language fails
+        // the clause; one that still reads like an answer is spoken and flagged, as before.
         let mut strict = false;
         loop {
             let request = MtRequest {
@@ -105,15 +108,17 @@ impl MtStage {
                 splitter: PieceSplitter::new(self.p.commit, self.p.target),
                 full: String::new(),
                 spoken: false,
+                source: &text,
+                strict,
             };
             match run.drive(stream) {
                 (Ended::Done, translated) => {
-                    history.push_back((text, translated));
+                    history.push_back((text.clone(), translated));
                     while history.len() > self.p.mt_context_clauses {
                         history.pop_front();
                     }
                 }
-                (Ended::WrongLanguage, _) if !strict => {
+                (Ended::Retry, _) if !strict => {
                     Stats::add(&self.stats.mt_retries, 1);
                     if !run.event(StageEvent::MtRetry { clause }) {
                         return;
@@ -121,7 +126,7 @@ impl MtStage {
                     strict = true;
                     continue;
                 }
-                (Ended::WrongLanguage, _) => {
+                (Ended::Retry, _) => {
                     run.fail(
                         StageFailure::new(
                             FaultKind::Rejected,
@@ -204,6 +209,10 @@ struct Run<'a> {
     full: String,
     /// A piece has been handed to synthesis: from then on the text is committed to being spoken.
     spoken: bool,
+    /// The clause's source text.
+    source: &'a str,
+    /// This is the retry with the strict instruction.
+    strict: bool,
 }
 
 impl Run<'_> {
@@ -238,6 +247,17 @@ impl Run<'_> {
         self.stage.p.retry_wrong_language
             && !self.spoken
             && prxvc_media::script::is_wrong_language_for(&self.full, self.stage.p.target)
+    }
+
+    /// Whether the translation so far opens like a chat answer or a refusal (the model replied to
+    /// the message instead of translating it) and nothing of it has been spoken, so that it can
+    /// still be asked for again. Only on the first attempt: the retry's answer is used.
+    fn answer_unspoken(&self) -> bool {
+        self.stage.p.retry_wrong_language
+            && !self.strict
+            && !self.spoken
+            && (prxvc_media::answer::opens_like_answer(self.source, &self.full)
+                || prxvc_media::answer::opens_like_refusal(self.source, &self.full))
     }
 
     fn piece(&self, text: String, end: bool) -> bool {
@@ -286,8 +306,10 @@ impl Run<'_> {
                     }) {
                         return (Ended::Cancelled, String::new());
                     }
-                    if !pieces.is_empty() && self.wrong_language_unspoken() {
-                        return (Ended::WrongLanguage, String::new());
+                    if !pieces.is_empty()
+                        && (self.wrong_language_unspoken() || self.answer_unspoken())
+                    {
+                        return (Ended::Retry, String::new());
                     }
                     for p in pieces {
                         self.spoken = true;
@@ -358,8 +380,8 @@ impl Run<'_> {
             return self.suspect("nothing to say aloud");
         }
         let last = self.splitter.finish();
-        if self.wrong_language_unspoken() {
-            return Ended::WrongLanguage;
+        if self.wrong_language_unspoken() || self.answer_unspoken() {
+            return Ended::Retry;
         }
         let full = &self.full;
         self.stage

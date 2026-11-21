@@ -131,7 +131,8 @@ fn one_translation_client_serves_both_directions() {
 
 #[test]
 fn recognition_and_vad_engines_are_shared_the_same_way() {
-    let rig = Rig::new();
+    let mut rig = Rig::new();
+    rig.cfg.pipeline.recognition_mode = "two_pass".into();
     let registry = rig.registry();
     let plan = registry.resolve_call().unwrap();
     let out_asr = registry.build_asr(&plan.outgoing.asr.primary).unwrap();
@@ -155,6 +156,34 @@ fn recognition_and_vad_engines_are_shared_the_same_way() {
     assert_eq!((live.asr, live.vad, live.refine), (0, 0, 0));
 }
 
+#[test]
+fn by_default_recognition_is_single_pass_and_the_refine_model_is_never_loaded() {
+    let rig = Rig::new();
+    assert_eq!(rig.cfg.pipeline.recognition_mode, "streaming");
+    let registry = rig.registry();
+    let plan = registry.resolve_call().unwrap();
+    assert_eq!(plan.recognition, crate::plan::RecognitionMode::Streaming);
+    assert!(plan.outgoing.refine.is_none() && plan.incoming.refine.is_none());
+    // Everything the plan names is built, as a call start does.
+    let out_asr = registry.build_asr(&plan.outgoing.asr.primary).unwrap();
+    let in_asr = registry.build_asr(&plan.incoming.asr.primary).unwrap();
+    let vad = registry.build_vad(&plan.vad.primary).unwrap();
+    let live = registry.live_engines();
+    assert_eq!(
+        (live.asr, live.vad, live.refine),
+        (1, 1, 0),
+        "one streaming engine for both directions, no refine engine"
+    );
+    assert_eq!(rig.recognition.refine_loads.load(Ordering::SeqCst), 0);
+    drop((out_asr, in_asr, vad));
+    // Two-pass stays selectable and then loads it.
+    let mut two = Rig::new();
+    two.cfg.pipeline.recognition_mode = "two_pass".into();
+    let registry = two.registry();
+    let plan = registry.resolve_call().unwrap();
+    assert!(plan.outgoing.refine.is_some());
+}
+
 fn bare_registry(rig: &Rig) -> crate::registry::ProviderRegistry {
     crate::registry::ProviderRegistry::new(
         &rig.cfg,
@@ -168,7 +197,8 @@ fn bare_registry(rig: &Rig) -> crate::registry::ProviderRegistry {
 #[cfg(not(feature = "transcribe"))]
 #[test]
 fn the_default_binary_builds_no_recognition_provider() {
-    let rig = Rig::new();
+    let mut rig = Rig::new();
+    rig.cfg.pipeline.recognition_mode = "two_pass".into();
     let plan = rig.registry().resolve_call().unwrap();
     // A registry with the binary's own loaders: the recognition adapters are not built in.
     let bare = bare_registry(&rig);

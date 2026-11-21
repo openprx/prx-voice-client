@@ -81,6 +81,16 @@ impl Running {
         self.playout.lock().clone()
     }
 
+    /// A graceful stop: stop listening and let what is committed play (see `finishing`).
+    pub(super) fn drain(&self) {
+        self.pipeline.drain();
+    }
+
+    /// The recogniser ended the segment that was open at [`Self::drain`].
+    pub(super) fn drain_flushed(&self) -> bool {
+        self.pipeline.drain_flushed()
+    }
+
     pub(super) fn pause(&self) {
         self.pipeline.pause();
     }
@@ -256,7 +266,9 @@ impl Coordinator {
                 tracing::warn!(direction = ?d, ?error, "the pipeline's attached source ended");
             }
             // Handled on the forwarder thread, or shown through the snapshot.
-            PipelineEvent::Audio(_)
+            PipelineEvent::SpeechStarted
+            | PipelineEvent::Pace { .. }
+            | PipelineEvent::Audio(_)
             | PipelineEvent::AudioEnd(_)
             | PipelineEvent::Flush(_)
             | PipelineEvent::ClauseSkipped { .. }
@@ -402,6 +414,18 @@ fn forward(
             PipelineEvent::AudioEnd(e) => {
                 if let Some(p) = current() {
                     p.end_clause(e.payload);
+                }
+            }
+            PipelineEvent::SpeechStarted => {
+                // The speaker began: the notice, when owed and ready, starts now instead of
+                // waiting for the first translation.
+                if let (Some(n), Some(p)) = (notice, current()) {
+                    n.on_speech_start(&*p);
+                }
+            }
+            PipelineEvent::Pace { speed, tight } => {
+                if let Some(p) = current() {
+                    p.set_pace(speed, tight);
                 }
             }
             PipelineEvent::Flush(action) => {

@@ -56,6 +56,11 @@ pub(crate) struct Gate {
     pub(crate) reset: AtomicBool,
     /// Reopen the engines to see whether the provider works again.
     pub(crate) probe: AtomicBool,
+    /// A graceful stop asked the recogniser to end the open segment once the queued audio is
+    /// processed, so that what was said last is committed and translated.
+    pub(crate) finish_open: AtomicBool,
+    /// The recogniser did that (or had nothing open).
+    pub(crate) flushed: AtomicBool,
 }
 
 impl Gate {
@@ -94,6 +99,8 @@ struct ClauseInfo {
     source_text: String,
     /// When the clause's source speech ended.
     source_end: MonoTime,
+    /// When its first synthesised audio reached the control thread (for the queue wait).
+    first_chunk_at: Option<MonoTime>,
     /// The translation so far: the backlog estimate until synthesis is known.
     target_text: String,
     synthesised: Duration,
@@ -130,10 +137,17 @@ pub(crate) struct Core {
     /// The segment whose original voice is passed through because it is already in the target
     /// language (`pipeline.skip_source_in_target`).
     passthrough: Option<prxvc_media::SegmentId>,
+    /// The newest segment whose original voice was passed through, even after it ended: a final
+    /// text that arrives late must neither pass it through again nor translate it a second time.
+    passed: Option<prxvc_media::SegmentId>,
     /// What happened to the clauses of the open segments, for the utterance log line.
     tallies: BTreeMap<prxvc_media::SegmentId, SegmentTally>,
     /// The figures of the finished utterances.
     ledger: LedgerBook,
+    /// How the audio released now is played (speed and pause length), as last announced.
+    pace: crate::pace::PlayPace,
+    /// What was last sent to the playout (the pace, with the speed only for a complete clause).
+    announced: crate::pace::PlayPace,
     refine_failures: u32,
     last_error: Option<ErrorSnapshot>,
     recovery: Option<Recovery>,
@@ -164,8 +178,11 @@ impl Core {
             skip_reason: None,
             skipping: false,
             passthrough: None,
+            passed: None,
             tallies: BTreeMap::new(),
             ledger: LedgerBook::default(),
+            pace: crate::pace::PlayPace::default(),
+            announced: crate::pace::PlayPace::default(),
             refine_failures: 0,
             last_error: None,
             recovery: None,
@@ -225,6 +242,7 @@ impl Core {
                     .is_some_and(|t| !t.is_cancelled());
                 if live {
                     self.barge_in(segment, onset);
+                    self.emit(PipelineEvent::SpeechStarted);
                 } else {
                     // Cancelled before the book heard of it: the recogniser
                     // abandoned it, so it must not stay open in the book.

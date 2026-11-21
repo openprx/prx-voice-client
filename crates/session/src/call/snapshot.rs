@@ -154,6 +154,10 @@ pub struct CallSnapshot {
     pub last_output_change: Option<OutputChange>,
     /// The spoken notice to the other party.
     pub disclosure: super::DisclosureSnapshot,
+    /// A graceful stop is running: the last sentences are being played before call mode ends.
+    /// The seconds left until the limit (`call.stop_grace_ms`), rounded up. A second Stop ends it
+    /// at once. `None` when not stopping gracefully.
+    pub finishing_s: Option<u32>,
 }
 
 impl CallSnapshot {

@@ -635,6 +635,14 @@ impl RecognitionStage {
         Ok(())
     }
 
+    /// End the open segment now (a graceful stop): what is left is committed as the final clause.
+    pub(crate) fn finish_open(&mut self, out: &mut Out) -> Result<(), RecognitionFault> {
+        if self.open.is_some() {
+            self.end_segment(out)?;
+        }
+        Ok(())
+    }
+
     /// The segment was cancelled: drop the recogniser's state and ignore the
     /// rest of the utterance (the book already cancelled the segment).
     fn abandon(&mut self) {

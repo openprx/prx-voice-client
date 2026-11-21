@@ -268,8 +268,13 @@ pub struct PumpStats {
     pub sink_queued: Duration,
     /// The mixer's mode; `None` without a mixer.
     pub mode: Option<MixMode>,
-    /// Times the translated lane ran dry in the middle of a clause.
+    /// Gaps in the translated speech: times the translated lane ran dry while a clause was still
+    /// being synthesised or queued. The normal end of a clause is not one.
     pub translated_underruns: u64,
+    /// Milliseconds of silence in those gaps, in total.
+    pub translated_gap_ms: u64,
+    /// The longest single gap, in milliseconds.
+    pub translated_worst_gap_ms: u64,
     /// Samples the translated lane dropped because it was full.
     pub translated_dropped_samples: u64,
     /// Level of the translated speech as played, after its gain, last full window.
@@ -298,6 +303,8 @@ struct Shared {
     lane_dropped: AtomicU64,
     sink_queued_us: AtomicU64,
     translated_underruns: AtomicU64,
+    translated_gap_ms: AtomicU64,
+    translated_worst_gap_ms: AtomicU64,
     translated_dropped: AtomicU64,
     translated_level: SharedLevel,
     gated_frames: AtomicU64,
@@ -465,6 +472,8 @@ impl Pump {
                 .has_mixer
                 .then(|| mode_of(s.mode.load(Ordering::Relaxed))),
             translated_underruns: s.translated_underruns.load(Ordering::Relaxed),
+            translated_gap_ms: s.translated_gap_ms.load(Ordering::Relaxed),
+            translated_worst_gap_ms: s.translated_worst_gap_ms.load(Ordering::Relaxed),
             translated_dropped_samples: s.translated_dropped.load(Ordering::Relaxed),
             translated_level: s.translated_level.load(),
             gated_frames: s.gated_frames.load(Ordering::Relaxed),
@@ -626,6 +635,13 @@ impl Worker {
             .store(lane.dropped_samples, Ordering::Relaxed);
         s.translated_underruns
             .store(mixer_stats.translated.underruns, Ordering::Relaxed);
+        let ms_of = |samples: u64| samples * 1000 / u64::from(mixer.output_rate().hz());
+        s.translated_gap_ms
+            .store(ms_of(mixer_stats.translated.gap_samples), Ordering::Relaxed);
+        s.translated_worst_gap_ms.store(
+            ms_of(mixer_stats.translated.worst_gap_samples),
+            Ordering::Relaxed,
+        );
         s.translated_dropped
             .store(mixer_stats.translated.dropped_samples, Ordering::Relaxed);
         s.translated_level.store(mixer_stats.translated_level);

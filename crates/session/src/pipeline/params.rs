@@ -121,6 +121,9 @@ pub struct PipelineParams {
     pub mt_context_clauses: usize,
     /// `pipeline.backlog_skipping`, `max_backlog_ms` and `max_lag_ms`.
     pub backlog: BacklogParams,
+    /// `pipeline.catch_up`, `catch_up_after_ms` and `catch_up_max_speed`: how a queue of
+    /// translated speech is caught up without dropping anything.
+    pub catch_up: crate::pace::CatchUpParams,
     /// `pipeline.jitter_buffer_ms`. The pipeline does not read it: the
     /// playout side that consumes the audio events does. Carried so that one
     /// struct mirrors the section.
@@ -169,6 +172,7 @@ impl PipelineParams {
             retry_wrong_language: true,
             mt_context_clauses: 4,
             backlog: BacklogParams::default(),
+            catch_up: crate::pace::CatchUpParams::default(),
             jitter_buffer: Duration::from_millis(150),
             voice,
             glossary: Vec::new(),

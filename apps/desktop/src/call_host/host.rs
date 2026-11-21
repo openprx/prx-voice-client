@@ -58,6 +58,8 @@ pub(crate) struct HostConfig {
     pub echo_tail: Duration,
     /// The incoming mixer: `call.output_gain_db`, `call.original_gain_db` and the jitter buffer.
     pub incoming_mixer: MixerConfig,
+    /// The outgoing mixer: the translated lane's jitter buffer and adaptive pre-roll.
+    pub outgoing_mixer: MixerConfig,
     /// Where the routing journal lives.
     pub data_dir: PathBuf,
     /// The configuration the providers are resolved from, read again at every translated start.
@@ -177,6 +179,7 @@ impl CallHost for RealCallHost {
             microphone: &microphone,
             virtual_mic_device: &self.config.virtual_mic_device,
             echo: Some(self.echo.clone()),
+            mixer: self.config.outgoing_mixer,
         })
     }
 

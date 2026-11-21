@@ -55,7 +55,7 @@ fn new_call_keys_default_to_the_design_values() {
 #[test]
 fn pipeline_section_defaults_to_the_design_values() {
     let p = AppConfig::default().pipeline;
-    assert_eq!(p.recognition_mode, "two_pass");
+    assert_eq!(p.recognition_mode, "streaming");
     assert_eq!((p.clause_pause_ms, p.segment_end_pause_ms), (300, 600));
     assert_eq!((p.long_segment_after_s, p.long_segment_pause_ms), (8, 300));
     assert_eq!((p.max_clause_s, p.max_segment_s), (8, 25));
@@ -69,6 +69,11 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 15_000));
     assert!(p.backlog_skipping);
     assert_eq!(p.max_lag_ms, 20_000);
+    assert!(p.catch_up && p.trim_silence);
+    assert_eq!((p.catch_up_after_ms, p.silence_keep_ms), (2_000, 60));
+    assert_eq!(p.catch_up_max_speed, 1.25);
+    assert!(p.adaptive_preroll);
+    assert_eq!(p.preroll_max_ms, 1_500);
     // The recogniser's cadence and stability keys default to the adapter's own values.
     assert_eq!(
         (p.asr_redecode_interval_ms, p.asr_first_decode_after_ms),
@@ -260,3 +265,34 @@ fn round_trip_with_the_new_keys_filled_is_stable() {
         first
     );
 }
+
+#[test]
+fn the_old_two_pass_default_becomes_single_pass_and_a_later_choice_of_two_pass_is_kept() {
+    // Written by a build before version 4: the old default, spelled out by the save.
+    let dir = TempDir::new("ct_single_pass");
+    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n");
+    let report = mgr(&dir).load_report().unwrap();
+    assert_eq!(report.notices, vec![LoadNotice::Migrated { from: 3, to: 4 }]);
+    assert_eq!(report.config.pipeline.recognition_mode, "streaming");
+    assert_eq!(report.config.pipeline.clause_pause_ms, 450, "the rest is untouched");
+
+    // Other values and files without the key are left as they are.
+    let dir = TempDir::new("ct_single_pass_other");
+    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"segmented\"\n");
+    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "segmented");
+    let dir = TempDir::new("ct_single_pass_none");
+    write_config(&dir, "schema_version = 3\n[call]\nbarge_in = false\n");
+    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "streaming");
+
+    // A file written at version 4 holds a choice: two-pass stays, through a save and a load.
+    let dir = TempDir::new("ct_two_pass_chosen");
+    let m = mgr(&dir);
+    let mut c = AppConfig::default();
+    assert_eq!(c.pipeline.recognition_mode, "streaming");
+    c.pipeline.recognition_mode = "two_pass".into();
+    m.save(&c).unwrap();
+    let report = m.load_report().unwrap();
+    assert!(report.notices.is_empty());
+    assert_eq!(report.config.pipeline.recognition_mode, "two_pass");
+}
+

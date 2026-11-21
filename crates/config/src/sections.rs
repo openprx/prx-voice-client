@@ -313,6 +313,11 @@ pub struct CallConfig {
     /// Which engine translates a call: `"system"` (the operating system's translation) or `"llm"`
     /// (a language model; `providers.active.mt` says which). See [`crate::TranslationEngine`].
     pub translation_engine: String,
+    /// How long a first Stop lets the last sentences play before call mode ends, in
+    /// milliseconds: no new speech is accepted, what is committed is translated, synthesised and
+    /// played to the end (to the listener and to the virtual microphone). A second Stop ends at
+    /// once. 0 stops at once.
+    pub stop_grace_ms: u32,
 }
 
 impl Default for CallConfig {
@@ -338,6 +343,7 @@ impl Default for CallConfig {
             barge_in_max_lag_ms: 3_000,
             translate: false,
             output_gain_db: 0.0,
+            stop_grace_ms: 6_000,
             translation_engine: crate::TranslationEngine::build_default().as_str().to_owned(),
         }
     }
@@ -373,7 +379,9 @@ impl Default for LlmServerConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PipelineConfig {
-    /// `"two_pass"` (streaming draft, refine decode per clause) or `"streaming"`.
+    /// `"streaming"` (the default: the streaming recogniser's text goes to translation, one model
+    /// per direction) or `"two_pass"` (streaming draft, then a second decode of every clause with
+    /// the larger refine model: more accurate text, a second model in memory and later clauses).
     pub recognition_mode: String,
     /// Silence inside a segment that commits a clause, in milliseconds.
     pub clause_pause_ms: u32,
@@ -430,6 +438,26 @@ pub struct PipelineConfig {
     pub mt_context_clauses: u32,
     /// Playout jitter buffer, in milliseconds.
     pub jitter_buffer_ms: u32,
+    /// Raise the start-of-clause pre-roll above `jitter_buffer_ms` when synthesis delivers audio
+    /// slower than it is played (measured per call), so that a clause does not start with less
+    /// queued than it needs to finish without a gap.
+    pub adaptive_preroll: bool,
+    /// The most pre-roll the adaptation asks for, in milliseconds.
+    pub preroll_max_ms: u32,
+    /// Catch up with a queue of translated speech without dropping any: while translated clauses
+    /// wait behind speech still being played, the clauses played next are sped up (pitch kept)
+    /// and their pauses cut short; normal pace returns when the queue is empty.
+    pub catch_up: bool,
+    /// Queued translated audio at which the speed-up starts, in milliseconds.
+    pub catch_up_after_ms: u32,
+    /// The fastest playback while catching up (1.25 is 25 % faster).
+    pub catch_up_max_speed: f32,
+    /// Cut the silence at the start and end of each translated clause (the synthesiser's lead-in
+    /// and fade-out), keeping `silence_keep_ms` at the start and twice that at the end; a third
+    /// of that while a queue exists.
+    pub trim_silence: bool,
+    /// Silence kept at the start of a translated clause, in milliseconds.
+    pub silence_keep_ms: u32,
     /// Skip stale queued clauses to keep up with the speaker. Off plays everything, however late.
     pub backlog_skipping: bool,
     /// Queued audio per direction above which stale clauses are skipped, in milliseconds.
@@ -450,7 +478,7 @@ pub struct PipelineConfig {
 impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
-            recognition_mode: "two_pass".to_owned(),
+            recognition_mode: "streaming".to_owned(),
             clause_pause_ms: 300,
             segment_end_pause_ms: 600,
             long_segment_after_s: 8,
@@ -472,6 +500,13 @@ impl Default for PipelineConfig {
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,
+            adaptive_preroll: true,
+            preroll_max_ms: 1_500,
+            catch_up: true,
+            catch_up_after_ms: 2_000,
+            catch_up_max_speed: 1.25,
+            trim_silence: true,
+            silence_keep_ms: 60,
             backlog_skipping: true,
             max_backlog_ms: 15_000,
             max_lag_ms: 20_000,

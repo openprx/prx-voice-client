@@ -1,6 +1,6 @@
 //! The spoken notice to the other party: played once before the first translated sentence of the outgoing direction, never when it is off, again on request, through a pause, in the language of the other party, and outside the pipeline's rules.
 
-use prxvc_media::{ClauseId, Direction, Lang, MonoTime, SegmentId};
+use prxvc_media::{AudioFrame, ClauseId, Direction, Lang, MonoTime, SampleRate, SegmentId};
 use prxvc_ports::fakes::TtsScript;
 
 use super::kit::{Played, Rig};
@@ -257,3 +257,80 @@ fn a_notice_that_cannot_be_prepared_is_a_visible_issue_and_the_translation_goes_
         w.played("outgoing").contains(&Played::End(first))
     });
 }
+
+/// Push frames `from..to` of 32 ms at 16 kHz into the outgoing path (the source's own clock).
+fn speak_frames(rig: &Rig, from: u64, to: u64) {
+    for i in from..to {
+        let frame = AudioFrame::new(
+            vec![0.1; 512],
+            SampleRate::HZ_16000,
+            MonoTime::from_millis(i * 32),
+            i,
+        )
+        .expect("a valid frame");
+        rig.world.push_frame("outgoing", frame);
+    }
+}
+
+fn is_pipeline_audio(p: &Played) -> bool {
+    matches!(p, Played::Chunk(c, _) | Played::End(c) if c.segment().seq() != u64::MAX)
+}
+
+#[test]
+fn the_notice_starts_when_the_owner_begins_to_speak_before_any_translation_exists() {
+    let mut rig = rig(true);
+    rig.start_translating();
+    translating_both(&mut rig);
+    prepared(&mut rig);
+    // Ten frames of silence and seven of speech: the speech began, nothing is committed yet.
+    speak_frames(&rig, 0, 17);
+    rig.until_world("the notice reached the lane at speech start", |w| {
+        w.played("outgoing").contains(&Played::End(notice(0)))
+    });
+    let played = rig.world.played("outgoing");
+    assert!(
+        !played.iter().any(is_pipeline_audio),
+        "no translation exists yet, the notice is not waiting for one: {played:?}"
+    );
+    // The utterance goes on and ends: the translation follows the notice, which is not repeated.
+    speak_frames(&rig, 17, 55);
+    let first = clause(Direction::Outgoing, 1, 0);
+    rig.until_world("the first clause reached the lane", |w| {
+        w.played("outgoing").contains(&Played::End(first))
+    });
+    let played = rig.world.played("outgoing");
+    let notice_end = position(&played, |p| *p == Played::End(notice(0))).unwrap();
+    let first_chunk = position(&played, |p| matches!(p, Played::Chunk(c, _) if *c == first)).unwrap();
+    assert!(notice_end < first_chunk);
+    assert_eq!(
+        played.iter().filter(|p| matches!(p, Played::End(c) if c.segment().seq() == u64::MAX)).count(),
+        1,
+        "once per session"
+    );
+}
+
+#[test]
+fn a_notice_cut_before_it_was_heard_is_owed_again_at_the_next_speech_start() {
+    let mut rig = rig(true);
+    rig.start_translating();
+    translating_both(&mut rig);
+    prepared(&mut rig);
+    speak_frames(&rig, 0, 17);
+    rig.until_world("the notice is queued", |w| {
+        w.played("outgoing").contains(&Played::End(notice(0)))
+    });
+    // The lane is flushed (the direction was skipped) before the notice was heard.
+    rig.coord.handle(CallCommand::Pause(DirSet::BOTH));
+    rig.until("paused", |s| s.direction(Direction::Outgoing).hears == OutputSource::Original);
+    rig.world.report_playback(
+        "outgoing",
+        PlaybackReport::Started { clause: notice(0), at: MonoTime::from_millis(5) },
+    );
+    rig.world.report_playback(
+        "outgoing",
+        PlaybackReport::Finished { clause: notice(0), at: MonoTime::from_millis(1_000) },
+    );
+    let s = rig.until("the cut notice is noted", |s| s.disclosure.interrupted == 1);
+    assert_eq!(s.disclosure.plays, 0);
+}
+

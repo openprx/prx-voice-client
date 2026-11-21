@@ -27,6 +27,8 @@ pub(crate) struct SegmentTimes {
     mt_first_token: Option<MonoTime>,
     first_audio: Option<MonoTime>,
     last_audio_end: Option<MonoTime>,
+    /// How long the audio of the first clause that had to wait waited for its turn.
+    queue_wait: Option<std::time::Duration>,
 }
 
 impl SegmentTimes {
@@ -60,6 +62,10 @@ impl OpenTimes {
         while self.0.len() > MAX_OPEN_SEGMENTS {
             self.0.pop_first();
         }
+    }
+
+    pub(crate) fn note_wait(&mut self, segment: SegmentId, wait: std::time::Duration) {
+        self.0.entry(segment).or_default().queue_wait.get_or_insert(wait);
     }
 
     pub(crate) fn take(&mut self, segment: SegmentId) -> SegmentTimes {
@@ -115,6 +121,9 @@ pub(crate) struct Utterance {
     /// The end of the first clause's speech to the first translated sample, the figure the
     /// listener feels as "the wait".
     pub(crate) pause_to_first_audio_ms: Option<u64>,
+    /// How long the first clause's synthesised audio waited behind earlier speech before it was
+    /// released to play: waiting for its turn, not processing.
+    pub(crate) queue_wait_ms: Option<u64>,
 }
 
 impl Utterance {
@@ -128,6 +137,9 @@ impl Utterance {
             first_audio_ms: between(t.speech_start, t.first_audio),
             playback_end_ms: between(t.speech_start, t.last_audio_end),
             pause_to_first_audio_ms: between(t.first_pause, t.first_audio),
+            queue_wait_ms: t
+                .queue_wait
+                .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
         }
     }
 
@@ -223,6 +235,13 @@ pub struct Ledger {
     pub start_to_first_audio: Percentiles,
     /// The end of the first clause's speech to the first translated sample.
     pub end_to_first_audio: Percentiles,
+    /// How long the first clause of an utterance waited behind earlier translated speech (not
+    /// processing time: translation and synthesis were done).
+    pub queue_wait: Percentiles,
+    /// Clauses released at a speed above 1 while a backlog was caught up.
+    pub sped_clauses: u64,
+    /// The highest speed used, in percent (125 is 1.25x); 100 when none.
+    pub max_speed_pct: u32,
 }
 
 /// The figure lists behind a [`Ledger`].
@@ -231,6 +250,9 @@ pub(crate) struct LedgerBook {
     utterances: u64,
     start: Vec<u64>,
     end: Vec<u64>,
+    wait: Vec<u64>,
+    sped: u64,
+    max_speed_pct: u32,
 }
 
 impl LedgerBook {
@@ -239,6 +261,7 @@ impl LedgerBook {
         for (list, figure) in [
             (&mut self.start, u.first_audio_ms),
             (&mut self.end, u.pause_to_first_audio_ms),
+            (&mut self.wait, u.queue_wait_ms),
         ] {
             if let Some(v) = figure {
                 list.push(v);
@@ -249,11 +272,20 @@ impl LedgerBook {
         }
     }
 
+    /// A clause was released at `speed` (above 1).
+    pub(crate) fn note_sped(&mut self, speed: f32) {
+        self.sped += 1;
+        self.max_speed_pct = self.max_speed_pct.max((speed * 100.0).round() as u32);
+    }
+
     pub(crate) fn snapshot(&self) -> Ledger {
         Ledger {
             utterances: self.utterances,
             start_to_first_audio: Percentiles::of(&self.start),
             end_to_first_audio: Percentiles::of(&self.end),
+            queue_wait: Percentiles::of(&self.wait),
+            sped_clauses: self.sped,
+            max_speed_pct: self.max_speed_pct.max(100),
         }
     }
 }
@@ -315,6 +347,25 @@ mod tests {
         assert_eq!(u.pause_to_first_audio_ms, Some(1100));
         assert_eq!(u.outcome(), "played");
         assert_eq!(open.take(s), SegmentTimes::default(), "taken times are gone");
+    }
+
+    #[test]
+    fn the_queue_wait_is_the_first_clause_that_waited_and_has_a_figure_of_its_own() {
+        let mut open = OpenTimes::default();
+        let s = seg(7);
+        open.note(s, TraceStage::SpeechStart, at(1000));
+        open.note_wait(s, std::time::Duration::from_millis(2300));
+        open.note_wait(s, std::time::Duration::from_millis(100));
+        let u = Utterance::new(s, SegmentTally::default(), &open.take(s));
+        assert_eq!(u.queue_wait_ms, Some(2300));
+        let mut book = LedgerBook::default();
+        book.record(&u);
+        book.note_sped(1.25);
+        let l = book.snapshot();
+        assert_eq!((l.queue_wait.n, l.queue_wait.median_ms), (1, 2300));
+        assert_eq!((l.sped_clauses, l.max_speed_pct), (1, 125));
+        let none = Utterance::new(seg(1), SegmentTally::default(), &SegmentTimes::default());
+        assert_eq!(none.queue_wait_ms, None);
     }
 
     #[test]

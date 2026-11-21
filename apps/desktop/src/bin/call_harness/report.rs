@@ -28,11 +28,22 @@ pub(crate) struct UtteranceRun {
     pub speech_end_ns: f64,
     pub clauses: Vec<ClauseTimeline>,
     pub source_text: String,
+    /// The text that was translated (after the refine pass in two-pass mode).
+    pub recognised: String,
+    /// Error rate of `recognised` against the reference (characters for Chinese, words otherwise);
+    /// `None` without a reference.
+    pub recognition_error: Option<f64>,
     pub translation: String,
     pub spoken: String,
     /// Seconds of translated audio produced, per clause in order.
     pub audio_seconds: Vec<f64>,
+    /// Gaps in the translated speech (the lane ran dry while a clause was still coming).
     pub underruns: u64,
+    /// Milliseconds of silence in those gaps and the longest one.
+    pub gap_ms: u64,
+    pub worst_gap_ms: u64,
+    /// Times the sink ran dry (diagnostic).
+    pub sink_underruns: u64,
     pub runaway_synth: u64,
     pub mt_suspect: u64,
     pub clauses_failed: u64,
@@ -172,10 +183,25 @@ pub(crate) fn table(runs: &[UtteranceRun]) -> String {
             ));
         }
     }
+    let errors: Vec<f64> = runs.iter().filter_map(|r| r.recognition_error).collect();
+    if !errors.is_empty() {
+        let mean = errors.iter().sum::<f64>() / errors.len() as f64;
+        out.push_str(&format!(
+            "| recognition error rate of the translated text vs reference (CER zh, WER en), mean | {} | {mean:.3} | |\n",
+            errors.len()
+        ));
+    }
     let n = runs.len();
     let with = |f: fn(&UtteranceRun) -> bool| runs.iter().filter(|r| f(r)).count();
+    let gaps: u64 = runs.iter().map(|r| r.underruns).sum();
+    let gap_ms: u64 = runs.iter().map(|r| r.gap_ms).sum();
+    let worst = runs.iter().map(|r| r.worst_gap_ms).max().unwrap_or(0);
+    let sink: u64 = runs.iter().map(|r| r.sink_underruns).sum();
     out.push_str(&format!(
-        "| items with an output underrun | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n| items with a final that disagreed with committed text | {n} | {} | |\n",
+        "| translated gaps (count, total ms, worst ms, sink dry) | {n} | {gaps}, {gap_ms}, {worst}, {sink} | |\n"
+    ));
+    out.push_str(&format!(
+        "| items with a gap in the translated speech | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n| items with a final that disagreed with committed text | {n} | {} | |\n",
         with(|r| r.underruns > 0),
         with(|r| r.runaway_synth > 0),
         with(|r| r.mt_suspect > 0),

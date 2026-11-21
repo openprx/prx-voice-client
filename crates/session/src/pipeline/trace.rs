@@ -36,6 +36,12 @@ impl Tracer {
         self.times.lock().take(segment)
     }
 
+    /// The first clause of a segment whose audio waited `wait` behind earlier speech is the
+    /// segment's queue wait (the rest of its clauses are not counted).
+    pub(crate) fn note_wait(&self, clause: ClauseId, wait: std::time::Duration) {
+        self.times.lock().note_wait(clause.segment(), wait);
+    }
+
     /// The current time on the pipeline clock.
     pub(crate) fn now(&self) -> MonoTime {
         self.clock.now()

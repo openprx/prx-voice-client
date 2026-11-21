@@ -6,6 +6,7 @@
 mod assistant_strings;
 mod call_strings;
 mod call_captions_strings;
+mod call_finish_strings;
 mod call_window_strings;
 mod settings_permission_strings;
 mod settings_pipeline_strings;
@@ -341,6 +342,7 @@ fn build_en_translations() -> HashMap<String, String> {
         .chain(call_strings::EN)
         .chain(call_window_strings::EN)
         .chain(call_captions_strings::EN)
+        .chain(call_finish_strings::EN)
         .chain(translation_strings::EN)
         .chain(translation_engine_strings::EN)
         .chain(settings_strings::EN)
@@ -572,6 +574,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         .chain(call_strings::ZH_CN)
         .chain(call_window_strings::ZH_CN)
         .chain(call_captions_strings::ZH_CN)
+        .chain(call_finish_strings::ZH_CN)
         .chain(translation_strings::ZH_CN)
         .chain(translation_engine_strings::ZH_CN)
         .chain(settings_strings::ZH_CN)

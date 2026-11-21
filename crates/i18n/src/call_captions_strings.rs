@@ -94,7 +94,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ("callwin.notice.switch_hint", "Applies from the next start."),
     (
         "call.disclosure.text",
-        "This call is being translated in real time. You are hearing a synthesized voice.",
+        "This call is translated live. You're hearing a synthesized voice.",
     ),
 ];
 
@@ -192,6 +192,6 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ("callwin.notice.switch_hint", "下次开始时生效。"),
     (
         "call.disclosure.text",
-        "本次通话正在实时翻译，你听到的是合成语音。",
+        "本通话为实时翻译，你听到的是合成语音。",
     ),
 ];

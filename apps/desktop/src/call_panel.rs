@@ -186,7 +186,8 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
             })
             .collect();
         let c = &p.counters;
-        let underruns = d.path.as_ref().map_or(0, |x| x.underruns + x.translated_underruns);
+        // Gaps in the translated speech only: a dry sink or capture lane is not heard as one.
+        let underruns = d.path.as_ref().map_or(0, |x| x.translated_underruns);
         view.counters = Some(CountersView {
             late_dropped: c.late_dropped,
             backlog_skips: c.backlog_skips,
@@ -298,6 +299,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         issues: s.issues.iter().map(issue).collect(),
         last_error: s.last_error.as_ref().map(issue),
         notice: notice(&s.disclosure),
+        finishing_s: s.finishing_s,
     }
 }
 
@@ -364,7 +366,16 @@ mod tests {
             last_error: None,
             last_output_change: None,
             disclosure: DisclosureSnapshot::default(),
+            finishing_s: None,
         }
+    }
+
+    #[test]
+    fn a_graceful_stop_reaches_the_view_with_the_seconds_left() {
+        let mut s = snapshot();
+        assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, None);
+        s.finishing_s = Some(4);
+        assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, Some(4));
     }
 
     #[test]
