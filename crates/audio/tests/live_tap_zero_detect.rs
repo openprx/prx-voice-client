@@ -8,7 +8,7 @@
 //! Environment:
 //! * `PRXVC_LIVE_TAP_TARGET`: bundle ID of an application that is playing audio
 //!   now (required).
-//! * `PRXVC_LIVE_TAP_WAIT_SECS`: how long to wait for each event (default 15).
+//! * `PRXVC_LIVE_TAP_WAIT_SECS`: how long to wait for each event (default 20).
 //!
 //! Run it from an application bundle that does NOT hold System Audio Recording
 //! consent (the case under test; with consent the tap delivers real audio and no
@@ -26,7 +26,7 @@ fn live_tap_zero_detect() {
 
     let target = std::env::var("PRXVC_LIVE_TAP_TARGET").expect("set PRXVC_LIVE_TAP_TARGET to a bundle ID");
     let wait = Duration::from_secs(
-        std::env::var("PRXVC_LIVE_TAP_WAIT_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(15),
+        std::env::var("PRXVC_LIVE_TAP_WAIT_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20),
     );
     let (tap, mut frames) = CoreAudioTap::start_without_consent_check(TapConfig::for_bundle(target.clone()))
         .expect("tap starts (is the application running?)");

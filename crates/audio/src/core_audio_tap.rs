@@ -25,6 +25,7 @@ pub use crate::tap_consent::{ConsentOutcome, PermissionStatus, permission_status
 use crate::tap_format::{RawFormat, StreamLayout};
 use crate::tap_ring::{RingConsumer, RingProducer, SLOT_SAMPLES, tap_ring};
 use crate::tap_rt::on_buffers;
+use crate::tap_incidents::{TapIncidentCounts, TapIncidents};
 use crate::tap_supervisor::{Supervisor, spawn_supervisor};
 use crate::tap_types::{TapConfig, TapCounters, TapError, TapEvent, TapStats, TapTarget};
 use crate::{AudioFormat, AudioFrame};
@@ -274,6 +275,7 @@ pub(crate) fn target_running(target: &TapTarget) -> bool {
 /// native resources on drop. Construct with [`CoreAudioTap::start`].
 pub struct CoreAudioTap {
     counters: Arc<TapCounters>,
+    incidents: Arc<TapIncidents>,
     events: Receiver<TapEvent>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -297,7 +299,18 @@ impl CoreAudioTap {
     /// that can ask, target not running, unsupported stream format, or a Core
     /// Audio failure.
     pub fn start(config: TapConfig) -> Result<(Self, TapReceiver), TapError> {
-        Self::start_checked(config, true)
+        Self::start_checked(config, true, Arc::default())
+    }
+
+    /// Like [`start`](Self::start), with the counters of re-creations shared with the caller.
+    ///
+    /// # Errors
+    /// As [`start`](Self::start).
+    pub fn start_counted(
+        config: TapConfig,
+        incidents: Arc<TapIncidents>,
+    ) -> Result<(Self, TapReceiver), TapError> {
+        Self::start_checked(config, true, incidents)
     }
 
     /// Like [`start`](Self::start) but without the consent gate: the tap is
@@ -307,10 +320,14 @@ impl CoreAudioTap {
     /// # Errors
     /// As [`start`](Self::start), except for the consent errors.
     pub fn start_without_consent_check(config: TapConfig) -> Result<(Self, TapReceiver), TapError> {
-        Self::start_checked(config, false)
+        Self::start_checked(config, false, Arc::default())
     }
 
-    fn start_checked(config: TapConfig, check_consent: bool) -> Result<(Self, TapReceiver), TapError> {
+    fn start_checked(
+        config: TapConfig,
+        check_consent: bool,
+        incidents: Arc<TapIncidents>,
+    ) -> Result<(Self, TapReceiver), TapError> {
         let (producer, consumer) = tap_ring(RING_SLOTS);
         let ctx = Arc::new(TapCtx::new(producer));
         let native = NativeTap::open(&config, &ctx, check_consent)?;
@@ -324,8 +341,9 @@ impl CoreAudioTap {
             native: Some(native),
             events: events_tx,
             stop: Arc::clone(&stop),
+            incidents: Arc::clone(&incidents),
         })?;
-        Ok((Self { counters, events, stop, thread: Some(thread) }, TapReceiver::new(consumer)))
+        Ok((Self { counters, incidents, events, stop, thread: Some(thread) }, TapReceiver::new(consumer)))
     }
 
     /// Health events (stall, target gone, restart) since the last call.
@@ -336,6 +354,11 @@ impl CoreAudioTap {
     /// Callback, frame and overrun counters.
     pub fn stats(&self) -> TapStats {
         self.counters.snapshot()
+    }
+
+    /// Re-creations of the tap by reason and the longest capture interruption they caused.
+    pub fn incidents(&self) -> TapIncidentCounts {
+        self.incidents.snapshot()
     }
 }
 
@@ -456,6 +479,7 @@ const NOMINAL_RATE: SampleRate = SampleRate::HZ_48000;
 /// the read time instead and is counted).
 pub struct CoreAudioTapSource {
     config: TapConfig,
+    incidents: Arc<TapIncidents>,
     inner: Option<(CoreAudioTap, TapReceiver)>,
     clock: SystemClock,
     stamper: Option<FrameStamper>,
@@ -479,6 +503,7 @@ impl CoreAudioTapSource {
     pub fn with_config(config: TapConfig) -> Self {
         Self {
             config,
+            incidents: Arc::default(),
             inner: None,
             clock: SystemClock::new(),
             stamper: None,
@@ -487,6 +512,12 @@ impl CoreAudioTapSource {
             frames: 0,
             last_error: None,
         }
+    }
+
+    /// The counters of re-creations, shared with whoever reads them while the source runs
+    /// on another thread.
+    pub fn incidents(&self) -> Arc<TapIncidents> {
+        Arc::clone(&self.incidents)
     }
 
     /// Health events of the running tap, if any.
@@ -524,7 +555,7 @@ impl AudioSource for CoreAudioTapSource {
         if self.inner.is_some() {
             return Err(EndpointError::Internal("tap is already started".to_owned()));
         }
-        match CoreAudioTap::start(self.config.clone()) {
+        match CoreAudioTap::start_counted(self.config.clone(), Arc::clone(&self.incidents)) {
             Ok(inner) => {
                 self.inner = Some(inner);
                 // One calibration pair of the host clock and the pipeline clock.

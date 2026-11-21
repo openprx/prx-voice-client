@@ -1,9 +1,23 @@
 //! Tap supervisor thread (macOS): polls the tap's health on a normal thread, reports changes as events and re-creates the tap when needed.
 //!
-//! Decisions come from [`crate::tap_watchdog`] (stall, target gone) and
-//! [`crate::tap_zero_watchdog`] (exact zeros while the target plays); this file
-//! only gathers the observations (callback counters, whether the target runs and
-//! plays) and carries out the resulting steps. It is never on a real-time thread.
+//! Decisions come from [`crate::tap_health`] (stall, target gone, exact zeros while no
+//! signal was ever proven); this file only gathers the observations (callback
+//! counters, whether the target runs and plays) and carries out the resulting steps.
+//! It is never on a real-time thread.
+//!
+//! **What a re-creation interrupts.** Only the capture of the tapped application: the
+//! old tap, its aggregate device and IO proc are stopped and destroyed, then a new set
+//! is created and started, all on this thread. The incoming pump's mixer and sink keep
+//! running on the pump thread (the original lane fills the missing capture time with
+//! silence by timestamp), and the outgoing path shares nothing with the tap. The time
+//! without capture is measured and kept ([`crate::tap_incidents`]). With a
+//! muted-when-tapped tap the application is audible directly while no tap exists, so a
+//! re-creation can let the original through for that time. What remains: the new tap
+//! cannot be created before the old one is destroyed, because both would write into
+//! the one single-producer ring through the same callback context; overlapping them
+//! needs a ring and context per tap. A re-creation therefore happens only for a real
+//! failure (stall, vanished target, a first window of exact zeros without any proven
+//! signal), never for silence after signal.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,10 +27,10 @@ use std::time::{Duration, Instant};
 
 use crate::call_activity::native::target_output_running;
 use crate::core_audio_tap::{NativeTap, TapCtx, target_running};
+use crate::tap_health::{Facts, TapHealth};
+use crate::tap_incidents::TapIncidents;
+use crate::tap_session_proof::{consent_proven, mark_consent_proven};
 use crate::tap_types::{TapConfig, TapError, TapEvent};
-use crate::tap_types::TapStats;
-use crate::tap_watchdog::{DEFAULT_STALL_TIMEOUT, Observation, Phase, StallWatchdog, TapPolicy};
-use crate::tap_zero_watchdog::{DEFAULT_ZERO_TIMEOUT, ZeroObservation, ZeroWatchdog};
 
 /// How often health is checked.
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -31,6 +45,8 @@ pub(crate) struct Supervisor {
     pub(crate) native: Option<NativeTap>,
     pub(crate) events: Sender<TapEvent>,
     pub(crate) stop: Arc<AtomicBool>,
+    /// Re-creation counters shared with the owner of the tap.
+    pub(crate) incidents: Arc<TapIncidents>,
 }
 
 /// Start the supervisor thread.
@@ -43,13 +59,12 @@ pub(crate) fn spawn_supervisor(sup: Supervisor) -> Result<JoinHandle<()>, TapErr
 
 fn run(mut sup: Supervisor) {
     let counters = Arc::clone(&sup.ctx.counters);
-    let mut watchdog = StallWatchdog::new(DEFAULT_STALL_TIMEOUT, Instant::now(), counters.snapshot().callbacks);
-    let mut policy = TapPolicy::running();
-    let mut zero = ZeroWatchdog::new(
-        DEFAULT_ZERO_TIMEOUT,
-        sup.config.target.describe(),
+    let mut health = TapHealth::new(
         Instant::now(),
-        zero_observation(false, &counters.snapshot()),
+        sup.config.target.describe(),
+        &counters.snapshot(),
+        consent_proven(),
+        Arc::clone(&sup.incidents),
     );
     let mut reported_bad = 0;
     let mut last_failure: Option<TapError> = None;
@@ -64,38 +79,29 @@ fn run(mut sup: Supervisor) {
             break;
         }
         let stats = counters.snapshot();
-        let now = Instant::now();
-        let observation = Observation {
-            target_running: target_running(&sup.config.target),
+        let target_running = target_running(&sup.config.target);
+        let facts = Facts {
+            target_running,
             native_restore: sup.native.as_ref().is_some_and(|n| n.bundle_form),
-            verdict: watchdog.observe(now, stats.callbacks),
+            output_running: target_running && target_output_running(&sup.config.target),
+            stats,
         };
-        let mut step = policy.step(observation);
-        if policy.phase() == Phase::Running && !step.teardown {
-            // Only a running tap with a running target has zeros worth judging.
-            let zero_step = zero.step(now, zero_observation(target_output_running(&sup.config.target), &stats));
-            if let Some(event) = zero_step.emit {
-                send(&sup, event);
-            }
-            if zero_step.rebuild {
-                step = policy.rebuild();
-            }
-        }
-        if let Some(event) = step.emit {
+        let actions = health.poll(Instant::now(), &facts);
+        for event in actions.events {
             send(&sup, event);
         }
-        if step.teardown {
+        if health.signal_proven() {
+            mark_consent_proven();
+        }
+        if actions.teardown {
             sup.native = None; // stops IO and destroys the tap
         }
-        if step.create {
+        if actions.create {
             match NativeTap::open(&sup.config, &sup.ctx, sup.check_consent) {
                 Ok(native) => {
                     let bundle_form = native.bundle_form;
                     sup.native = Some(native);
-                    policy.created();
-                    let (now, fresh) = (Instant::now(), counters.snapshot());
-                    watchdog.reset(now, fresh.callbacks);
-                    zero.restart_window(now, zero_observation(false, &fresh));
+                    health.created(Instant::now(), &counters.snapshot());
                     last_failure = None;
                     send(&sup, TapEvent::Started { restored: true, bundle_form });
                 }
@@ -114,10 +120,6 @@ fn run(mut sup: Supervisor) {
         }
     }
     sup.native = None;
-}
-
-fn zero_observation(output_running: bool, stats: &TapStats) -> ZeroObservation {
-    ZeroObservation { output_running, callbacks: stats.callbacks, nonzero_callbacks: stats.nonzero_callbacks }
 }
 
 fn send(sup: &Supervisor, event: TapEvent) {

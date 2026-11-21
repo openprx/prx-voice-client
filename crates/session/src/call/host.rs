@@ -75,6 +75,14 @@ pub struct PathStats {
     pub input_gated: bool,
     /// Frames the echo gate kept from the mixer and the pipeline.
     pub gated_frames: u64,
+    /// Times the capture tap was re-created after silence that no signal had ever preceded.
+    pub tap_rebuilds_silence: u64,
+    /// Times the capture tap was re-created after it stopped delivering buffers.
+    pub tap_rebuilds_stall: u64,
+    /// Times the capture tap was created again because the application came back.
+    pub tap_rebuilds_return: u64,
+    /// The longest time capture was interrupted by a re-creation of the tap, in milliseconds.
+    pub capture_interruption_ms: u64,
 }
 
 /// What the local output device is (pipeline-design 6: headphones are the baseline).

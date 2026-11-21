@@ -7,6 +7,7 @@
 //! [`EventQueue`]. The tap is created unmuted: the call application keeps
 //! playing for the user.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use prxvc_media::AudioFrame;
@@ -14,6 +15,7 @@ use prxvc_ports::{AudioSource, EndpointError, EndpointHealth, SourceInfo};
 
 use crate::call_pump::{EventQueue, PumpEvent};
 use crate::core_audio_tap::CoreAudioTapSource;
+use crate::tap_incidents::TapIncidents;
 use crate::tap_types::{TapConfig, TapError, TapEvent};
 
 /// Translate one tap event; `None` for events that need no reaction.
@@ -37,11 +39,12 @@ pub fn map_tap_event(event: TapEvent) -> Option<PumpEvent> {
                 detail: other.to_string(),
             },
         }),
-        // The rebuild after silence is under way; `NoSignal` follows if it does not help.
+        // No signal was ever proven and the zeros lasted a whole window: the one rebuild is
+        // under way and `NoSignal` follows if it does not help.
         TapEvent::SilentWhilePlaying { silent_ms } => {
             tracing::info!(
                 silent_ms,
-                "tap delivers silence while the application plays; rebuilding"
+                "tap has never delivered signal while the application plays; rebuilding once"
             );
             None
         }
@@ -71,6 +74,11 @@ impl TapPumpSource {
             inner: CoreAudioTapSource::with_config(config),
             events,
         }
+    }
+
+    /// The counters of the tap's re-creations; they stay readable after the source moved to its thread.
+    pub fn incidents(&self) -> Arc<TapIncidents> {
+        self.inner.incidents()
     }
 
     fn relay_events(&self) {

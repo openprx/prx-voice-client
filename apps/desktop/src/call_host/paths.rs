@@ -21,6 +21,7 @@ use prxvc_audio::echo_gate::EchoGateHandle;
 use prxvc_audio::input_supervisor::PlatformInputBackend;
 use prxvc_audio::mix::{MixMode, Mixer, MixerConfig};
 use prxvc_audio::supervised_mic::SupervisedMic;
+use prxvc_audio::tap_incidents::TapIncidents;
 use prxvc_audio::tap_pump_source::TapPumpSource;
 use prxvc_audio::tap_types::{TapConfig, TapMuteMode};
 use prxvc_audio::virtual_mic::{VirtualMicOptions, VirtualMicSink};
@@ -48,6 +49,8 @@ pub(super) struct PumpPath {
     local_mode: LocalOutputMode,
     /// What the device the path plays to is.
     route: OutputRoute,
+    /// Re-creations of the path's tap (the incoming path only).
+    tap: Option<Arc<TapIncidents>>,
 }
 
 impl PumpPath {
@@ -58,7 +61,13 @@ impl PumpPath {
             hears: OutputSource::Original,
             local_mode: LocalOutputMode::default(),
             route,
+            tap: None,
         }
+    }
+
+    fn with_tap(mut self, tap: Arc<TapIncidents>) -> Self {
+        self.tap = Some(tap);
+        self
     }
 
     fn apply(&self) {
@@ -157,8 +166,13 @@ impl AudioPath for PumpPath {
     }
 
     fn stats(&self) -> PathStats {
+        let tap = self.tap.as_ref().map(|t| t.snapshot()).unwrap_or_default();
         PathStats {
             sink_route: self.route,
+            tap_rebuilds_silence: tap.silence,
+            tap_rebuilds_stall: tap.stall,
+            tap_rebuilds_return: tap.target_returned,
+            capture_interruption_ms: tap.longest_interruption_ms,
             ..stats_of(&self.pump.stats())
         }
     }
@@ -207,6 +221,7 @@ fn stats_of(s: &PumpStats) -> PathStats {
         sink_route: OutputRoute::Unknown,
         input_gated: s.gated,
         gated_frames: s.gated_frames,
+        ..PathStats::default()
     }
 }
 
@@ -307,6 +322,7 @@ pub(super) fn start_incoming(plan: &IncomingPlan<'_>) -> Result<Box<dyn AudioPat
     let mut tap = TapConfig::for_bundle(plan.target.as_str());
     tap.mute = TapMuteMode::MutedWhenTapped;
     let source = TapPumpSource::new(tap, events.clone());
+    let incidents = source.incidents();
     let mixer = Box::new(Mixer::new(MixerConfig {
         mode: MixMode::Original,
         ..plan.mixer
@@ -325,7 +341,7 @@ pub(super) fn start_incoming(plan: &IncomingPlan<'_>) -> Result<Box<dyn AudioPat
         echo: plan.echo.clone().map(EchoRole::Playback),
     };
     match Pump::start(spec) {
-        Ok(pump) => Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, plan.route))),
+        Ok(pump) => Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, plan.route).with_tap(incidents))),
         Err(e) if e.stage == PumpStage::Sink => {
             events.push(PumpEvent::LocalOutputFailed {
                 detail: format!("{e}; the call application plays the original itself"),
@@ -357,6 +373,7 @@ fn meter_only(
     route: OutputRoute,
 ) -> Result<Box<dyn AudioPath>, HostFault> {
     let source = TapPumpSource::new(TapConfig::for_bundle(target.as_str()), events.clone());
+    let incidents = source.incidents();
     let pump = Pump::start(PumpSpec {
         config: PumpConfig::new("incoming"),
         source: Box::new(source),
@@ -370,7 +387,7 @@ fn meter_only(
             e.to_string(),
         )
     })?;
-    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, route)))
+    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, route).with_tap(incidents)))
 }
 
 #[cfg(test)]

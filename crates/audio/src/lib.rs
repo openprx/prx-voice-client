@@ -99,6 +99,10 @@ pub mod routing;
 pub mod stream_sink;
 pub mod supervised_mic;
 pub mod tap_format;
+#[cfg(any(target_os = "macos", test))]
+pub(crate) mod tap_health;
+pub mod tap_incidents;
+pub mod tap_session_proof;
 pub(crate) mod tap_format_rt;
 pub mod tap_host_time;
 pub mod tap_ring;

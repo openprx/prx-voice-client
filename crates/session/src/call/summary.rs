@@ -3,8 +3,10 @@
 //! The figures are the pipeline's last snapshot of each direction (taken when its pipeline stops)
 //! and the path's playback figures: gaps in the translated speech (the translated lane ran dry
 //! while a clause was still being synthesised or queued, never the normal end of a clause) with
-//! their total and worst length, and, as diagnostics only, how often the sink or the capture lane
-//! ran dry. A direction without a pipeline (audio only, or one that never started) shows only
+//! their total and worst length, and, as diagnostics only, how often the pump fed the sink late
+//! (`sink_late_feeds`: one device buffer partly zero-filled, a click at worst) and how often the
+//! capture lane starved (`capture_lane_starved`: the capture delivered nothing for longer than the
+//! lane's queue held), plus what the capture tap's re-creations cost (`tap_rebuilds`). A direction without a pipeline (audio only, or one that never started) shows only
 //! the diagnostics.
 
 use std::sync::Arc;
@@ -36,10 +38,19 @@ pub(super) struct PlaybackTotals {
     pub gap_ms: u64,
     /// The longest gap, in milliseconds.
     pub worst_gap_ms: u64,
-    /// Times the sink ran dry (diagnostic).
+    /// Times the device callback found the sink's queue empty before its buffer was full: the
+    /// pump did not top the 40 ms up in time (diagnostic; at most one device buffer of silence).
     pub sink_dry: u64,
-    /// Times the capture (original) lane ran dry (diagnostic: silent while a translation plays).
+    /// Times the capture (original) lane starved (diagnostic: silent while a translation plays).
     pub lane_dry: u64,
+    /// Re-creations of the capture tap after silence no signal ever preceded.
+    pub tap_silence: u64,
+    /// Re-creations of the capture tap after a stall.
+    pub tap_stall: u64,
+    /// Creations of the capture tap because the application came back.
+    pub tap_return: u64,
+    /// The longest capture interruption by a re-creation, in milliseconds.
+    pub capture_interruption_ms: u64,
 }
 
 impl PlaybackTotals {
@@ -50,13 +61,34 @@ impl PlaybackTotals {
             worst_gap_ms: x.translated_worst_gap_ms,
             sink_dry: x.sink_underruns,
             lane_dry: x.lane_underruns,
+            tap_silence: x.tap_rebuilds_silence,
+            tap_stall: x.tap_rebuilds_stall,
+            tap_return: x.tap_rebuilds_return,
+            capture_interruption_ms: x.capture_interruption_ms,
         }
     }
 
     fn text(&self) -> String {
         format!(
-            "underruns={} gap_ms(total/worst)={}/{} sink_dry={} capture_lane_dry={}",
-            self.gaps, self.gap_ms, self.worst_gap_ms, self.sink_dry, self.lane_dry
+            "underruns={} gap_ms(total/worst)={}/{} {}",
+            self.gaps,
+            self.gap_ms,
+            self.worst_gap_ms,
+            self.diagnostics()
+        )
+    }
+
+    /// The diagnostic counters, which are not audible gaps.
+    fn diagnostics(&self) -> String {
+        format!(
+            "sink_late_feeds={} capture_lane_starved={} tap_rebuilds(silence/stall/return)={}/{}/{} \
+             capture_interruption_ms={}",
+            self.sink_dry,
+            self.lane_dry,
+            self.tap_silence,
+            self.tap_stall,
+            self.tap_return,
+            self.capture_interruption_ms
         )
     }
 }
@@ -90,10 +122,7 @@ impl DirectionTotals {
             Some(n) => format!(" notice({})", notice_text(n)),
         };
         let Some(s) = &self.pipeline else {
-            return format!(
-                "no translation, sink_dry={} capture_lane_dry={}{notice}",
-                self.playback.sink_dry, self.playback.lane_dry
-            );
+            return format!("no translation, {}{notice}", self.playback.diagnostics());
         };
         let c = &s.counters;
         let other_skips = c.skipped.saturating_sub(c.backlog_skips + c.stale_skips);
@@ -215,17 +244,42 @@ mod tests {
     }
 
     #[test]
+    fn the_tap_counters_of_a_path_reach_the_summary() {
+        let stats = super::super::host::PathStats {
+            tap_rebuilds_silence: 1,
+            tap_rebuilds_stall: 2,
+            tap_rebuilds_return: 3,
+            capture_interruption_ms: 640,
+            sink_underruns: 4,
+            lane_underruns: 5,
+            ..Default::default()
+        };
+        let totals = PlaybackTotals::of(&stats);
+        assert_eq!(
+            totals.text(),
+            "underruns=0 gap_ms(total/worst)=0/0 sink_late_feeds=4 capture_lane_starved=5 \
+             tap_rebuilds(silence/stall/return)=1/2/3 capture_interruption_ms=640"
+        );
+    }
+
+    #[test]
     fn a_direction_without_a_pipeline_shows_only_the_diagnostics() {
         let t = DirectionTotals {
             pipeline: None,
             playback: PlaybackTotals {
                 sink_dry: 3,
                 lane_dry: 2,
+                tap_stall: 1,
+                capture_interruption_ms: 420,
                 ..PlaybackTotals::default()
             },
             disclosure: None,
         };
-        assert_eq!(t.line(), "no translation, sink_dry=3 capture_lane_dry=2");
+        assert_eq!(
+            t.line(),
+            "no translation, sink_late_feeds=3 capture_lane_starved=2 \
+             tap_rebuilds(silence/stall/return)=0/1/0 capture_interruption_ms=420"
+        );
     }
 
     #[test]
@@ -252,6 +306,10 @@ mod tests {
                 worst_gap_ms: 310,
                 sink_dry: 1,
                 lane_dry: 90,
+                tap_silence: 2,
+                tap_stall: 0,
+                tap_return: 1,
+                capture_interruption_ms: 1_800,
             },
             disclosure: Some(DisclosureSnapshot {
                 enabled: true,
@@ -274,7 +332,8 @@ mod tests {
             "flags(wrong_language=3)",
             "mt_retries=2",
             "synth_runaways=1",
-            "underruns=6 gap_ms(total/worst)=840/310 sink_dry=1 capture_lane_dry=90",
+            "underruns=6 gap_ms(total/worst)=840/310 sink_late_feeds=1 capture_lane_starved=90",
+            "tap_rebuilds(silence/stall/return)=2/0/1 capture_interruption_ms=1800",
             "start_to_first_audio_ms(median/p95)=2300/4100 (n=7)",
             "end_to_first_audio_ms(median/p95)=-",
             "queue_wait_ms(median/p95)=1500/3900 (n=5)",
