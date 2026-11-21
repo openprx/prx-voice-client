@@ -17,6 +17,7 @@ pub(crate) mod kit;
 pub(crate) mod launch;
 pub(crate) mod params;
 pub(crate) mod run;
+pub(crate) mod turn_log;
 
 #[cfg(test)]
 mod tests;

@@ -33,6 +33,8 @@ struct Active {
     on_end: Option<Box<dyn FnOnce() + Send>>,
     save_history: bool,
     save_transcript: bool,
+    /// One line per turn and the summary: figures only.
+    log: super::turn_log::TurnLog,
 }
 
 /// The assistant's side of the application.
@@ -160,6 +162,7 @@ impl AssistantHost {
             on_end,
             save_history: config.privacy.save_history,
             save_transcript: config.privacy.save_transcript,
+            log: super::turn_log::TurnLog::default(),
         });
     }
 
@@ -213,6 +216,11 @@ impl AssistantHost {
 
     /// Show one event of the loop; true when it was the end of the session.
     fn on_event(&mut self, event: AssistantEvent) -> bool {
+        if let Some(active) = self.active.as_mut() {
+            if let Some(line) = active.log.on_event(std::time::Instant::now(), &event) {
+                tracing::info!("assistant {line}");
+            }
+        }
         if let Some(recorder) = self.active.as_mut().and_then(|a| a.recorder.as_mut()) {
             recorder.on_event(&event);
         }
@@ -251,9 +259,11 @@ impl AssistantHost {
             on_end,
             save_history,
             save_transcript,
+            log,
             ..
         } = active;
         handle.join(|_| {});
+        tracing::info!("{}", log.summary());
         if let Some(recorder) = recorder {
             let session = recorder.finish();
             if save_history {
