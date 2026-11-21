@@ -124,6 +124,7 @@ impl Drop for SharedSynth {
                 runaways = s.runaways,
                 retries = s.retries,
                 overruns = s.overruns,
+                warm_up_requests = s.warm_up_requests,
                 "synthesis engine totals"
             );
         }

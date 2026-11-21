@@ -115,6 +115,9 @@ pub struct TtsStats {
     pub retries: u64,
     /// Chunk queues that overflowed (requests failed, no audio dropped silently).
     pub overruns: u64,
+    /// Requests the load's warm-up synthesis made. They are not in the counters above: the
+    /// totals of a session say what the session asked for.
+    pub warm_up_requests: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -270,6 +273,16 @@ impl QwenTts {
         }
         // On failure `tts` drops here, which stops the workers and frees the engine.
         tts.warm_up = tts.run_warm_up_retrying().map_err(LoadError::WarmUp)?;
+        // The warm-up speaks a throw-away sentence (one request, then one per worker): it is not
+        // something a session asked for, so its requests are counted on their own.
+        let c = &tts.inner.counters;
+        let spent = c.requests.swap(0, Ordering::Relaxed);
+        c.completed.store(0, Ordering::Relaxed);
+        c.cancelled.store(0, Ordering::Relaxed);
+        c.failed.store(0, Ordering::Relaxed);
+        c.runaways.store(0, Ordering::Relaxed);
+        c.retries.store(0, Ordering::Relaxed);
+        c.warm_up_requests.store(spent, Ordering::Relaxed);
         Ok(tts)
     }
 
@@ -295,6 +308,7 @@ impl QwenTts {
             runaways: get(&c.runaways),
             retries: get(&c.retries),
             overruns: get(&c.overruns),
+            warm_up_requests: get(&c.warm_up_requests),
         }
     }
 

@@ -63,6 +63,8 @@ pub(super) struct Counters {
     pub runaways: AtomicU64,
     pub retries: AtomicU64,
     pub overruns: AtomicU64,
+    /// Requests the warm-up made (kept out of the counters above).
+    pub warm_up_requests: AtomicU64,
 }
 
 /// The sink of one synthesis attempt: implements the engine's [`CallControl`].

@@ -545,8 +545,9 @@ fn warm_up_runs_before_the_engine_is_ready_and_its_audio_is_discarded() {
         probe.calls.lock().is_empty(),
         "warm-up is not a user request"
     );
-    assert_eq!(tts.stats().requests, 3);
-    assert_eq!(tts.stats().completed, 3);
+    assert_eq!(tts.stats().warm_up_requests, 3);
+    assert_eq!(tts.stats().requests, 0, "the warm-up is not counted as requests");
+    assert_eq!(tts.stats().completed, 0);
     let (single, probe1) = start_with(steady(2, FRAME), {
         let mut c = cfg();
         c.workers = 1;
@@ -792,4 +793,17 @@ fn a_cap_override_shrinks_the_cap_and_makes_a_normal_call_a_runaway() {
         items.last()
     );
     assert_eq!(probe.calls.lock()[0].max_new_tokens, 5);
+}
+
+#[test]
+fn the_warm_up_is_counted_apart_from_the_requests_of_a_session() {
+    // The warm-up speaks once, then once per worker (two): three requests that nobody asked for.
+    let (tts, _probe) = ready(steady(1, 100), cfg());
+    let s = tts.stats();
+    assert_eq!(s.warm_up_requests, 3);
+    assert_eq!((s.requests, s.completed, s.failed, s.runaways), (0, 0, 0, 0));
+    drain(open(&tts, Direction::Outgoing, SHORT).as_mut());
+    let s = tts.stats();
+    assert_eq!((s.requests, s.completed), (1, 1));
+    assert_eq!(s.warm_up_requests, 3, "unchanged");
 }
