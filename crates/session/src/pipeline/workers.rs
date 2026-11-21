@@ -190,6 +190,7 @@ impl RecognizerThread {
                 Popped::Woken | Popped::Timeout => self.handle_gate(&mut st),
                 Popped::Item(frame) => self.on_frame(&mut st, &frame),
             }
+            self.finish_if_asked(&mut st);
         }
     }
 
@@ -218,6 +219,41 @@ impl RecognizerThread {
         }
     }
 
+    /// A graceful stop: once the queued audio is processed, end the open segment so that what the
+    /// speaker said last is committed. Then the flag the coordinator waits for is set.
+    fn finish_if_asked(&self, st: &mut LoopState) {
+        if !self.gate.finish_open.load(Ordering::SeqCst) || self.audio_in.len() > 0 {
+            return;
+        }
+        self.gate.finish_open.store(false, Ordering::SeqCst);
+        if let Some(stage) = st.stage.as_mut()
+            && self.gate.is_active()
+        {
+            let mut out = Vec::new();
+            let result = stage.finish_open(&mut out);
+            self.forward(out);
+            if let Err(fault) = result {
+                st.failed_stage = fault.stage;
+                st.stage = None;
+                self.outbox.worker(WorkerEvent::RecognizerFailed {
+                    stage: fault.stage,
+                    failure: fault.failure,
+                });
+            }
+        }
+        self.gate.flushed.store(true, Ordering::SeqCst);
+    }
+
+    fn forward(&self, out: Vec<prxvc_media::Envelope<super::messages::RecognitionEvent>>) {
+        for envelope in out {
+            let token = self
+                .tree
+                .segment(envelope.segment)
+                .unwrap_or_else(|| self.tree.direction());
+            self.outbox.recognition(envelope, &token);
+        }
+    }
+
     fn on_frame(&self, st: &mut LoopState, frame: &AudioFrame) {
         self.stats.frames_consumed.fetch_add(1, Ordering::Relaxed);
         self.track_overrun(st);
@@ -235,13 +271,7 @@ impl RecognizerThread {
         };
         let mut out = Vec::new();
         let result = stage.on_frame(frame, &mut out);
-        for envelope in out {
-            let token = self
-                .tree
-                .segment(envelope.segment)
-                .unwrap_or_else(|| self.tree.direction());
-            self.outbox.recognition(envelope, &token);
-        }
+        self.forward(out);
         if let Err(fault) = result {
             st.failed_stage = fault.stage;
             st.stage = None;

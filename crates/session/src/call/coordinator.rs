@@ -48,6 +48,9 @@ pub struct CallSettings {
     pub recovery_timeout: Duration,
     /// Time between attempts to reopen a lost path.
     pub reopen_interval: Duration,
+    /// How long a first Stop lets the last sentences play before the call ends (`call.stop_grace_ms`,
+    /// 6 s); zero stops at once. The default is zero: the application sets it from the configuration.
+    pub stop_grace: Duration,
 }
 
 impl Default for CallSettings {
@@ -60,6 +63,7 @@ impl Default for CallSettings {
             routing_poll: Duration::from_secs(1),
             recovery_timeout: Duration::from_secs(10),
             reopen_interval: Duration::from_secs(1),
+            stop_grace: Duration::ZERO,
         }
     }
 }
@@ -157,6 +161,8 @@ pub struct Coordinator {
     pub(super) disclosure: Option<Arc<super::disclosure::Disclosure>>,
     /// The failure of the notice was shown.
     pub(super) disclosure_failure_shown: bool,
+    /// A graceful stop is running (see `finishing`).
+    pub(super) finishing: Option<super::finishing::Finishing>,
     /// When the call that is running began (for the summary at its end).
     pub(super) call_began: Option<MonoTime>,
     published: Option<CallSnapshot>,
@@ -204,6 +210,7 @@ impl Coordinator {
             leaked: false,
             disclosure: None,
             disclosure_failure_shown: false,
+            finishing: None,
             call_began: None,
             published: None,
             revision: 0,
@@ -244,6 +251,7 @@ impl Coordinator {
         let now = self.now();
         self.collect_paths();
         self.collect_translation();
+        self.poll_finishing();
         self.check_disclosure();
         self.advance_recovery(now, false);
         if now.saturating_since(self.last_poll) >= self.settings.routing_poll {
@@ -253,9 +261,10 @@ impl Coordinator {
         self.publish();
     }
 
-    /// Stop call mode if it is on (the application is closing).
+    /// Stop call mode if it is on (the application is closing): at once, whatever is playing.
     pub fn shutdown(&mut self) {
-        self.stop();
+        self.finishing = None;
+        self.stop_now();
         self.publish();
     }
 
@@ -285,9 +294,22 @@ impl Coordinator {
         self.release_claim_when_idle();
     }
 
+    /// Stop: the first press lets the last sentences play (`finishing`), a second ends at once.
     fn stop(&mut self) {
         if matches!(self.state, CallState::Idle | CallState::Stopping) {
             tracing::debug!(state = ?self.state, "stop ignored: call mode is not running");
+            return;
+        }
+        if self.finishing.is_some() {
+            tracing::info!("stop pressed again: ending at once");
+            self.finish_now();
+        } else if !self.begin_finishing() {
+            self.stop_now();
+        }
+    }
+
+    fn stop_now(&mut self) {
+        if matches!(self.state, CallState::Idle | CallState::Stopping) {
             return;
         }
         self.feed(CallEvent::StopRequested);
@@ -369,6 +391,9 @@ impl Coordinator {
                 self.log_call_summary();
             }
         }
+        if matches!(next, CallState::Stopping | CallState::Idle) {
+            self.finishing = None;
+        }
         self.state = next;
         // A snapshot per transition: the UI sees `Initializing` while the
         // start-up sequence still runs.
@@ -387,6 +412,7 @@ impl Coordinator {
         self.call_began = Some(self.now());
         self.disclosure = None;
         self.disclosure_failure_shown = false;
+        self.finishing = None;
         self.recovery = None;
         self.routing.restored_to = None;
         self.routing.call_activity = ActivityJudgement::Unknown;
@@ -397,7 +423,7 @@ impl Coordinator {
         ];
     }
 
-    fn release_claim_when_idle(&mut self) {
+    pub(super) fn release_claim_when_idle(&mut self) {
         if matches!(self.state, CallState::Idle) {
             self.claim = None;
         }
@@ -487,6 +513,7 @@ impl Coordinator {
                 .as_ref()
                 .map(|d| d.snapshot(self.call_began))
                 .unwrap_or_default(),
+            finishing_s: self.finishing_left_s(),
         }
     }
 

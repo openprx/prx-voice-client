@@ -310,6 +310,11 @@ pub struct CallConfig {
     /// the lowering of other applications' sound while the call application
     /// runs its voice processing.
     pub output_gain_db: f32,
+    /// How long a first Stop lets the last sentences play before call mode ends, in
+    /// milliseconds: no new speech is accepted, what is committed is translated, synthesised and
+    /// played to the end (to the listener and to the virtual microphone). A second Stop ends at
+    /// once. 0 stops at once.
+    pub stop_grace_ms: u32,
 }
 
 impl Default for CallConfig {
@@ -335,6 +340,7 @@ impl Default for CallConfig {
             barge_in_max_lag_ms: 3_000,
             translate: false,
             output_gain_db: 0.0,
+            stop_grace_ms: 6_000,
         }
     }
 }

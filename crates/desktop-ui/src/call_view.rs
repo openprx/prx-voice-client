@@ -411,6 +411,11 @@ pub struct CallPanel {
     pub last_error: Option<IssueView>,
     /// The spoken notice to the other party.
     pub notice: NoticeView,
+    /// A graceful stop is running: the last sentences are being played before call mode ends.
+    /// The seconds left until the limit. A second Stop ends it at once. The window shows the
+    /// state "finishing" (`callwin.chip.finishing`) instead of "translating", the hint
+    /// `callwin.finishing.hint` and the Stop button as "Stop now" (`callwin.stop_now`).
+    pub finishing_s: Option<u32>,
 }
 
 impl CallPanel {

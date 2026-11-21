@@ -721,6 +721,7 @@ mod tests {
         ("call.translate.", "set by the call start command"),
         ("call.disclosure_text_", "the notice's wording: edited in the config file; the built-in text is the default"),
         ("call.output_gain_db.", "call behaviour beyond the design's rows"),
+        ("call.stop_grace_ms.", "how long Stop lets the last sentences play; config file only"),
         ("debug.call_trace.", "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE"),
         ("debug.call_trace_text.", "diagnostic switch that adds spoken text to the trace; config file only, off by default"),
         ("pipeline.", "pipeline tuning, shown under Advanced in a later package"),

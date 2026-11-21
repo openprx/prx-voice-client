@@ -81,6 +81,16 @@ impl Running {
         self.playout.lock().clone()
     }
 
+    /// A graceful stop: stop listening and let what is committed play (see `finishing`).
+    pub(super) fn drain(&self) {
+        self.pipeline.drain();
+    }
+
+    /// The recogniser ended the segment that was open at [`Self::drain`].
+    pub(super) fn drain_flushed(&self) -> bool {
+        self.pipeline.drain_flushed()
+    }
+
     pub(super) fn pause(&self) {
         self.pipeline.pause();
     }

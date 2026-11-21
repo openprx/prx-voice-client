@@ -173,6 +173,7 @@ pub struct DirectionPipeline {
     tts_in: Arc<BoundedQueue<TtsItem>>,
     events: Arc<BoundedQueue<PipelineEvent>>,
     input: AudioInput,
+    gate: Arc<Gate>,
     outbox: Outbox,
     stats: Arc<Stats>,
     workers: Arc<Threads>,
@@ -218,6 +219,7 @@ impl DirectionPipeline {
         );
         let pipeline = Self {
             input: AudioInput::new(Arc::clone(&q.audio_in), Arc::clone(&stats)),
+            gate: Arc::clone(&gate),
             tree: Arc::clone(&tree),
             inbox: Arc::clone(&q.inbox),
             audio_in: Arc::clone(&q.audio_in),
@@ -384,6 +386,23 @@ impl DirectionPipeline {
     /// The playout side finished `clause` at `at`; the next clause is released.
     pub fn playback_finished(&self, clause: ClauseId, at: MonoTime) {
         self.command(Command::PlaybackFinished { clause, at });
+    }
+
+    /// A graceful stop: no new audio is accepted, the open segment is ended so that what was said
+    /// last is committed, and everything already committed is translated, synthesised and
+    /// played to its end (the caller keeps reporting playback). [`Self::drained`] says when it is
+    /// all over.
+    pub fn drain(&self) {
+        self.input.drain();
+        self.gate.finish_open.store(true, Ordering::SeqCst);
+        self.audio_in.wake();
+    }
+
+    /// Whether the recogniser has ended the segment that was open at [`Self::drain`] (the commits
+    /// it made are in the control thread's queue or beyond). With the snapshot showing nothing
+    /// left in flight, the direction has said everything.
+    pub fn drain_flushed(&self) -> bool {
+        self.gate.flushed.load(Ordering::SeqCst)
     }
 
     /// Counters of every queue.

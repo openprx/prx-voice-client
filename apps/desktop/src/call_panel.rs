@@ -295,6 +295,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         issues: s.issues.iter().map(issue).collect(),
         last_error: s.last_error.as_ref().map(issue),
         notice: notice(&s.disclosure),
+        finishing_s: s.finishing_s,
     }
 }
 
@@ -361,7 +362,16 @@ mod tests {
             last_error: None,
             last_output_change: None,
             disclosure: DisclosureSnapshot::default(),
+            finishing_s: None,
         }
+    }
+
+    #[test]
+    fn a_graceful_stop_reaches_the_view_with_the_seconds_left() {
+        let mut s = snapshot();
+        assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, None);
+        s.finishing_s = Some(4);
+        assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, Some(4));
     }
 
     #[test]

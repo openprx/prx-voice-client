@@ -3,6 +3,7 @@
 mod disclosure;
 mod events;
 mod exclusion;
+mod finishing;
 mod kit;
 mod pause;
 mod start;

@@ -56,6 +56,11 @@ pub(crate) struct Gate {
     pub(crate) reset: AtomicBool,
     /// Reopen the engines to see whether the provider works again.
     pub(crate) probe: AtomicBool,
+    /// A graceful stop asked the recogniser to end the open segment once the queued audio is
+    /// processed, so that what was said last is committed and translated.
+    pub(crate) finish_open: AtomicBool,
+    /// The recogniser did that (or had nothing open).
+    pub(crate) flushed: AtomicBool,
 }
 
 impl Gate {

@@ -18,6 +18,8 @@ pub enum PushOutcome {
     DroppedOldest(usize),
     /// The pipeline stopped.
     Closed,
+    /// The pipeline is finishing (a graceful stop): new audio is not accepted.
+    Draining,
 }
 
 /// The write end of the capture queue; clones feed the same queue.
@@ -31,6 +33,8 @@ pub struct AudioInput {
     queue: Arc<BoundedQueue<AudioFrame>>,
     discontinuity: Arc<AtomicBool>,
     stats: Arc<Stats>,
+    /// Set by a graceful stop: frames pushed afterwards are dropped.
+    draining: Arc<AtomicBool>,
 }
 
 impl AudioInput {
@@ -39,11 +43,20 @@ impl AudioInput {
             queue,
             discontinuity: Arc::new(AtomicBool::new(false)),
             stats,
+            draining: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Stop accepting audio (a graceful stop): what is queued is still recognised.
+    pub(crate) fn drain(&self) {
+        self.draining.store(true, Ordering::SeqCst);
     }
 
     /// Queue a frame without blocking.
     pub fn push(&self, frame: AudioFrame) -> PushOutcome {
+        if self.draining.load(Ordering::SeqCst) {
+            return PushOutcome::Draining;
+        }
         let frame = if self.discontinuity.swap(false, Ordering::SeqCst) {
             frame.with_discontinuity(true)
         } else {

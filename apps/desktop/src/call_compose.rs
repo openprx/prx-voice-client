@@ -138,6 +138,7 @@ pub(crate) fn settings_from(config: &prxvc_config::AppConfig) -> CallSettings {
         },
         local_output_mode: local_output_mode(&call.local_output_mode),
         default_target: Some(BundleId::new(target)),
+        stop_grace: Duration::from_millis(u64::from(call.stop_grace_ms)),
         ..CallSettings::default()
     }
 }
