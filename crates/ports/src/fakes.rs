@@ -10,10 +10,11 @@
 //!
 //! * [`log`]: the shared [`EventLog`].
 //! * [`paced`]: the timed stream the MT and TTS fakes are built on.
-//! * [`vad`], [`asr`], [`mt`], [`tts`], [`endpoint`], [`routing`], [`trace`]:
+//! * [`vad`], [`asr`], [`mt`], [`tts`], [`dialogue`], [`endpoint`], [`routing`], [`trace`]:
 //!   one fake per port.
 
 pub mod asr;
+pub mod dialogue;
 pub mod endpoint;
 pub mod log;
 pub mod mt;
@@ -24,6 +25,7 @@ pub mod tts;
 pub mod vad;
 
 pub use asr::{AsrScript, FakeRefineAsr, FakeStreamingAsr, RefineScript};
+pub use dialogue::{DialogueScript, FakeDialogue};
 pub use endpoint::{FakeAudioSink, FakeAudioSource, SinkProbe, WrittenFrame};
 pub use log::{EventKind, EventLog, FakeEvent};
 pub use mt::{FakeTranslator, MtScript};

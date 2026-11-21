@@ -22,6 +22,7 @@
 //! * `descriptor`: [`ProviderDescriptor`] and the capability checks the
 //!   registry applies before it hands a provider to the live path.
 //! * `vad`, `asr`, `mt`, `tts`: the stage ports and their errors.
+//! * `dialogue`: the conversational backend of the assistant.
 //! * `endpoint`: [`AudioSource`] and [`AudioSink`].
 //! * `routing`: [`SystemAudioRouting`].
 //! * `trace`: [`TraceSink`].
@@ -29,6 +30,7 @@
 
 pub mod asr;
 pub mod descriptor;
+pub mod dialogue;
 pub mod endpoint;
 #[cfg(feature = "fakes")]
 pub mod fakes;
@@ -42,6 +44,10 @@ pub use tokio_util::sync::CancellationToken;
 
 pub use asr::{
     AsrContext, AsrError, AsrHypothesis, AsrStream, RefineAsr, SegmentEnd, StreamingAsr,
+};
+pub use dialogue::{
+    ConversationId, DialogueBackend, DialogueDelta, DialogueError, DialogueMessage, DialogueRequest,
+    DialogueRole, DialogueStream,
 };
 pub use descriptor::{CapabilityError, Egress, ProviderDescriptor, ProviderId, StreamingKind};
 pub use endpoint::{
