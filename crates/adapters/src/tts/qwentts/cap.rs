@@ -42,14 +42,27 @@ pub enum RunawayRetry {
     /// first chunk therefore arrives when the attempt ends. For uses that are not live (enrolment
     /// samples, long-form synthesis).
     Once,
+    /// As `Once`, but only for a text short enough to sit at the minimum cap ([`MIN_CAP_FRAMES`],
+    /// 3.2 s: a clause of about one second of speech, the kind on which the engine runs away, such
+    /// as "Mm."). Such a clause is held back until it ends inside its cap, so a runaway is never
+    /// heard, and retried once with another seed; the delay is at most a fraction of a second.
+    /// Longer clauses stream as `Off` does. The live call uses this.
+    ShortOnce,
 }
 
 impl RunawayRetry {
-    /// Number of extra attempts after a runaway.
-    pub const fn extra_attempts(self) -> u32 {
+    /// Number of extra attempts after a runaway of a call whose cap is `cap_frames`.
+    pub const fn extra_attempts(self, cap_frames: u32) -> u32 {
         match self {
             Self::Off => 0,
             Self::Once => 1,
+            Self::ShortOnce => {
+                if cap_frames <= MIN_CAP_FRAMES {
+                    1
+                } else {
+                    0
+                }
+            }
         }
     }
 }
@@ -201,7 +214,17 @@ mod tests {
     #[test]
     fn retry_policy_defaults_to_reporting_the_failure() {
         assert_eq!(RunawayRetry::default(), RunawayRetry::Off);
-        assert_eq!(RunawayRetry::Off.extra_attempts(), 0);
-        assert_eq!(RunawayRetry::Once.extra_attempts(), 1);
+        assert_eq!(RunawayRetry::Off.extra_attempts(MIN_CAP_FRAMES), 0);
+        assert_eq!(RunawayRetry::Once.extra_attempts(500), 1);
+    }
+
+    #[test]
+    fn the_short_text_policy_retries_only_texts_at_the_minimum_cap() {
+        let short = cap_frames("Mm.", Lang::En);
+        let long = cap_frames("We should meet at the office tomorrow morning and then go home", Lang::En);
+        assert_eq!(short, MIN_CAP_FRAMES);
+        assert!(long > MIN_CAP_FRAMES);
+        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 1);
+        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(long), 0);
     }
 }

@@ -28,8 +28,11 @@ impl TtsLoader for BuiltInTts {
 
     #[cfg(feature = "qwentts")]
     fn load(&self, spec: &TtsSpec) -> Result<QwenTts, BuildError> {
-        use prxvc_adapters::tts::qwentts::QwenTtsConfig;
-        let cfg = QwenTtsConfig::new(spec.label.clone(), spec.fingerprint.clone());
+        use prxvc_adapters::tts::qwentts::{QwenTtsConfig, RunawayRetry};
+        let mut cfg = QwenTtsConfig::new(spec.label.clone(), spec.fingerprint.clone());
+        // The live call: a short clause is held until it ends inside its cap and retried once, so a
+        // runaway (seconds of garbage) is never played; longer clauses keep streaming.
+        cfg.runaway_retry = RunawayRetry::ShortOnce;
         QwenTts::load_native(&spec.files.talker, &spec.files.codec, cfg).map_err(|e| {
             BuildError::Start {
                 provider: spec.id.clone(),

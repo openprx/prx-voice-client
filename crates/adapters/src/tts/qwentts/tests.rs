@@ -19,6 +19,8 @@ use super::test_engine::{Probe, Script, TestEngine, emit, wait_or_abort};
 use super::voice::{CacheKey, VoiceCache, reference_hash};
 use super::{LoadError, QwenTts, QwenTtsConfig};
 
+mod live_policy;
+
 const SHORT: &str = "hello there"; // cap: 40 frames (the floor), queue: 48 chunks
 
 fn cfg() -> QwenTtsConfig {

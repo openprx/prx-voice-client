@@ -632,7 +632,7 @@ fn run_job(inner: &Inner, job: Job) {
         finish(inner, &job, Err(TtsError::Cancelled));
         return;
     }
-    let retries = inner.cfg.runaway_retry.extra_attempts();
+    let retries = inner.cfg.runaway_retry.extra_attempts(job.cap_frames);
     let mut attempt = 0;
     let outcome = loop {
         let seed = if attempt == 0 {
