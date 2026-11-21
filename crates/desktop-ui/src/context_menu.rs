@@ -44,7 +44,9 @@ pub(crate) fn orb_context_menu(
         }
 
         // The settings entries open the one settings window at a named page.
-        let menu_items: [(String, MenuTarget); 5] = [
+        let menu_items: [(String, MenuTarget); 6] = [
+            // The path to a translated call comes first.
+            (prxvc_i18n::t("callwin.title"), MenuTarget::Tool(ToolKind::Call)),
             (prxvc_i18n::t("settings.title"), MenuTarget::Settings(SettingsSection::General)),
             (
                 prxvc_i18n::t("settings.menu.pipeline"),

@@ -72,8 +72,7 @@ pub(crate) fn debug_body(
     state_info: &str,
     events: &[String],
     call: &CallPanel,
-    call_translate: &mut bool,
-    commands: &mut Vec<String>,
+    open_call_window: &mut bool,
 ) {
     widgets::section_header(ui, tk, &prxvc_i18n::t("debug.state_machine"), true);
     egui::Frame::NONE
@@ -93,7 +92,7 @@ pub(crate) fn debug_body(
             );
         });
 
-    crate::call_debug_view::call_section(ui, tk, call, call_translate, commands);
+    crate::call_debug_view::call_section(ui, tk, call, open_call_window);
 
     widgets::section_header(
         ui,

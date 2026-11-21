@@ -1,91 +1,33 @@
-//! The temporary call-mode control inside the debug window: buttons, the state, what each side hears, devices, levels, counters and issues.
+//! The raw call-mode diagnostics inside the debug window: the state, devices, levels, counters and latency figures, and a link to the Call translation window (which runs the call).
 //!
-//! Layout is minimal on purpose (the real call UI is a later package); every
-//! string goes through i18n and every button has its label as accessible name.
+//! Every string goes through i18n and every button has its label as accessible name.
 
-use crate::call_view::{
-    ActivityView, CallPanel, Heard, IssueSeverity, IssueView, LaneView, command,
-};
+use crate::call_view::{ActivityView, CallPanel, Heard, LaneView};
 use crate::theme::{Tokens, size, space};
-use crate::widgets::{self, ButtonKind, Tone};
+use crate::widgets::{self, ButtonKind};
 
-/// Draw the control; clicks push command strings into `commands`.
+/// Draw the raw diagnostics of call mode: the state, devices, levels, counters and latency figures,
+/// and a link to the Call translation window, where the call is run. Sets `open_window` when the
+/// link is clicked.
 pub(crate) fn call_section(
     ui: &mut egui::Ui,
     tk: &Tokens,
     panel: &CallPanel,
-    translate: &mut bool,
-    commands: &mut Vec<String>,
+    open_window: &mut bool,
 ) {
     widgets::section_header(ui, tk, &prxvc_i18n::t("call.title"), false);
-
-    // The switch decides what the next start does; it can only change while call mode is off.
-    let label = prxvc_i18n::t("call.translate");
-    ui.horizontal(|ui| {
-        ui.name_inputs(&label, |ui| {
-            if panel.can_start() {
-                widgets::switch(ui, tk, translate);
-            } else {
-                widgets::switch_with(ui, tk, &mut panel.translate_enabled.clone(), false);
-            }
-        });
-        ui.label(widgets::text(&label, size::SECONDARY, tk.text));
-    });
-    let start_command = if *translate {
-        command::START_TRANSLATED
-    } else {
-        command::START_AUDIO_ONLY
-    };
-
-    ui.horizontal_wrapped(|ui| {
-        let buttons = [
-            (
-                ButtonKind::Primary,
-                "call.start",
-                start_command,
-                panel.can_start(),
-            ),
-            (
-                ButtonKind::Secondary,
-                "call.stop",
-                command::STOP,
-                panel.can_stop(),
-            ),
-            (
-                ButtonKind::Secondary,
-                "call.pause",
-                command::PAUSE,
-                panel.can_pause(),
-            ),
-            (
-                ButtonKind::Secondary,
-                "call.resume",
-                command::RESUME,
-                panel.can_resume(),
-            ),
-            (
-                ButtonKind::Secondary,
-                "call.reapply",
-                command::REAPPLY_MICROPHONE,
-                panel.can_reapply(),
-            ),
-        ];
-        for (kind, key, cmd, enabled) in buttons {
-            let label = prxvc_i18n::t(key);
-            if widgets::button_with(
-                ui,
-                tk,
-                kind,
-                &label,
-                crate::theme::layout::CONTROL_HEIGHT,
-                enabled,
-            )
-            .clicked()
-            {
-                commands.push(cmd.to_owned());
-            }
-        }
-    });
+    if widgets::button_with(
+        ui,
+        tk,
+        ButtonKind::Secondary,
+        &prxvc_i18n::t("callwin.debug_link"),
+        crate::theme::layout::CONTROL_HEIGHT,
+        true,
+    )
+    .clicked()
+    {
+        *open_window = true;
+    }
     ui.add_space(space::S8);
 
     row(ui, tk, "call.state", &prxvc_i18n::t(panel.phase.key()));
@@ -117,32 +59,6 @@ pub(crate) fn call_section(
             size::META,
             tk.secondary,
         ));
-    }
-
-    ui.add_space(space::S8);
-    ui.label(widgets::text(
-        prxvc_i18n::t("call.issues"),
-        size::SECONDARY,
-        tk.text,
-    ));
-    if panel.issues.is_empty() {
-        ui.label(widgets::text(
-            prxvc_i18n::t("call.no_issues"),
-            size::META,
-            tk.secondary,
-        ));
-    }
-    for issue in &panel.issues {
-        issue_row(ui, tk, issue);
-    }
-    if let Some(error) = &panel.last_error {
-        ui.add_space(space::S4);
-        ui.label(widgets::text(
-            prxvc_i18n::t("call.last_error"),
-            size::SECONDARY,
-            tk.text,
-        ));
-        issue_row(ui, tk, error);
     }
 }
 
@@ -233,18 +149,6 @@ pub(crate) fn db(linear: f32) -> String {
         "-inf".to_owned()
     } else {
         format!("{:.1}", 20.0 * linear.log10())
-    }
-}
-
-fn issue_row(ui: &mut egui::Ui, tk: &Tokens, issue: &IssueView) {
-    let tone = match issue.severity {
-        IssueSeverity::Blocking => Tone::Danger,
-        IssueSeverity::Degraded => Tone::Warning,
-        IssueSeverity::Info => Tone::Neutral,
-    };
-    widgets::tip_bar(ui, tk, tone, &prxvc_i18n::t(&issue.key), |_| {});
-    if !issue.detail.is_empty() {
-        ui.label(widgets::text(&issue.detail, size::CAPTION, tk.secondary));
     }
 }
 

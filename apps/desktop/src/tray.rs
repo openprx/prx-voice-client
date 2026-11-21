@@ -18,6 +18,8 @@ use tray_icon::{
 pub enum TrayAction {
     /// Bring the main window to the foreground.
     Show,
+    /// Open the Call translation window.
+    CallTranslation,
     /// Start a new voice session.
     StartSession,
     /// Stop the active voice session.
@@ -37,11 +39,13 @@ pub struct TrayManager {
     /// The text last set on the state line (to set it only when it changes).
     state_text: RefCell<String>,
     show_item: MenuItem,
+    call_item: MenuItem,
     start_item: MenuItem,
     stop_item: MenuItem,
     settings_item: MenuItem,
     quit_item: MenuItem,
     show_id: String,
+    call_id: String,
     start_id: String,
     stop_id: String,
     settings_id: String,
@@ -66,6 +70,7 @@ impl TrayManager {
 
         let state_text = TrayState::Idle.text();
         let state_item = MenuItem::new(state_text.clone(), false, None);
+        let call_item = MenuItem::new(prxvc_i18n::t("callwin.title"), true, None);
         let show_item = MenuItem::new(prxvc_i18n::t("tray.show"), true, None);
         let start_item = MenuItem::new(prxvc_i18n::t("session.start"), true, None);
         let stop_item = MenuItem::new(prxvc_i18n::t("session.stop"), true, None);
@@ -73,6 +78,7 @@ impl TrayManager {
         let quit_item = MenuItem::new(prxvc_i18n::t("tray.quit"), true, None);
 
         // Store IDs before items are moved into the menu.
+        let call_id = call_item.id().0.clone();
         let show_id = show_item.id().0.clone();
         let start_id = start_item.id().0.clone();
         let stop_id = stop_item.id().0.clone();
@@ -83,6 +89,9 @@ impl TrayManager {
         menu.append(&state_item)
             .map_err(|e| format!("menu append failed: {e}"))?;
         menu.append(&PredefinedMenuItem::separator())
+            .map_err(|e| format!("menu append failed: {e}"))?;
+        // Call translation is the first entry below the state line.
+        menu.append(&call_item)
             .map_err(|e| format!("menu append failed: {e}"))?;
         menu.append(&show_item)
             .map_err(|e| format!("menu append failed: {e}"))?;
@@ -126,11 +135,13 @@ impl TrayManager {
             state_item,
             state_text: RefCell::new(state_text),
             show_item,
+            call_item,
             start_item,
             stop_item,
             settings_item,
             quit_item,
             show_id,
+            call_id,
             start_id,
             stop_id,
             settings_id,
@@ -149,6 +160,7 @@ impl TrayManager {
 
     /// Update menu item labels to match current i18n locale.
     pub fn refresh_labels(&self) {
+        self.call_item.set_text(prxvc_i18n::t("callwin.title"));
         self.show_item.set_text(prxvc_i18n::t("tray.show"));
         self.start_item.set_text(prxvc_i18n::t("session.start"));
         self.stop_item.set_text(prxvc_i18n::t("session.stop"));
@@ -160,6 +172,9 @@ impl TrayManager {
     pub fn poll_action(&self) -> Option<TrayAction> {
         if let Ok(event) = self.events.try_recv() {
             let id = &event.id.0;
+            if id == &self.call_id {
+                return Some(TrayAction::CallTranslation);
+            }
             if id == &self.show_id {
                 return Some(TrayAction::Show);
             }

@@ -1,4 +1,4 @@
-//! Settings, history and debug as their own native windows.
+//! Settings, history, debug and call translation as their own native windows.
 //!
 //! The orb window stays small and never changes size or position because of
 //! them. Each tool surface is an egui viewport with a normal OS title bar,
@@ -25,6 +25,8 @@ pub enum ToolKind {
     History,
     /// The debug window.
     Debug,
+    /// The Call translation window: everything needed to run a translated call.
+    Call,
 }
 
 /// Width of the settings content: the standard's 480 px.
@@ -39,7 +41,12 @@ const GRAB_STRIP: Vec2 = vec2(200.0, 40.0);
 
 impl ToolKind {
     /// Every kind.
-    pub const ALL: [ToolKind; 3] = [ToolKind::Settings, ToolKind::History, ToolKind::Debug];
+    pub const ALL: [ToolKind; 4] = [
+        ToolKind::Settings,
+        ToolKind::History,
+        ToolKind::Debug,
+        ToolKind::Call,
+    ];
 
     /// The viewport id of this window.
     pub fn viewport_id(self) -> ViewportId {
@@ -47,6 +54,7 @@ impl ToolKind {
             ToolKind::Settings => "prxvc-window-settings",
             ToolKind::History => "prxvc-window-history",
             ToolKind::Debug => "prxvc-window-debug",
+            ToolKind::Call => "prxvc-window-call",
         })
     }
 
@@ -56,6 +64,7 @@ impl ToolKind {
             ToolKind::Settings => "window_settings",
             ToolKind::History => "window_history",
             ToolKind::Debug => "window_debug",
+            ToolKind::Call => "window_call",
         }
     }
 
@@ -65,6 +74,7 @@ impl ToolKind {
             ToolKind::Settings => "settings.title",
             ToolKind::History => "history.title",
             ToolKind::Debug => "debug.title",
+            ToolKind::Call => "callwin.title",
         })
     }
 
@@ -73,6 +83,7 @@ impl ToolKind {
         match self {
             ToolKind::Settings => vec2(SETTINGS_CONTENT_WIDTH + 2.0 * WINDOW_PADDING, 640.0),
             ToolKind::History | ToolKind::Debug => vec2(420.0, 520.0),
+            ToolKind::Call => vec2(420.0, 640.0),
         }
     }
 
@@ -81,6 +92,7 @@ impl ToolKind {
         match self {
             ToolKind::Settings => vec2(layout::DIALOG_WIDTH, 480.0),
             ToolKind::History | ToolKind::Debug => vec2(320.0, 300.0),
+            ToolKind::Call => vec2(360.0, 360.0),
         }
     }
 
@@ -88,7 +100,7 @@ impl ToolKind {
     pub fn max_size(self) -> Vec2 {
         match self {
             ToolKind::Settings => vec2(1100.0, 1000.0),
-            ToolKind::History | ToolKind::Debug => vec2(760.0, 1000.0),
+            ToolKind::History | ToolKind::Debug | ToolKind::Call => vec2(760.0, 1000.0),
         }
     }
 }
@@ -271,7 +283,7 @@ impl ToolWindowState {
     }
 }
 
-/// The three tool windows.
+/// The four tool windows.
 #[derive(Debug, Clone, Default)]
 pub struct ToolWindows {
     /// Settings.
@@ -280,6 +292,8 @@ pub struct ToolWindows {
     pub history: ToolWindowState,
     /// Debug.
     pub debug: ToolWindowState,
+    /// Call translation.
+    pub call: ToolWindowState,
 }
 
 impl ToolWindows {
@@ -289,6 +303,7 @@ impl ToolWindows {
             ToolKind::Settings => &self.settings,
             ToolKind::History => &self.history,
             ToolKind::Debug => &self.debug,
+            ToolKind::Call => &self.call,
         }
     }
 
@@ -298,6 +313,7 @@ impl ToolWindows {
             ToolKind::Settings => &mut self.settings,
             ToolKind::History => &mut self.history,
             ToolKind::Debug => &mut self.debug,
+            ToolKind::Call => &mut self.call,
         }
     }
 

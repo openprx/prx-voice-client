@@ -13,8 +13,8 @@
 //! - [`app`]: `render_app`, the per-frame composition.
 //! - `orb_view`, `status_pill`, `status_hint`, `context_menu`: the orb and its surroundings.
 //! - `transcript_view`, `history_view`, `debug_view`, `error_banner`: the content views.
-//! - [`call_view`] and `call_debug_view`: the view model and the temporary call-mode
-//!   control inside the debug window.
+//! - [`call_view`], `call_window_view` and `call_debug_view`: the call-mode view model, the Call
+//!   translation window that runs a call, and the raw diagnostics inside the debug window.
 //! - [`theme`], [`widgets`] (and `widgets_radio`), [`tool_window`], [`fonts`], [`shared`],
 //!   [`repaint`]: tokens, widgets, tool windows, fonts, the engine bridge and the repaint policy.
 //! - The settings window: [`settings_window`] (layout and navigation),
@@ -26,6 +26,7 @@
 mod app;
 mod call_captions_view;
 mod call_debug_view;
+mod call_window_view;
 pub mod call_view;
 mod context_menu;
 mod debug_view;

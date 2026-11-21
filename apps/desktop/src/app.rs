@@ -8,6 +8,13 @@ use prxvc_desktop_ui::{SharedAppState, Theme};
 
 use crate::{hotkey, settings, settings_host, tray};
 
+/// Open the Call translation window from the tray. The tool windows are drawn inside the orb
+/// window's pass, which does not run while that window is hidden, so the orb window is shown first.
+pub(crate) fn open_call_window(ctx: &egui::Context, ui_state: &mut prxvc_desktop_ui::DesktopUiState) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    ui_state.windows.request_open(ToolKind::Call);
+}
+
 /// Top-level application wiring egui to the async runtime.
 pub(crate) struct PrxVoiceApp {
     /// Mutable UI state consumed by the render functions.
@@ -100,6 +107,9 @@ impl eframe::App for PrxVoiceApp {
                         self.shared.update_session_state("Idle", false);
                         self.shared.clear_transcript();
                     }
+                    tray::TrayAction::CallTranslation => {
+                        open_call_window(ctx, &mut self.ui_state);
+                    }
                     tray::TrayAction::Settings => {
                         self.ui_state.open_settings(None);
                     }
@@ -163,5 +173,23 @@ impl eframe::App for PrxVoiceApp {
 
         // Flush commands to async runtime
         self.ui_state.flush_commands_to_shared(&self.shared);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_tray_entry_opens_the_call_translation_window_and_shows_the_orb_window() {
+        let ctx = egui::Context::default();
+        let mut state = prxvc_desktop_ui::DesktopUiState::new();
+        assert!(!state.windows.call.is_open());
+        open_call_window(&ctx, &mut state);
+        assert!(state.windows.call.is_open());
+        // Opening it again only asks for focus.
+        open_call_window(&ctx, &mut state);
+        assert!(state.windows.call.is_open());
+        assert!(!state.windows.settings.is_open());
     }
 }

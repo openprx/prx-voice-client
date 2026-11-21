@@ -6,7 +6,7 @@
 
 /// English strings.
 pub(crate) const EN: &[(&str, &str)] = &[
-    ("call.title", "Call mode (temporary control)"),
+    ("call.title", "Call mode (raw diagnostics)"),
     ("call.start", "Start call mode"),
     ("call.stop", "Stop call mode"),
     ("call.pause", "Pause"),
@@ -207,7 +207,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
 pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "call.title",
-        "\u{901a}\u{8bdd}\u{6a21}\u{5f0f}\u{ff08}\u{4e34}\u{65f6}\u{63a7}\u{5236}\u{ff09}",
+        "\u{901a}\u{8bdd}\u{6a21}\u{5f0f}\u{ff08}\u{539f}\u{59cb}\u{8bca}\u{65ad}\u{ff09}",
     ),
     (
         "call.start",

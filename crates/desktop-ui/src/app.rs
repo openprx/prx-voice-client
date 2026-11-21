@@ -2,6 +2,7 @@
 
 use egui::Color32;
 
+use crate::call_window_view::{self, CallWindowAction};
 use crate::context_menu::orb_context_menu;
 use crate::debug_view::debug_body;
 use crate::history_view::history_rows;
@@ -239,10 +240,44 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
         .is_open()
         .then(|| (state.debug_state_info.clone(), state.debug_events.clone(), state.call.clone()));
     if let Some((info, events, call)) = debug_snapshot {
-        let DesktopUiState { windows, pending_commands, call_translate, .. } = &mut *state;
-        tool_window::show(ctx, tk, ToolKind::Debug, &mut windows.debug, placement, |ui| {
-            debug_body(ui, tk, &info, &events, &call, call_translate, pending_commands);
+        let mut open_call_window = false;
+        {
+            let DesktopUiState { windows, .. } = &mut *state;
+            tool_window::show(ctx, tk, ToolKind::Debug, &mut windows.debug, placement, |ui| {
+                debug_body(ui, tk, &info, &events, &call, &mut open_call_window);
+            });
+        }
+        if open_call_window {
+            state.windows.request_open(ToolKind::Call);
+        }
+    }
+
+    show_call_window(ctx, state, tk, placement);
+}
+
+/// The Call translation window: draws the call panel and applies what was clicked after the frame.
+fn show_call_window(
+    ctx: &egui::Context,
+    state: &mut DesktopUiState,
+    tk: &Tokens,
+    placement: tool_window::Placement,
+) {
+    if !state.windows.call.is_open() {
+        return;
+    }
+    let call = state.call.clone();
+    let mut actions = Vec::new();
+    {
+        let DesktopUiState { windows, call_translate, settings, .. } = &mut *state;
+        tool_window::show(ctx, tk, ToolKind::Call, &mut windows.call, placement, |ui| {
+            call_window_view::body(ui, tk, &call, call_translate, settings, &mut actions);
         });
+    }
+    for action in actions {
+        match action {
+            CallWindowAction::Command(cmd) => state.pending_commands.push(cmd.to_owned()),
+            CallWindowAction::OpenSettings(section) => state.open_settings(Some(section)),
+        }
     }
 }
 
