@@ -40,6 +40,22 @@ pub enum MtFailure {
     Cancelled,
 }
 
+impl From<crate::chat_http::HttpFailure> for MtFailure {
+    fn from(failure: crate::chat_http::HttpFailure) -> Self {
+        use crate::chat_http::HttpFailure as H;
+        match failure {
+            H::ConnectTimeout => Self::ConnectTimeout,
+            H::ConnectFailed(reason) => Self::ConnectFailed(reason),
+            H::FirstTokenTimeout => Self::FirstTokenTimeout,
+            H::IdleTimeout => Self::IdleTimeout,
+            H::HttpStatus(status) => Self::HttpStatus(status),
+            H::ServerEvent(code) => Self::ServerEvent(code),
+            H::StreamBroken(reason) => Self::StreamBroken(reason),
+            H::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
 impl MtFailure {
     /// The port-level error for this failure.
     ///

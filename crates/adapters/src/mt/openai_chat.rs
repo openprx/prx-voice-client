@@ -1,14 +1,12 @@
 //! `OpenAiChatMt`: streaming translation through an OpenAI-compatible
 //! `/v1/chat/completions` endpoint (PD-2.6.1), for example `llama-server`.
 //!
-//! The port is synchronous, the HTTP client is not. The adapter owns a small
-//! tokio runtime; every request is one task on it that reads the response,
-//! parses the SSE stream and sends the pieces over a channel. The request's
-//! stream object receives them with a blocking call that also watches the
-//! caller's cancellation token. Cancelling aborts the task, which drops the
-//! response and with it the connection, so the server sees the client go away.
-//! Requests share nothing but the connection pool, so two directions run
-//! independently.
+//! The port is synchronous, the HTTP client is not: the shared `chat_http` client owns a small
+//! tokio runtime and runs every request as one task that reads the response and parses the SSE
+//! stream; the request's stream object receives the pieces with a blocking call that also watches
+//! the caller's cancellation token. Cancelling aborts the task, which drops the response and with
+//! it the connection, so the server sees the client go away. Requests share nothing but the
+//! connection pool, so two directions run independently.
 //!
 //! Failures keep their kind: [`MtFailure`] has one variant for each of the
 //! three timeouts and for each HTTP and stream failure; the port's `MtError`
@@ -16,7 +14,6 @@
 //! the output-quality flags reach the owner through an optional [`MtObserver`].
 
 use std::fmt;
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -24,31 +21,19 @@ use prxvc_ports::{
     CancellationToken, Egress, MtDelta, MtError, MtRequest, MtStream, ProviderDescriptor,
     StreamingKind, Translator,
 };
-use reqwest::header::{ACCEPT, AUTHORIZATION};
-use reqwest::redirect::Policy;
-use serde_json::Value;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
-
 use super::assess::{AssessInput, assess};
-use super::config::{ConfigError, OpenAiChatConfig, Timeouts};
+use super::config::{ConfigError, OpenAiChatConfig};
 use super::output::OutputFilter;
 use super::repetition::RepetitionGuard;
 use super::report::{MtFailure, MtObserver, MtReport, Stripped, Suspect};
-use super::sse::{SseEvent, SseParser};
-
-/// Capacity of the channel between a request's task and its stream.
-const CHANNEL_CAPACITY: usize = 256;
+use crate::chat_http::{ChatClient, ChatRequest, Chunk, Received, is_loopback};
 
 struct Inner {
     cfg: OpenAiChatConfig,
     url: reqwest::Url,
-    client: reqwest::Client,
+    client: ChatClient,
     descriptor: ProviderDescriptor,
     observer: Option<Arc<dyn MtObserver>>,
-    // Declared last so the runtime is dropped after everything that uses it.
-    runtime: tokio::runtime::Runtime,
 }
 
 /// The translation provider for OpenAI-compatible chat endpoints.
@@ -91,25 +76,12 @@ impl OpenAiChatMt {
         let url = cfg.endpoint_url()?;
         let host = url.host_str().unwrap_or_default().to_owned();
         let local = is_loopback(&host);
-
-        let mut client = reqwest::Client::builder()
-            .connect_timeout(cfg.timeouts.connect)
-            .redirect(Policy::none())
-            .tcp_nodelay(true)
-            .user_agent("prx-voice-client");
-        if local {
-            // A loopback server is never behind the system proxy.
-            client = client.no_proxy();
-        }
-        let client = client
-            .build()
-            .map_err(|e| ConfigError::Client(e.to_string()))?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .thread_name("mt-http")
-            .enable_all()
-            .build()
-            .map_err(|e| ConfigError::Client(e.to_string()))?;
+        let client = ChatClient::new(
+            url.clone(),
+            cfg.api_key.as_ref().map(|k| k.expose().to_owned()),
+            cfg.timeouts,
+            "mt-http",
+        )?;
 
         let egress = if local {
             Egress::Local
@@ -127,16 +99,9 @@ impl OpenAiChatMt {
                 client,
                 descriptor,
                 observer,
-                runtime,
             }),
         })
     }
-}
-
-fn is_loopback(host: &str) -> bool {
-    let bare = host.trim_start_matches('[').trim_end_matches(']');
-    bare.eq_ignore_ascii_case("localhost")
-        || bare.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
 }
 
 impl Translator for OpenAiChatMt {
@@ -161,23 +126,13 @@ impl Translator for OpenAiChatMt {
             return Err(MtError::Internal("the source clause is empty".into()));
         }
         let body = inner.cfg.request_body(&req);
-        let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-        let started = Instant::now();
-        let task = inner.runtime.spawn(run_request(
-            inner.client.clone(),
-            inner.url.clone(),
-            inner.cfg.api_key.as_ref().map(|k| k.expose().to_owned()),
-            body,
-            inner.cfg.timeouts,
-            tx,
-            started,
-        ));
+        let request = inner.client.start(body);
+        let started = request.started();
         tracing::debug!(clause = ?req.clause, model = %inner.cfg.model, "translation request sent");
         Ok(Box::new(ChatStream {
             inner: Arc::clone(&self.inner),
             req,
-            rx,
-            task: Some(task),
+            request,
             filter: OutputFilter::new(),
             delivered: String::new(),
             state: State::Streaming,
@@ -187,156 +142,6 @@ impl Translator for OpenAiChatMt {
             guard: RepetitionGuard::new(),
             suspect: None,
         }))
-    }
-}
-
-/// A piece of a response, as the request's task sends it.
-enum Chunk {
-    Text {
-        text: String,
-        at: Instant,
-    },
-    Done {
-        prompt_tokens: Option<u32>,
-        completion_tokens: Option<u32>,
-        finish_reason: Option<String>,
-        malformed: u32,
-        at: Instant,
-    },
-}
-
-type Msg = Result<Chunk, MtFailure>;
-
-/// The task of one request.
-async fn run_request(
-    client: reqwest::Client,
-    url: reqwest::Url,
-    api_key: Option<String>,
-    body: Value,
-    timeouts: Timeouts,
-    tx: mpsc::Sender<Msg>,
-    started: Instant,
-) {
-    if let Err(failure) = drive(&client, url, api_key, &body, timeouts, &tx, started).await {
-        // The stream may already be gone (cancelled or dropped): then nobody
-        // is waiting for the failure.
-        let _ = tx.send(Err(failure)).await;
-    }
-}
-
-async fn drive(
-    client: &reqwest::Client,
-    url: reqwest::Url,
-    api_key: Option<String>,
-    body: &Value,
-    timeouts: Timeouts,
-    tx: &mpsc::Sender<Msg>,
-    started: Instant,
-) -> Result<(), MtFailure> {
-    let deadline = tokio::time::Instant::from_std(started + timeouts.first_token);
-    let mut request = client
-        .post(url)
-        .header(ACCEPT, "text/event-stream")
-        .json(body);
-    if let Some(key) = api_key {
-        request = request.header(AUTHORIZATION, format!("Bearer {key}"));
-    }
-    let mut response = match tokio::time::timeout_at(deadline, request.send()).await {
-        Err(_) => return Err(MtFailure::FirstTokenTimeout),
-        Ok(Err(e)) => return Err(classify_send_error(e)),
-        Ok(Ok(r)) => r,
-    };
-    if !response.status().is_success() {
-        return Err(MtFailure::HttpStatus(response.status().as_u16()));
-    }
-
-    let mut parser = SseParser::new();
-    let mut first_token_seen = false;
-    let mut deltas = 0u32;
-    let mut malformed = 0u32;
-    let mut usage: Option<(u32, u32)> = None;
-    let mut finish_reason: Option<String> = None;
-    loop {
-        let read = if first_token_seen {
-            timeout(timeouts.idle, response.chunk()).await
-        } else {
-            tokio::time::timeout_at(deadline, response.chunk()).await
-        };
-        let bytes = match read {
-            Err(_) if first_token_seen => return Err(MtFailure::IdleTimeout),
-            Err(_) => return Err(MtFailure::FirstTokenTimeout),
-            Ok(Err(e)) => return Err(MtFailure::StreamBroken(e.without_url().to_string())),
-            Ok(Ok(bytes)) => bytes,
-        };
-        let (events, eof) = match bytes {
-            Some(b) => (parser.push(&b), false),
-            None => (parser.finish(), true),
-        };
-        for event in events {
-            match event {
-                SseEvent::Content(text) => {
-                    first_token_seen = true;
-                    deltas = deltas.saturating_add(1);
-                    let msg = Chunk::Text {
-                        text,
-                        at: Instant::now(),
-                    };
-                    if tx.send(Ok(msg)).await.is_err() {
-                        return Ok(());
-                    }
-                }
-                SseEvent::Finish(reason) => finish_reason = Some(reason),
-                SseEvent::Usage {
-                    prompt_tokens,
-                    completion_tokens,
-                } => usage = Some((prompt_tokens, completion_tokens)),
-                SseEvent::Malformed => malformed = malformed.saturating_add(1),
-                SseEvent::ServerError { code } => return Err(MtFailure::ServerEvent(code)),
-                SseEvent::Done => return finish(tx, usage, deltas, finish_reason, malformed).await,
-            }
-        }
-        if eof {
-            // Some servers close the stream without `[DONE]`. A stop reason
-            // says the model finished; without one the connection broke.
-            return if finish_reason.is_some() {
-                finish(tx, usage, deltas, finish_reason, malformed).await
-            } else {
-                Err(MtFailure::StreamBroken(
-                    "the connection closed before the end of the translation".into(),
-                ))
-            };
-        }
-    }
-}
-
-async fn finish(
-    tx: &mpsc::Sender<Msg>,
-    usage: Option<(u32, u32)>,
-    deltas: u32,
-    finish_reason: Option<String>,
-    malformed: u32,
-) -> Result<(), MtFailure> {
-    let done = Chunk::Done {
-        prompt_tokens: usage.map(|(p, _)| p),
-        completion_tokens: usage.map(|(_, c)| c).or(Some(deltas)),
-        finish_reason,
-        malformed,
-        at: Instant::now(),
-    };
-    // A closed channel means the stream was dropped: nothing left to tell.
-    let _ = tx.send(Ok(done)).await;
-    Ok(())
-}
-
-fn classify_send_error(e: reqwest::Error) -> MtFailure {
-    if e.is_connect() && e.is_timeout() {
-        MtFailure::ConnectTimeout
-    } else if e.is_connect() {
-        MtFailure::ConnectFailed("connection refused or host unreachable".into())
-    } else if e.is_timeout() {
-        MtFailure::FirstTokenTimeout
-    } else {
-        MtFailure::ConnectFailed(e.without_url().to_string())
     }
 }
 
@@ -351,8 +156,7 @@ enum State {
 struct ChatStream {
     inner: Arc<Inner>,
     req: MtRequest,
-    rx: mpsc::Receiver<Msg>,
-    task: Option<JoinHandle<()>>,
+    request: ChatRequest,
     filter: OutputFilter,
     delivered: String,
     state: State,
@@ -386,22 +190,9 @@ impl MtStream for ChatStream {
             if cancel.is_cancelled() {
                 return Some(Err(self.fail(MtFailure::Cancelled)));
             }
-            let received = self.inner.runtime.block_on(async {
-                tokio::select! {
-                    biased;
-                    () = cancel.cancelled() => None,
-                    msg = self.rx.recv() => Some(msg),
-                }
-            });
-            match received {
-                None => return Some(Err(self.fail(MtFailure::Cancelled))),
-                Some(None) => {
-                    let failure =
-                        MtFailure::StreamBroken("the request task ended unexpectedly".into());
-                    return Some(Err(self.fail(failure)));
-                }
-                Some(Some(Err(failure))) => return Some(Err(self.fail(failure))),
-                Some(Some(Ok(Chunk::Text { text, at }))) => {
+            match self.request.recv(&self.inner.client, cancel) {
+                Received::Failed(failure) => return Some(Err(self.fail(failure.into()))),
+                Received::Chunk(Chunk::Text { text, at }) => {
                     self.deltas = self.deltas.saturating_add(1);
                     self.first_token
                         .get_or_insert_with(|| at.saturating_duration_since(self.started));
@@ -417,13 +208,13 @@ impl MtStream for ChatStream {
                         return Some(Ok(MtDelta::Text(clean)));
                     }
                 }
-                Some(Some(Ok(Chunk::Done {
+                Received::Chunk(Chunk::Done {
                     prompt_tokens,
                     completion_tokens,
                     finish_reason,
                     malformed,
                     at,
-                }))) => {
+                }) => {
                     return Some(self.complete(
                         prompt_tokens,
                         completion_tokens,
@@ -475,7 +266,7 @@ impl ChatStream {
         });
         // The task ends by itself after `Done`; detach it so that the
         // connection can return to the pool.
-        self.task = None;
+        self.request.detach();
         if let Some(failure) = failure {
             self.state = State::Ended;
             return Err(failure.to_port_error());
@@ -493,7 +284,7 @@ impl ChatStream {
     /// `last` is the clean text of the delta that showed the loop; it is delivered, the pipeline
     /// reads the flag right after it and drops the request without speaking it.
     fn abort_loop(&mut self, reason: String, last: String) -> MtDelta {
-        self.stop_task();
+        self.request.stop();
         self.suspect = Some(reason);
         self.report(MtReportParts {
             failure: None,
@@ -520,7 +311,7 @@ impl ChatStream {
 
     /// End the stream with `failure`: stop the request, report, return the port error.
     fn fail(&mut self, failure: MtFailure) -> MtError {
-        self.stop_task();
+        self.request.stop();
         self.state = State::Ended;
         self.report(MtReportParts {
             failure: Some(failure.clone()),
@@ -533,14 +324,6 @@ impl ChatStream {
             malformed_lines: 0,
         });
         failure.to_port_error()
-    }
-
-    /// Abort the request task: its response and connection are dropped.
-    fn stop_task(&mut self) {
-        if let Some(task) = self.task.take() {
-            task.abort();
-        }
-        self.rx.close();
     }
 
     fn report(&self, parts: MtReportParts) {
@@ -585,6 +368,6 @@ struct MtReportParts {
 impl Drop for ChatStream {
     /// Dropping a stream abandons its request and closes its connection.
     fn drop(&mut self) {
-        self.stop_task();
+        self.request.stop();
     }
 }

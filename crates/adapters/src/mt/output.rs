@@ -91,7 +91,7 @@ enum View {
 /// The cleaned view of everything received so far. `done` says the stream has
 /// ended, which settles every undecided case. A non-final view is always a
 /// prefix of every later view.
-fn view(raw: &str, done: bool, stripped: &mut Vec<Stripped>) -> View {
+fn view(raw: &str, done: bool, thinking_only: bool, stripped: &mut Vec<Stripped>) -> View {
     let mut s = raw.trim_start();
     // 1. Leading thinking blocks.
     loop {
@@ -115,6 +115,9 @@ fn view(raw: &str, done: bool, stripped: &mut Vec<Stripped>) -> View {
             Prefix::Partial if !done => return View::Pending,
             _ => break,
         }
+    }
+    if thinking_only {
+        return View::Text(s.trim_end().to_owned());
     }
     // 2. A leading label.
     match best_prefix(s, PREAMBLES.iter().copied()) {
@@ -164,6 +167,8 @@ fn push_once(list: &mut Vec<Stripped>, item: Stripped) {
 /// The incremental output filter of one request.
 #[derive(Debug, Default)]
 pub struct OutputFilter {
+    /// Strip leading thinking blocks only (a dialogue reply may legitimately start with a label or a quote).
+    thinking_only: bool,
     raw: String,
     emitted: String,
     stripped: Vec<Stripped>,
@@ -186,12 +191,20 @@ impl OutputFilter {
         Self::default()
     }
 
+    /// A filter that removes leading thinking blocks and nothing else.
+    pub fn thinking_only() -> Self {
+        Self {
+            thinking_only: true,
+            ..Self::default()
+        }
+    }
+
     /// Feed the next raw delta; the result is the cleaned text to pass on
     /// (possibly empty).
     pub fn push(&mut self, delta: &str) -> String {
         self.raw.push_str(delta);
         let mut stripped = Vec::new();
-        let out = match view(&self.raw, false, &mut stripped) {
+        let out = match view(&self.raw, false, self.thinking_only, &mut stripped) {
             View::Pending => String::new(),
             View::Text(t) => self.advance(&t),
         };
@@ -202,7 +215,7 @@ impl OutputFilter {
     /// The stream ended: settle every undecided case and return the rest.
     pub fn finish(&mut self) -> FilterEnd {
         let mut stripped = Vec::new();
-        let tail = match view(&self.raw, true, &mut stripped) {
+        let tail = match view(&self.raw, true, self.thinking_only, &mut stripped) {
             View::Pending => String::new(),
             View::Text(t) => self.advance(&t),
         };
@@ -249,6 +262,17 @@ mod tests {
         let parts: Vec<String> = text.chars().map(String::from).collect();
         let refs: Vec<&str> = parts.iter().map(String::as_str).collect();
         run(&refs)
+    }
+
+    #[test]
+    fn a_thinking_only_filter_keeps_labels_and_quotes() {
+        let mut f = OutputFilter::thinking_only();
+        let mut out = f.push("<think>hm</think>");
+        out.push_str(&f.push("\"Translation: yes,\" she said."));
+        let end = f.finish();
+        out.push_str(&end.tail);
+        assert_eq!(out, "\"Translation: yes,\" she said.");
+        assert_eq!(end.stripped, vec![Stripped::Thinking]);
     }
 
     #[test]

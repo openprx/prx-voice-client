@@ -21,7 +21,7 @@ impl ApiKey {
     }
 
     /// The key text, for the `Authorization` header only.
-    pub(super) fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         &self.0
     }
 }
@@ -72,8 +72,6 @@ pub enum ConfigError {
     Client(String),
 }
 
-/// Body fields the adapter owns.
-const RESERVED_PARAMS: [&str; 4] = ["model", "messages", "stream", "stream_options"];
 
 /// Everything one `OpenAiChatMt` needs.
 #[derive(Clone, Debug)]
@@ -168,7 +166,7 @@ impl OpenAiChatConfig {
     /// Check the configuration; called by `OpenAiChatMt::new`.
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.endpoint_url().map(|_| ())?;
-        for key in RESERVED_PARAMS {
+        for key in crate::chat_http::RESERVED_PARAMS {
             if self.params.contains_key(key) {
                 return Err(ConfigError::ReservedParam(key.to_owned()));
             }
@@ -179,17 +177,7 @@ impl OpenAiChatConfig {
     /// The chat completions URL: `{base}/v1/chat/completions`, tolerating a
     /// base that already ends in `/v1` and trailing slashes.
     pub fn endpoint_url(&self) -> Result<reqwest::Url, ConfigError> {
-        let base = self.base_url.trim().trim_end_matches('/');
-        let base = base.strip_suffix("/v1").unwrap_or(base);
-        let url = reqwest::Url::parse(&format!("{base}/v1/chat/completions"))
-            .map_err(|e| ConfigError::InvalidBaseUrl(e.to_string()))?;
-        match url.scheme() {
-            "http" | "https" if url.host_str().is_some() => Ok(url),
-            _ => Err(ConfigError::InvalidBaseUrl(format!(
-                "`{}` is not an http(s) URL",
-                self.base_url
-            ))),
-        }
+        crate::chat_http::endpoint_url(&self.base_url)
     }
 
     /// The JSON body of the request for `req`.
