@@ -363,6 +363,9 @@ impl Rig {
         cfg.voice.self_profile_id = OWNER.to_owned();
         // The owner's interface is Chinese: the call languages derive to zh (own) and en (peer).
         cfg.ui.language = "zh-CN".to_owned();
+        // These tests exercise the language-model path unless one says otherwise; the default of
+        // the engine depends on the build's features.
+        cfg.call.translation_engine = "llm".to_owned();
         let rig = Self {
             dir,
             cfg,

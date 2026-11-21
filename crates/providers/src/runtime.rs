@@ -57,6 +57,8 @@ pub struct BuiltRuntimes {
     pub qwentts: bool,
     /// `transcribe.cpp` and its recognition adapters.
     pub transcribe: bool,
+    /// The system translation bridge (Apple's Translation framework).
+    pub apple_translation: bool,
 }
 
 #[cfg(test)]
@@ -80,6 +82,7 @@ mod tests {
         let none = BuiltRuntimes {
             qwentts: false,
             transcribe: false,
+            apple_translation: false,
         };
         assert!(!Runtime::parse("future.cpp").is_built_in(&none));
         assert!(Runtime::LlamaServer.is_built_in(&none));

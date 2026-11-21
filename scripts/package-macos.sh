@@ -23,7 +23,7 @@
 #                             PRXVC_NOTARY_ISSUER. Never run unless set.
 #
 #   PRXVC_NATIVE              1 is the same as --native.
-#   PRXVC_NATIVE_FEATURES     cargo features for --native, space separated (default: "qwentts transcribe").
+#   PRXVC_NATIVE_FEATURES     cargo features for --native, space separated (default: "qwentts transcribe apple-translation").
 #
 # See packaging/macos/README.md.
 set -euo pipefail
@@ -44,7 +44,7 @@ target=""
 skip_build=0
 make_zip=0
 native="${PRXVC_NATIVE:-0}"
-native_features="${PRXVC_NATIVE_FEATURES:-qwentts transcribe}"
+native_features="${PRXVC_NATIVE_FEATURES:-qwentts transcribe apple-translation}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --debug) profile=debug ;;

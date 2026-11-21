@@ -24,6 +24,7 @@ pub mod migrate;
 pub mod paths;
 mod providers;
 mod sections;
+mod translation_engine;
 #[cfg(test)]
 mod test_util;
 #[cfg(test)]
@@ -37,6 +38,7 @@ pub use migrate::CURRENT_SCHEMA_VERSION;
 pub use net_policy::{Blocked, NetworkPolicy};
 pub use providers::*;
 pub use sections::*;
+pub use translation_engine::TranslationEngine;
 
 // ---------------------------------------------------------------------------
 // Prelude

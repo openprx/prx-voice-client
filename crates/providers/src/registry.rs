@@ -11,6 +11,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use prxvc_adapters::asr::AsrParams;
 use prxvc_adapters::dialogue::{DialogueConfig, OpenAiChatDialogue};
+use prxvc_adapters::mt::apple::{AppleSystemMt, SystemTranslationApi, SystemTranslationConfig};
 use prxvc_adapters::mt::{OpenAiChatConfig, OpenAiChatMt};
 use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_config::{AppConfig, NetworkPolicy};
@@ -25,7 +26,8 @@ use crate::credentials::CredentialReader;
 use crate::egress::{EgressSummary, summarize};
 use crate::engines::{Engines, Lease};
 use crate::handles::{
-    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedTranslator, SharedVad,
+    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedSystemTranslator, SharedTranslator,
+    SharedVad,
 };
 use crate::keys::CallLanguages;
 use crate::model_source::ModelSource;
@@ -94,6 +96,8 @@ pub struct ProviderRegistry {
     recognition: Arc<dyn RecognitionLoader>,
     tts: Engines<(String, String), QwenTts>,
     mt: Engines<String, OpenAiChatMt>,
+    system_api: Option<Arc<dyn SystemTranslationApi>>,
+    mt_system: Engines<String, AppleSystemMt>,
     dialogue: Engines<String, OpenAiChatDialogue>,
     asr: Engines<String, Arc<dyn StreamingAsr>>,
     refine: Engines<String, Arc<dyn RefineAsr>>,
@@ -125,6 +129,8 @@ impl ProviderRegistry {
             recognition: Arc::new(BuiltInRecognition),
             tts: Engines::default(),
             mt: Engines::default(),
+            system_api: built_in_system_api(),
+            mt_system: Engines::default(),
             dialogue: Engines::default(),
             asr: Engines::default(),
             refine: Engines::default(),
@@ -160,6 +166,14 @@ impl ProviderRegistry {
         self
     }
 
+    /// Replace the operating system's translation service (a test, or the composition root).
+    /// `None` is a binary without it: system translation is then the typed problem "not built in".
+    #[must_use]
+    pub fn with_system_translation(mut self, api: Option<Arc<dyn SystemTranslationApi>>) -> Self {
+        self.system_api = api;
+        self
+    }
+
     /// Take a new configuration (after each settings update). Engines already built are kept by
     /// the handles that hold them; the next `build_*` follows the new configuration.
     pub fn reload(&self, config: &AppConfig) {
@@ -173,6 +187,7 @@ impl ProviderRegistry {
         BuiltRuntimes {
             qwentts: self.tts_loader.available(),
             transcribe: self.recognition.available(),
+            apple_translation: self.system_api.is_some(),
         }
     }
 
@@ -321,6 +336,9 @@ impl ProviderRegistry {
     /// endpoint fails with [`BuildError::Blocked`] before anything is created, let alone
     /// connected.
     pub fn build_mt(&self, spec: &MtSpec) -> Result<Box<dyn Translator>, BuildError> {
+        if spec.is_system() {
+            return self.build_system_mt(spec);
+        }
         if let Err(blocked) = self.state.read().policy.check(&spec.base_url) {
             return Err(match blocked {
                 prxvc_config::Blocked::Offline { host } => BuildError::Blocked {
@@ -338,6 +356,41 @@ impl ProviderRegistry {
         descriptor.require_native()?;
         descriptor.require_pair(spec.source, spec.target)?;
         Ok(Box::new(SharedTranslator { lease }))
+    }
+
+    /// Build system translation of `spec`'s pair: one session per direction, opened and warmed up
+    /// here (the cold first call is absorbed before the first clause arrives). Blocks while the
+    /// operating system answers. The problems the user can act on (an old system, a language pack
+    /// that is not installed, an unsupported pair) are [`BuildError::System`]; nothing falls back
+    /// to another engine.
+    fn build_system_mt(&self, spec: &MtSpec) -> Result<Box<dyn Translator>, BuildError> {
+        let Some(api) = self.system_api.clone() else {
+            return Err(BuildError::NotBuiltIn {
+                provider: spec.id.clone(),
+                runtime: "apple-translation".to_owned(),
+            });
+        };
+        let to_error = |fault| BuildError::System {
+            provider: spec.id.clone(),
+            fault,
+        };
+        let key = format!("{}|{}>{}", spec.id, spec.source, spec.target);
+        let lease = self.mt_system.acquire(key, || {
+            let cfg = SystemTranslationConfig::new(spec.source, spec.target);
+            let engine = AppleSystemMt::open(api.as_ref(), cfg).map_err(to_error)?;
+            let warm = engine.warm_up().map_err(to_error)?;
+            tracing::info!(
+                provider = spec.id.as_str(),
+                pair = %format!("{}>{}", spec.source, spec.target),
+                warm_up_ms = u64::try_from(warm.as_millis()).unwrap_or(u64::MAX),
+                "system translation ready"
+            );
+            Ok(engine)
+        })?;
+        let descriptor = lease.engine().descriptor();
+        descriptor.require_live()?;
+        descriptor.require_pair(spec.source, spec.target)?;
+        Ok(Box::new(SharedSystemTranslator { lease }))
     }
 
     /// Build the dialogue backend of `spec`. The offline policy is checked again first. The client
@@ -434,12 +487,25 @@ impl ProviderRegistry {
     pub fn live_engines(&self) -> LiveEngines {
         LiveEngines {
             tts: self.tts.live(),
-            mt: self.mt.live(),
+            mt: self.mt.live() + self.mt_system.live(),
             dialogue: self.dialogue.live(),
             asr: self.asr.live(),
             refine: self.refine.live(),
             vad: self.vad.live(),
         }
+    }
+}
+
+/// The operating system's translation service of this build: the bridge when the
+/// `apple-translation` feature is on, none otherwise.
+fn built_in_system_api() -> Option<Arc<dyn SystemTranslationApi>> {
+    #[cfg(feature = "apple-translation")]
+    {
+        Some(Arc::new(prxvc_adapters::mt::apple::ffi::AppleFramework))
+    }
+    #[cfg(not(feature = "apple-translation"))]
+    {
+        None
     }
 }
 

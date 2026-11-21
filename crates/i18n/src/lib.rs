@@ -11,6 +11,7 @@ mod settings_permission_strings;
 mod settings_pipeline_strings;
 mod settings_session_strings;
 mod settings_strings;
+mod translation_engine_strings;
 mod translation_strings;
 
 use std::collections::HashMap;
@@ -341,6 +342,7 @@ fn build_en_translations() -> HashMap<String, String> {
         .chain(call_window_strings::EN)
         .chain(call_captions_strings::EN)
         .chain(translation_strings::EN)
+        .chain(translation_engine_strings::EN)
         .chain(settings_strings::EN)
         .chain(settings_session_strings::EN)
         .chain(settings_pipeline_strings::EN)
@@ -571,6 +573,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         .chain(call_window_strings::ZH_CN)
         .chain(call_captions_strings::ZH_CN)
         .chain(translation_strings::ZH_CN)
+        .chain(translation_engine_strings::ZH_CN)
         .chain(settings_strings::ZH_CN)
         .chain(settings_session_strings::ZH_CN)
         .chain(settings_pipeline_strings::ZH_CN)

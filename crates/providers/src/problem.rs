@@ -325,6 +325,15 @@ pub enum BuildError {
         /// What is wrong.
         detail: String,
     },
+    /// System translation cannot serve: the system is too old, the language pack is not
+    /// installed, the pair is unsupported or the framework failed. Typed, never a fallback.
+    #[error("provider `{provider}`: {fault}")]
+    System {
+        /// The provider.
+        provider: ProviderId,
+        /// What the operating system's service said.
+        fault: prxvc_adapters::mt::apple::SystemFault,
+    },
     /// The engine or client could not be started.
     #[error("provider `{provider}` failed to start: {detail}")]
     Start {

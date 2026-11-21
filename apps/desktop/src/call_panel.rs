@@ -79,6 +79,9 @@ fn provider_key(issue: ProviderIssue) -> &'static str {
         ProviderIssue::Unsupported => "call.issue.provider.unsupported",
         ProviderIssue::Offline => "call.issue.provider.offline",
         ProviderIssue::Setting => "call.issue.provider.setting",
+        ProviderIssue::LanguagePackMissing => "call.issue.provider.language_pack_missing",
+        ProviderIssue::OsTooOld => "call.issue.provider.os_too_old",
+        ProviderIssue::ServerFailed => "call.issue.provider.server_failed",
         _ => "call.issue.provider.start_failed",
     }
 }

@@ -13,7 +13,7 @@
 use crate::ConfigError;
 
 /// The schema version this build reads and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 type Step = fn(&mut toml::Table) -> Result<(), ConfigError>;
 
@@ -44,6 +44,10 @@ const CHAIN: &[Link] = &[
             ("drop the selections of the retired assistant models", drop_retired_selections),
             ("drop the keys of the retired assistant stack", drop_retired_keys),
         ],
+    },
+    Link {
+        from: 3,
+        steps: &[("choose the translation engine", pin_translation_engine)],
     },
 ];
 
@@ -116,6 +120,23 @@ pub(crate) fn pin_legacy_save_transcript(table: &mut toml::Table) -> Result<(), 
     privacy
         .entry("save_transcript")
         .or_insert(toml::Value::Boolean(true));
+    Ok(())
+}
+
+/// Version 4 adds `call.translation_engine`. A file that already exists moves to the engine the
+/// owner chose as the default now ([`crate::TranslationEngine::migrated_default`]: system
+/// translation on macOS). Its language-model selection (`providers.active.mt`, entries) is not
+/// touched: it stays as the alternative. A key that is present is not touched.
+pub(crate) fn pin_translation_engine(table: &mut toml::Table) -> Result<(), ConfigError> {
+    let call = table
+        .entry("call")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let call = call
+        .as_table_mut()
+        .ok_or_else(|| ConfigError::MigrationError("`call` is not a table".to_owned()))?;
+    call.entry("translation_engine").or_insert_with(|| {
+        toml::Value::String(crate::TranslationEngine::migrated_default().as_str().to_owned())
+    });
     Ok(())
 }
 
@@ -434,12 +455,39 @@ mod tests {
     }
 
     #[test]
-    fn a_version_2_file_takes_only_the_third_link_and_the_result_is_stable() {
+    fn a_version_3_file_gets_the_translation_engine_and_keeps_its_language_model_entry() {
+        let mut t = parse(
+            "schema_version = 3\n[call]\nstart_mode = \"on_call\"\n\
+             [providers.active.mt]\n\"zh>en\" = \"hy-mt2-7b-q4km\"\n\
+             [[providers.entries]]\nid = \"my-llm\"\nbase_url = \"http://127.0.0.1:8080/v1\"\n",
+        );
+        assert_eq!(migrate(&mut t).unwrap(), Some(3));
+        let expected = crate::TranslationEngine::migrated_default().as_str();
+        assert_eq!(t["call"]["translation_engine"].as_str(), Some(expected));
+        assert_eq!(t["call"]["start_mode"].as_str(), Some("on_call"), "other keys untouched");
+        assert_eq!(
+            t["providers"]["active"]["mt"]["zh>en"].as_str(),
+            Some("hy-mt2-7b-q4km"),
+            "the language-model selection stays as the alternative"
+        );
+        assert_eq!(t["providers"]["entries"].as_array().unwrap().len(), 1);
+        // A choice already made is not overwritten.
+        let mut chosen = parse("schema_version = 3\n[call]\ntranslation_engine = \"llm\"\n");
+        migrate(&mut chosen).unwrap();
+        assert_eq!(chosen["call"]["translation_engine"].as_str(), Some("llm"));
+        // Idempotent.
+        let once = t.clone();
+        assert_eq!(migrate(&mut t).unwrap(), None);
+        assert_eq!(t, once);
+    }
+
+    #[test]
+    fn a_version_2_file_takes_the_third_and_fourth_links_and_the_result_is_stable() {
         let mut t = parse(
             "schema_version = 2\n[network]\nlanguage = \"zh-CN\"\nuse_mock = false\n[audio]\nend_silence_ms = 650\n[call]\nstart_mode = \"on_call\"\n",
         );
         assert_eq!(migrate(&mut t).unwrap(), Some(2));
-        assert_eq!(t["schema_version"].as_integer(), Some(3));
+        assert_eq!(t["schema_version"].as_integer(), Some(4));
         assert_eq!(t["assistant"]["language"].as_str(), Some("zh-CN"));
         assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(650));
         assert!(t.get("network").is_none(), "the server section is gone");

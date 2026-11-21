@@ -9,5 +9,6 @@ mod no_mock;
 mod offline;
 mod problems;
 mod resolution;
+mod system_translation;
 mod test_provider;
 mod local_voice;

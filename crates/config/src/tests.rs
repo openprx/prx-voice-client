@@ -117,7 +117,9 @@ fn empty_file_loads_with_defaults_but_keeps_old_save_transcript_behaviour() {
     let c = mgr(&dir).load().unwrap();
     // An existing file predates the new default.
     assert!(c.privacy.save_transcript);
-    let expected = AppConfig { privacy: PrivacyConfig { save_transcript: true, ..Default::default() }, ..Default::default() };
+    let mut expected = AppConfig { privacy: PrivacyConfig { save_transcript: true, ..Default::default() }, ..Default::default() };
+    // The migration pins the translation engine the owner chose for existing files.
+    expected.call.translation_engine = crate::TranslationEngine::migrated_default().as_str().to_owned();
     assert_eq!(c, expected);
 }
 

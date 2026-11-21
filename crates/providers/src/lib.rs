@@ -63,7 +63,8 @@ pub use credentials::{
 pub use egress::{EgressSummary, RoleEgress};
 pub use engines::Lease;
 pub use handles::{
-    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedTranslator, SharedVad,
+    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedSystemTranslator, SharedTranslator,
+    SharedVad,
 };
 pub use keys::{CallLanguages, CallRole, RoleKey};
 pub use model_source::ModelSource;
@@ -72,12 +73,12 @@ pub use problem::{BuildError, Problem, ProblemKind, Slot};
 pub use recognition::{BuiltInRecognition, RecognitionLoader, TRANSCRIBE_BUILT_IN};
 pub use registry::{LiveEngines, PrepareError, ProviderRegistry, VoicePrepared};
 pub use resolve::{
-    DEFAULT_DIALOGUE_PROVIDER, DEFAULT_MT_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME,
+    DEFAULT_DIALOGUE_PROVIDER, DEFAULT_MT_PROVIDER, SYSTEM_MT_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME,
     OPENPRX_PROVIDER, VoiceChoice, VoiceDirs,
 };
 pub use runtime::{BuiltRuntimes, Runtime};
 pub use spec::{
-    DataLeaving, DialogueSpec, LocalModelSpec, Locality, MtSpec, Resolved, TtsFiles, TtsSpec,
+    DataLeaving, DialogueSpec, LocalModelSpec, Locality, MtEngineKind, MtSpec, Resolved, TtsFiles, TtsSpec,
     VoicePlan,
 };
 pub use test_provider::{FailureClass, TestError, TestReport};

@@ -89,6 +89,8 @@ pub struct UiSettings {
     pub call_captions_size: String,
     /// `call.barge_in`.
     pub call_barge_in: bool,
+    /// `call.translation_engine`: `"system"` (the operating system's translation) or `"llm"`.
+    pub call_translation_engine: String,
     /// `assistant.language`: the language the assistant listens and answers in; empty follows the
     /// interface language.
     pub assistant_language: String,
@@ -178,6 +180,7 @@ impl Default for UiSettings {
             call_disclosure: true,
             call_captions_size: "medium".to_owned(),
             call_barge_in: true,
+            call_translation_engine: "llm".to_owned(),
             assistant_language: String::new(),
             assistant_voice: "preset".to_owned(),
             assistant_voice_preset: String::new(),

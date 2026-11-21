@@ -227,7 +227,15 @@ fn label_of(code: CallErrorCode) -> &'static str {
         CallErrorCode::Provider(ProviderIssue::VoicePresetMissing) => {
             "preset voice missing (scripts/dev/install-voices.sh)"
         }
-        CallErrorCode::Provider(ProviderIssue::ServerUnreachable) => "translation server",
+        CallErrorCode::Provider(ProviderIssue::ServerUnreachable | ProviderIssue::ServerFailed) => {
+            "translation server"
+        }
+        CallErrorCode::Provider(ProviderIssue::LanguagePackMissing) => {
+            "system translation language pack missing (System Settings, General, Language & Region, Translation Languages)"
+        }
+        CallErrorCode::Provider(ProviderIssue::OsTooOld) => {
+            "system translation needs macOS 26 (switch the engine to the language model)"
+        }
         CallErrorCode::Provider(ProviderIssue::Offline) => "offline mode blocks a provider",
         CallErrorCode::Provider(ProviderIssue::Unsupported) => "provider cannot serve",
         CallErrorCode::Provider(ProviderIssue::Setting) => "setting",

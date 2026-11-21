@@ -67,7 +67,14 @@ pub(crate) fn problem_fault(problem: &Problem) -> HostFault {
 
 /// A build error as a fault.
 pub(crate) fn build_fault(error: &BuildError) -> HostFault {
+    use prxvc_adapters::mt::apple::SystemFaultKind as Fault;
     let issue = match error {
+        BuildError::System { fault, .. } => match fault.kind {
+            Fault::OsTooOld => ProviderIssue::OsTooOld,
+            Fault::PackNotInstalled => ProviderIssue::LanguagePackMissing,
+            Fault::PairUnsupported => ProviderIssue::Unsupported,
+            _ => ProviderIssue::StartFailed,
+        },
         BuildError::NotBuiltIn { .. } => ProviderIssue::RuntimeNotBuiltIn,
         BuildError::Blocked { .. } => ProviderIssue::Offline,
         BuildError::InvalidEndpoint { .. } => ProviderIssue::Setting,
@@ -168,6 +175,26 @@ mod tests {
             role_of(&problem(None, ProblemKind::NoProviderSelected)),
             ProviderRole::Asr
         );
+    }
+
+    #[test]
+    fn system_translation_problems_say_what_the_user_must_do() {
+        use prxvc_adapters::mt::apple::{SystemFault, SystemFaultKind as K};
+        let cases = [
+            (K::PackNotInstalled, ProviderIssue::LanguagePackMissing),
+            (K::OsTooOld, ProviderIssue::OsTooOld),
+            (K::PairUnsupported, ProviderIssue::Unsupported),
+            (K::Framework, ProviderIssue::StartFailed),
+            (K::Timeout, ProviderIssue::StartFailed),
+        ];
+        for (kind, issue) in cases {
+            let fault = build_fault(&BuildError::System {
+                provider: prxvc_ports::ProviderId::new("apple-system-translation"),
+                fault: SystemFault::new(kind, "detail"),
+            });
+            assert_eq!(fault.code, CallErrorCode::Provider(issue), "{kind:?}");
+            assert!(fault.detail.contains("detail"));
+        }
     }
 
     #[test]

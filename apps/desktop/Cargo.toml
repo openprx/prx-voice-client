@@ -68,7 +68,7 @@ qwentts = ["prxvc-adapters/qwentts", "prxvc-providers/qwentts"]
 transcribe = ["prxvc-adapters/transcribe", "prxvc-providers/transcribe"]
 # `apple-translation`: system translation through Apple's on-device Translation framework (a Swift
 # bridge library, built with swiftc). macOS only. Off by default, additive.
-apple-translation = ["prxvc-adapters/apple-translation"]
+apple-translation = ["prxvc-adapters/apple-translation", "prxvc-providers/apple-translation"]
 
 [lints]
 workspace = true

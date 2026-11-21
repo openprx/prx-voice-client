@@ -132,12 +132,16 @@ impl ProviderHost {
     }
 }
 
-/// The translation server of each direction must accept a connection.
+/// The translation server of each direction that uses one must accept a connection.
 fn check_servers(directions: &[DirectionPlan]) -> Result<(), ProvidersFailure> {
     let mut faults = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     for d in directions {
         let spec = &d.mt.primary;
+        // System translation has no server to reach.
+        if spec.is_system() {
+            continue;
+        }
         if seen.contains(&spec.base_url.as_str()) {
             continue;
         }

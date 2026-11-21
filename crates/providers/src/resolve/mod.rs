@@ -4,6 +4,7 @@
 //! * `mod`: the [`Resolver`] and the selection rules (primary, fallback, catalogue defaults).
 //! * `local`: catalogue models for VAD, recognition and synthesis.
 //! * `mt`: provider entries of the OpenAI-compatible chat protocol (translation and dialogue).
+//! * `system_mt`: system translation, the translation engine of `call.translation_engine = "system"`.
 //! * `dialogue`: the assistant's dialogue backend and the OpenPRX placeholder.
 //! * `voice`: the voice of a synthesis spec.
 //!
@@ -14,11 +15,12 @@ mod dialogue;
 mod local;
 mod mt;
 mod protocol;
+mod system_mt;
 mod voice;
 
 use std::collections::BTreeSet;
 
-use prxvc_config::{AppConfig, NetworkPolicy};
+use prxvc_config::{AppConfig, NetworkPolicy, TranslationEngine};
 use prxvc_media::Lang;
 use prxvc_models::{Badge, Candidate, Catalogue, HardwareInfo, LangKey, Role, Streaming};
 use prxvc_ports::ProviderId;
@@ -32,6 +34,7 @@ use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec};
 pub use dialogue::{
     DEFAULT_DIALOGUE_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME, OPENPRX_PROVIDER,
 };
+pub use system_mt::SYSTEM_MT_PROVIDER;
 pub use voice::{VoiceChoice, VoiceDirs};
 
 /// The id of the built-in translation provider: a `llama-server` endpoint from the catalogue
@@ -132,6 +135,17 @@ impl Resolver<'_> {
         key: RoleKey,
         one: impl Fn(&str) -> Result<S, Vec<ProblemKind>>,
     ) -> Result<Resolved<S>, Vec<Problem>> {
+        self.resolve_pair_with(key, None, one)
+    }
+
+    /// Like [`Self::resolve_pair`], with the primary id decided by the caller (translation: the
+    /// engine choice) instead of `providers.active` and the catalogue default.
+    fn resolve_pair_with<S>(
+        &self,
+        key: RoleKey,
+        primary: Option<String>,
+        one: impl Fn(&str) -> Result<S, Vec<ProblemKind>>,
+    ) -> Result<Resolved<S>, Vec<Problem>> {
         let role = key.role();
         let config_key = key.config_key();
         let wrap = |slot: Slot, kinds: Vec<ProblemKind>| -> Vec<Problem> {
@@ -145,7 +159,8 @@ impl Resolver<'_> {
                 .collect()
         };
 
-        let primary_id = configured(selection_map(&self.cfg.providers.active, role), &config_key)
+        let primary_id = primary
+            .or_else(|| configured(selection_map(&self.cfg.providers.active, role), &config_key))
             .or_else(|| self.default_id(key));
         let fallback_id = configured(
             selection_map(&self.cfg.providers.fallback, role),
@@ -214,9 +229,43 @@ impl Resolver<'_> {
     }
 
     /// Translation from `source` to `target`.
+    ///
+    /// `call.translation_engine` decides the primary: `system` is system translation whatever
+    /// `providers.active.mt` says (that selection is kept for `llm`), `llm` is the selected
+    /// language-model provider. A configured fallback may name either kind.
     pub fn mt(&self, source: Lang, target: Lang) -> Result<Resolved<MtSpec>, Vec<Problem>> {
-        self.resolve_pair(RoleKey::Mt { source, target }, |id| {
-            self.mt_provider(id, source, target)
+        let key = RoleKey::Mt { source, target };
+        let raw = &self.cfg.call.translation_engine;
+        let Some(engine) = TranslationEngine::parse(raw) else {
+            return Err(vec![Problem {
+                role: Some(key),
+                slot: Slot::Primary,
+                kind: ProblemKind::InvalidSetting {
+                    key: "call.translation_engine".to_owned(),
+                    value: raw.clone(),
+                },
+            }]);
+        };
+        let primary = (engine == TranslationEngine::System).then(|| SYSTEM_MT_PROVIDER.to_owned());
+        // `providers.active.mt` names a language-model provider. Naming system translation there
+        // while the engine is `llm` would be a second source of truth for the same choice.
+        let active = configured(&self.cfg.providers.active.mt, &key.config_key());
+        if engine == TranslationEngine::Llm && active.as_deref() == Some(SYSTEM_MT_PROVIDER) {
+            return Err(vec![Problem {
+                role: Some(key),
+                slot: Slot::Primary,
+                kind: ProblemKind::InvalidSetting {
+                    key: "providers.active.mt".to_owned(),
+                    value: SYSTEM_MT_PROVIDER.to_owned(),
+                },
+            }]);
+        }
+        self.resolve_pair_with(key, primary, |id| {
+            if id == SYSTEM_MT_PROVIDER {
+                self.system_mt_provider(source, target)
+            } else {
+                self.mt_provider(id, source, target)
+            }
         })
     }
 

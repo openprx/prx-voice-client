@@ -56,7 +56,7 @@ fn mt_row(role: RoleKey, spec: &MtSpec) -> RoleEgress {
         role,
         provider: spec.id.clone(),
         data: spec.data_leaving(),
-        host: Some(spec.host.clone()),
+        host: (!spec.is_system()).then(|| spec.host.clone()),
         locality: spec.locality,
     }
 }

@@ -130,6 +130,15 @@ pub enum ProviderIssue {
     Setting,
     /// A provider failed to start for another reason.
     StartFailed,
+    /// System translation needs a language pack that is not downloaded: download it in the
+    /// system settings, or switch to the language model.
+    LanguagePackMissing,
+    /// System translation needs a newer operating system (macOS 26): switch to the language
+    /// model.
+    OsTooOld,
+    /// The local language-model server could not be started or stopped answering; the detail says
+    /// why. Switch to system translation, or fix the cause.
+    ServerFailed,
 }
 
 /// How serious an issue is.
