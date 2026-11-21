@@ -1,5 +1,8 @@
 //! Helpers shared by the egui_kittest integration tests.
 
+#[allow(dead_code)]
+pub mod layout_guard;
+
 use std::sync::{Mutex, MutexGuard};
 
 use egui_kittest::{Harness, HarnessBuilder};
