@@ -24,4 +24,12 @@ fn main() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{dir}");
         println!("cargo:rustc-env=PRXVC_TRANSCRIBE_LIB_DIR={dir}");
     }
+    // The `apple-translation` feature adds the Swift bridge library.
+    if std::env::var_os("CARGO_FEATURE_APPLE_TRANSLATION").is_some() {
+        let dir = std::env::var("DEP_PRXVC_APPLE_TRANSLATION_LIB_DIR").unwrap_or_else(|_| {
+            panic!("DEP_PRXVC_APPLE_TRANSLATION_LIB_DIR is not set by prxvc-apple-translation-sys")
+        });
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{dir}");
+        println!("cargo:rustc-env=PRXVC_APPLE_TRANSLATION_LIB_DIR={dir}");
+    }
 }

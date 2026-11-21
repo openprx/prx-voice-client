@@ -2,6 +2,7 @@
 //!
 //! * [`OpenAiChatMt`]: the streaming translator for OpenAI-compatible chat
 //!   endpoints, `llama-server` first (`openai_chat`).
+//! * `apple`: system translation, the translation port over Apple's on-device Translation framework.
 //! * `config`, `prompt`: its configuration, request body and prompt files.
 //! * `sse`: the incremental parser of the response stream (in `chat_http`, shared with the dialogue backend).
 //! * `output`, `assess`: the structural clean-up of the model's output and the
@@ -11,6 +12,7 @@
 //! * `clause_split`: the splitter from translated token stream to clauses (lives in `prxvc-media`, re-exported here).
 //! * `report`: typed failures, quality flags and the observer that receives them.
 
+pub mod apple;
 pub mod assess;
 pub mod config;
 pub mod openai_chat;

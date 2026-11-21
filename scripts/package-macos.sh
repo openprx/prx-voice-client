@@ -9,7 +9,8 @@
 #   --skip-build   reuse the binary already built for this profile and target
 #   --zip          also write dist/PRX-Voice-<version>-<arch>.zip (ditto, keeps signature)
 #   --native       build with the native runtime features (cargo features in PRXVC_NATIVE_FEATURES,
-#                  default "qwentts transcribe"), put the dynamic libraries the executable links into
+#                  default "qwentts transcribe"; "apple-translation" adds the system translation bridge,
+#                  a Swift library built with swiftc), put the dynamic libraries the executable links into
 #                  Contents/Frameworks, replace the development rpath by @executable_path/../Frameworks
 #                  and sign them with the executable's identity. Default builds are unchanged.
 #
@@ -232,8 +233,9 @@ if [ "$native" = 1 ]; then
   for feature in $native_features; do
     printf '%s\n' "$native_lines" | grep -q "^native: *$feature " \
       || die "--check reports no loadable $feature runtime"
-    [ -f "$contents/Frameworks/libprxvc_$feature.dylib" ] \
-      || die "libprxvc_$feature.dylib is not in Contents/Frameworks"
+    lib_stem="${feature//-/_}"  # apple-translation -> libprxvc_apple_translation.dylib
+    [ -f "$contents/Frameworks/libprxvc_$lib_stem.dylib" ] \
+      || die "libprxvc_$lib_stem.dylib is not in Contents/Frameworks"
   done
 fi
 

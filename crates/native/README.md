@@ -278,3 +278,38 @@ builds both runtimes (24 s clean).
   beyond the load check.
 - Pre-existing and outside this package: `cargo clippy --workspace --all-targets -- -D warnings` fails in
   `prxvc-models` and `cargo fmt --check` reports differences in other crates (both on the base commit too).
+
+## Apple translation bridge (`apple-translation-sys`)
+
+A third library, different in kind: not a vendored C++ runtime but a small first-party Swift library
+(`native/*.swift`, about 300 lines) with a C ABI (`native/prxvc_apple_translation.h`) over Apple's
+on-device Translation framework. Status: system translation, the default translation engine on macOS.
+
+| Crate | Library | Exports | Cargo feature |
+|---|---|---|---|
+| `apple-translation-sys` (`prxvc-apple-translation-sys`) | `libprxvc_apple_translation.dylib` | 11 `_prxat_*` symbols | `apple-translation` |
+
+Build: `build.rs` runs `swiftc` from the Command Line Tools (no Xcode, no cmake) with
+`-target <arch>-apple-macos<MACOSX_DEPLOYMENT_TARGET>` (14.4 unless set), `-swift-version 5`, `-O`,
+install name `@rpath/libprxvc_apple_translation.dylib`, `-exported_symbols_list native/exports.txt` and
+`-dead_strip`. The Translation framework is linked weakly (`-weak_framework`) and every use sits behind
+`#available(macOS 26.0)` (the strategy parameter behind `macOS 26.4`), so the app launches on macOS
+14.4 and the bridge answers `PRXAT_OS_TOO_OLD`, which the adapter turns into the typed problem
+"needs macOS 26". The library depends only on system libraries (`/usr/lib/swift`, Foundation,
+Translation), so the bundle check's dependency rule holds unchanged. The library is copied to
+`target/<profile>/native-libs/` like the others; `scripts/package-macos.sh --native` bundles, signs and
+checks it (`PRXVC_NATIVE_FEATURES="qwentts transcribe apple-translation"`), and `--check` prints
+`native: apple-translation bridge abi 1, ...`.
+
+Threading contract (also in the header and in the `-sys` crate docs):
+
+- Every function is thread-safe. `prxat_prepare`, `prxat_translate`, `prxat_availability` and
+  `prxat_create` block the calling thread until the answer, the timeout or `prxat_cancel`; never call them
+  from a device callback. Calls on one session are serialised; `prxat_cancel` may come from any thread.
+- The framework delivers its work through the **main dispatch queue**. The process's main thread must run
+  its run loop: the application does (winit/AppKit); a command-line tool or test binary calls
+  `prxat_run_main_loop` on its main thread and works on another thread (`crates/adapters/tests/apple_translation_live.rs`,
+  `call_harness`). Without it the framework never answers; the bridge detects this in about one second and
+  returns `PRXAT_NO_MAIN_LOOP`.
+- After a timeout the bridge replaces its internal framework session, so the next call starts clean.
+- Errors are codes plus a message; strings returned by the library are freed with `prxat_free`.

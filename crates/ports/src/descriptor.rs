@@ -87,6 +87,13 @@ pub struct ProviderDescriptor {
     pub sample_rates: Vec<SampleRate>,
     /// Where data goes.
     pub egress: Egress,
+    /// Translation only: whether the provider uses the previous clauses of the conversation
+    /// (`MtRequest::context`). `true` unless the provider declares otherwise.
+    pub supports_context: bool,
+    /// Translation only: whether the provider follows custom instructions and required term
+    /// translations (`MtRequest::glossary`, `MtRequest::strict_language`). `true` unless the
+    /// provider declares otherwise.
+    pub supports_instructions: bool,
 }
 
 /// A provider does not meet a requirement.
@@ -128,7 +135,18 @@ impl ProviderDescriptor {
             languages: Vec::new(),
             sample_rates: Vec::new(),
             egress: Egress::Local,
+            supports_context: true,
+            supports_instructions: true,
         }
+    }
+
+    /// Declare whether a translation provider uses conversation context and follows custom
+    /// instructions and required terms.
+    #[must_use]
+    pub fn with_text_guidance(mut self, context: bool, instructions: bool) -> Self {
+        self.supports_context = context;
+        self.supports_instructions = instructions;
+        self
     }
 
     /// Declare that partial hypotheses carry a stable prefix.
