@@ -378,9 +378,58 @@ pub struct NoticeView {
     pub last_played_s: Option<u32>,
 }
 
+/// What the window can offer when the translation engine has a problem. Each action is one
+/// `command::*` the app handles; `label_key` is its button text (i18n).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EngineAction {
+    /// Switch `call.translation_engine` to the language model and start its server.
+    SwitchToLlm,
+    /// Switch `call.translation_engine` to system translation and stop the server.
+    SwitchToSystem,
+    /// Open the System Settings pane where the translation languages are downloaded.
+    OpenTranslationLanguages,
+}
+
+impl EngineAction {
+    /// The i18n key of the button.
+    pub const fn label_key(self) -> &'static str {
+        match self {
+            Self::SwitchToLlm => "callwin.action.switch_to_llm",
+            Self::SwitchToSystem => "callwin.action.switch_to_system",
+            Self::OpenTranslationLanguages => "callwin.action.open_translation_languages",
+        }
+    }
+
+    /// The command to push when the button is clicked.
+    pub const fn command(self) -> &'static str {
+        match self {
+            Self::SwitchToLlm => command::SWITCH_TO_LLM,
+            Self::SwitchToSystem => command::SWITCH_TO_SYSTEM,
+            Self::OpenTranslationLanguages => command::OPEN_TRANSLATION_LANGUAGES,
+        }
+    }
+}
+
+/// Which engine translates the call, for the window's details and the actions next to an engine
+/// problem. The window shows `engine_key` (and `no_context` as a note) in the details, and one
+/// button per entry of `actions` under the issue.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TranslationView {
+    /// `"system"` or `"llm"`; empty before the app knows.
+    pub engine: String,
+    /// The i18n key of the engine's name (`callwin.engine.system`, `callwin.engine.llm`).
+    pub engine_key: &'static str,
+    /// The engine translates each sentence on its own: show `callwin.engine.no_context`.
+    pub no_context: bool,
+    /// What the user can do about the engine's problem; empty when it has none.
+    pub actions: Vec<EngineAction>,
+}
+
 /// Everything the control shows.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CallPanel {
+    /// The translation engine and the actions for its problems.
+    pub translation: TranslationView,
     /// Translation was requested for this call.
     pub translate_enabled: bool,
     /// The call machine's phase.
@@ -461,6 +510,12 @@ pub mod command {
     /// End the assistant session and, once it has let go of the microphone, start call mode with
     /// the options of the start that was refused.
     pub const END_ASSISTANT_AND_START: &str = "CallEndAssistantAndStart";
+    /// Switch the translation engine to the language model.
+    pub const SWITCH_TO_LLM: &str = "CallSwitchToLlm";
+    /// Switch the translation engine to system translation.
+    pub const SWITCH_TO_SYSTEM: &str = "CallSwitchToSystem";
+    /// Open the pane where the languages of system translation are downloaded.
+    pub const OPEN_TRANSLATION_LANGUAGES: &str = "CallOpenTranslationLanguages";
 }
 
 #[cfg(test)]

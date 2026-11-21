@@ -180,7 +180,7 @@ impl Default for UiSettings {
             call_disclosure: true,
             call_captions_size: "medium".to_owned(),
             call_barge_in: true,
-            call_translation_engine: "llm".to_owned(),
+            call_translation_engine: "system".to_owned(),
             assistant_language: String::new(),
             assistant_voice: "preset".to_owned(),
             assistant_voice_preset: String::new(),

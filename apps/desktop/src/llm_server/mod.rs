@@ -27,11 +27,9 @@ mod record;
 #[cfg(test)]
 mod tests;
 
-#[allow(unused_imports)] // the settings status uses them in the next commit
 pub(crate) use self::core::{ServerState, Snapshot};
 pub(crate) use boot::{global, install, manages, shutdown};
-#[allow(unused_imports)]
-pub(crate) use handle::{LlmServer, ServerLease};
+pub(crate) use handle::ServerLease;
 pub(crate) use problem::ServerProblem;
 
 use std::time::Duration;

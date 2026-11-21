@@ -18,6 +18,8 @@ const CAPTURE: [&str; 2] = ["hands_free", "push_to_talk"];
 
 pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
     let tk = cx.tk;
+    crate::settings_engine::rows(ui, cx);
+    ui.add_space(crate::theme::space::S12);
     let language_options = labels(&[
         "settings.call.lang.follow",
         "settings.call.lang.zh",

@@ -89,7 +89,6 @@ impl LlmServer {
     }
 
     /// Try again after a failure.
-    #[allow(dead_code)] // the settings' "Try again" uses it in the next commit
     pub(crate) fn retry(&self) -> u64 {
         let mut d = self.inner.demand.lock();
         d.attempt += 1;
@@ -98,7 +97,6 @@ impl LlmServer {
     }
 
     /// The state now.
-    #[allow(dead_code)] // the settings status uses it in the next commit
     pub(crate) fn snapshot(&self) -> Snapshot {
         self.inner.shared.snapshot.lock().clone()
     }

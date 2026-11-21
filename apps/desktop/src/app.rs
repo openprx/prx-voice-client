@@ -168,6 +168,10 @@ impl eframe::App for PrxVoiceApp {
             );
         }
 
+        // The engine commands of the Call translation window become settings edits (or open the
+        // System Settings pane); then the settings below are saved as usual.
+        crate::call_engine::intercept(&mut self.ui_state);
+
         // Store settings edits through the configuration's atomic update, run the
         // window's commands, remember the window when it closed.
         settings_host::after_frame(

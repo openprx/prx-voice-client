@@ -126,6 +126,10 @@ pub(crate) fn system_pane_url(pane: SystemPane, os: &str) -> Option<&'static str
         ("macos", SystemPane::AudioCapture) => {
             Some("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
         }
+        ("macos", SystemPane::TranslationLanguages) => {
+            // Language & Region; the Translation Languages list is a button on that pane.
+            Some("x-apple.systempreferences:com.apple.Localization-Settings.extension")
+        }
         ("windows", SystemPane::Microphone) => Some("ms-settings:privacy-microphone"),
         _ => None,
     }

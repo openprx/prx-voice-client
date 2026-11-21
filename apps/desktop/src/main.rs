@@ -29,6 +29,7 @@
 mod app;
 mod assistant;
 mod bundle;
+mod call_engine;
 mod call_kit;
 #[cfg(target_os = "macos")]
 mod call_host;

@@ -356,7 +356,11 @@ fn spawn(
         host: Box::new(RealCallHost::new(host_config)),
         clock: Arc::new(SystemClock::new()),
         ownership,
-        sink: Box::new(move |snapshot| shared.set_call_panel(panel_of(snapshot, &trace))),
+        sink: Box::new(move |snapshot| {
+            let mut panel = panel_of(snapshot, &trace);
+            crate::call_engine::annotate(&mut panel);
+            shared.set_call_panel(panel);
+        }),
         settings,
     });
     match spawned {

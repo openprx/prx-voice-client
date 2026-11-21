@@ -57,6 +57,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     // First thing that touches audio: put the default input back if the last run
     // ended in call mode without restoring it (pipeline-design PD-4.2.3).
     crate::routing_recovery::recover_at_start(&shared);
+    crate::call_engine::set(&config.call.translation_engine);
     start_llm_server(&config);
     let call = crate::call_compose::CallControl::start(&shared, &config);
     let handle = spawn_assistant_thread(shared.clone(), call.clone());

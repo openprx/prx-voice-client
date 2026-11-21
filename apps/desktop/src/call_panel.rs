@@ -282,6 +282,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         }
     };
     CallPanel {
+        translation: prxvc_desktop_ui::call_view::TranslationView::default(),
         translate_enabled: s.translate_enabled,
         phase: phase(&s.state),
         in_call_mode: s.routing.in_call_mode,

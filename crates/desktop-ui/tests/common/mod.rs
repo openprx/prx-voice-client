@@ -130,6 +130,10 @@ fn device(uid: &str, name: &str, transport: TransportView, is_default: bool) -> 
 pub fn rich_data() -> SettingsData {
     SettingsData {
         loaded: true,
+        engine: EngineData {
+            system: SystemEngineView::Ready,
+            server: ModelServerView::Stopped,
+        },
         audio: AudioData {
             inputs: vec![
                 device("builtin-mic", "MacBook Pro Microphone", TransportView::BuiltIn, true),
