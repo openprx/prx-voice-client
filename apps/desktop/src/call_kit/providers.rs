@@ -25,7 +25,7 @@ use prxvc_session::pipeline::PipelineProviders;
 
 use super::config::{ConfigSource, paths_for};
 use super::models::StoreModels;
-use super::params::pipeline_params;
+use super::params::pipeline_params_for_engine;
 use super::problems::{build_fault, problem_fault, role_of, unreachable_fault};
 
 /// How long the translation server may take to accept a connection.
@@ -248,12 +248,13 @@ pub(crate) fn build_directions(
         let tts = registry
             .build_tts(&d.tts.primary)
             .map_err(|e| fail(ProviderRole::Tts, &e))?;
-        let params = pipeline_params(
+        let params = pipeline_params_for_engine(
             config,
             d.direction,
             (d.source, d.target),
             d.tts.primary.voice.selection(),
             plan.recognition,
+            mt.descriptor().supports_context,
         );
         out.push(DirectionBuild {
             params,

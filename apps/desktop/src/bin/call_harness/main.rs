@@ -66,7 +66,7 @@ use prxvc_media::{Direction, Lang, SystemClock};
 use prxvc_session::EarlyCommit;
 
 use call_kit::config::load_current;
-use call_kit::params::pipeline_params;
+use call_kit::params::pipeline_params_for_engine;
 use call_kit::providers::{ProviderHost, build_directions};
 use report::{UtteranceRun, table};
 use run::{Output, Rig, run_utterance, speech_bounds};
@@ -326,7 +326,9 @@ fn execute(o: &Options) -> Result<bool, String> {
         config.pipeline = prxvc_config::PipelineConfig::default();
     }
     if let Some(mode) = o.commit {
+        // An explicit mode applies to every engine, with or without context.
         config.pipeline.early_commit = mode.as_str().to_owned();
+        config.pipeline.early_commit_without_context = mode.as_str().to_owned();
     }
     // The languages of the run, whatever the interface language derives them to.
     config.call.self_language.clone_from(&o.own);
@@ -407,12 +409,20 @@ fn execute(o: &Options) -> Result<bool, String> {
             .join("\n")
     })?;
     let build = built.pop().ok_or("nothing was built")?;
-    let params = pipeline_params(
+    let params = pipeline_params_for_engine(
         &config,
         o.direction,
         (direction_plan.source, direction_plan.target),
         direction_plan.tts.primary.voice.selection(),
         plan.recognition,
+        build.providers.mt.descriptor().supports_context,
+    );
+    println!(
+        "early commit in force: {} (configured {}, without context {}; the translation engine {} context)",
+        params.commit.early.as_str(),
+        config.pipeline.early_commit,
+        config.pipeline.early_commit_without_context,
+        if build.providers.mt.descriptor().supports_context { "uses" } else { "does not use" },
     );
     if o.vad_profile {
         // Only the VAD: voiced time, longest voiced run and its level, per input.

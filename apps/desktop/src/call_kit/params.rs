@@ -47,6 +47,38 @@ fn early_commit(setting: &str) -> EarlyCommit {
     })
 }
 
+/// The early-commit behaviour in force: the configured one, held to the less eager of it and
+/// `pipeline.early_commit_without_context` when the translation engine takes no conversation
+/// context. An engine that translates every unit on its own gets the whole clause or nothing: a
+/// fragment cut mid-clause is translated without its neighbours and comes back as a few odd words.
+pub(crate) fn effective_early_commit(
+    p: &prxvc_config::PipelineConfig,
+    mt_uses_context: bool,
+) -> EarlyCommit {
+    let configured = early_commit(&p.early_commit);
+    if mt_uses_context {
+        return configured;
+    }
+    let limit = EarlyCommit::parse(&p.early_commit_without_context).unwrap_or_else(|| {
+        tracing::warn!(
+            key = "pipeline.early_commit_without_context",
+            value = p.early_commit_without_context.as_str(),
+            "unknown early commit setting; using \"punctuation\""
+        );
+        EarlyCommit::Punctuation
+    });
+    let eagerness = |m: EarlyCommit| match m {
+        EarlyCommit::SegmentEnd => 0,
+        EarlyCommit::Punctuation => 1,
+        EarlyCommit::Chunk => 2,
+    };
+    if eagerness(limit) < eagerness(configured) {
+        limit
+    } else {
+        configured
+    }
+}
+
 /// What the listener of each direction hears while it is paused or failed (`call.*_when_paused`, `call.*_on_failure`).
 pub(crate) fn output_policy(config: &AppConfig, direction: Direction) -> OutputPolicy {
     let call = &config.call;
@@ -70,13 +102,28 @@ fn recognition_mode(mode: PlannedMode) -> RecognitionMode {
     }
 }
 
-/// The parameters of the pipeline of `direction`, translating `source` into `target` with `voice`.
+/// The parameters of the pipeline of `direction`, translating `source` into `target` with `voice`,
+/// for a translation engine that uses the conversation context.
+#[cfg(test)]
 pub(crate) fn pipeline_params(
+    config: &AppConfig,
+    direction: Direction,
+    langs: (Lang, Lang),
+    voice: VoiceSelection,
+    mode: PlannedMode,
+) -> PipelineParams {
+    pipeline_params_for_engine(config, direction, langs, voice, mode, true)
+}
+
+/// The parameters of the pipeline of `direction`, translating `source` into `target` with `voice`;
+/// `mt_uses_context` is the translation provider's declared `supports_context`.
+pub(crate) fn pipeline_params_for_engine(
     config: &AppConfig,
     direction: Direction,
     (source, target): (Lang, Lang),
     voice: VoiceSelection,
     mode: PlannedMode,
+    mt_uses_context: bool,
 ) -> PipelineParams {
     let p = &config.pipeline;
     let mut params = PipelineParams::new(direction, source, target, voice);
@@ -87,7 +134,7 @@ pub(crate) fn pipeline_params(
         long_segment_pause: ms(p.long_segment_pause_ms),
         max_clause: secs(p.max_clause_s),
         max_segment: secs(p.max_segment_s),
-        early: early_commit(&p.early_commit),
+        early: effective_early_commit(p, mt_uses_context),
         chunk_chars: p.early_chunk_chars as usize,
         chunk_words: p.early_chunk_words as usize,
         early_max_wait: ms(p.early_max_wait_ms),
@@ -216,6 +263,40 @@ mod tests {
         assert!(!params.backlog.enabled);
         assert_eq!(params.backlog.max_backlog, Duration::from_millis(9_000));
         assert_eq!(params.backlog.max_lag, Duration::from_millis(12_000));
+    }
+
+    #[test]
+    fn an_engine_without_context_never_gets_fragments_cut_mid_clause() {
+        let mut config = AppConfig::default();
+        let early = |config: &AppConfig, context: bool| {
+            pipeline_params_for_engine(
+                config,
+                Direction::Outgoing,
+                (Lang::Zh, Lang::En),
+                voice(),
+                PlannedMode::Streaming,
+                context,
+            )
+            .commit
+            .early
+        };
+        // The defaults: chunk for an engine with context, punctuation without.
+        assert_eq!(early(&config, true), EarlyCommit::Chunk);
+        assert_eq!(early(&config, false), EarlyCommit::Punctuation);
+        // An explicit override restores chunk for every engine.
+        config.pipeline.early_commit_without_context = "chunk".into();
+        assert_eq!(early(&config, false), EarlyCommit::Chunk);
+        // The less eager of the two settings wins.
+        config.pipeline.early_commit = "segment_end".into();
+        assert_eq!(early(&config, false), EarlyCommit::SegmentEnd);
+        assert_eq!(early(&config, true), EarlyCommit::SegmentEnd);
+        config.pipeline.early_commit = "chunk".into();
+        config.pipeline.early_commit_without_context = "segment_end".into();
+        assert_eq!(early(&config, false), EarlyCommit::SegmentEnd);
+        assert_eq!(early(&config, true), EarlyCommit::Chunk);
+        // An unknown spelling is reported and means punctuation.
+        config.pipeline.early_commit_without_context = "often".into();
+        assert_eq!(early(&config, false), EarlyCommit::Punctuation);
     }
 
     #[test]

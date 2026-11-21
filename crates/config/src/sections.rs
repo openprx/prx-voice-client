@@ -412,6 +412,12 @@ pub struct PipelineConfig {
     /// `"punctuation"` (also at sentence-final and clause-level marks) or `"chunk"` (also, with no
     /// mark, once the stable text has `early_chunk_chars` or `early_chunk_words` units).
     pub early_commit: String,
+    /// The most eager early commit allowed when the translation engine has no conversation context
+    /// (the system translation translates each unit on its own): `"segment_end"`, `"punctuation"`
+    /// or `"chunk"`. The mode in force is the less eager of this and `early_commit`, so the default
+    /// `"punctuation"` keeps such an engine from receiving fragments cut mid-clause; `"chunk"`
+    /// restores the same behaviour for every engine. An engine with context is not affected.
+    pub early_commit_without_context: String,
     /// Fewest stable Chinese characters that make a chunk when no mark is available.
     pub early_chunk_chars: u32,
     /// Fewest stable English words that make a chunk when no mark is available.
@@ -490,6 +496,7 @@ impl Default for PipelineConfig {
             min_speech_dbfs: -75.0,
             pad_ms: 200,
             early_commit: "chunk".to_owned(),
+            early_commit_without_context: "punctuation".to_owned(),
             early_chunk_chars: 8,
             early_chunk_words: 6,
             early_max_wait_ms: 2_500,
