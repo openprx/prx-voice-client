@@ -183,9 +183,11 @@ impl TimeScaler {
             .map_or(self.origin, |p| p + self.hop)
             .min((self.nominal.round() as usize).saturating_sub(self.delta));
         if keep_from > self.origin + 2048 {
-            let cut = keep_from - self.origin;
+            // While a stream is finishing, the frame position can already lie past the end of the
+            // input (the rest is read as silence): never cut more than is held.
+            let cut = (keep_from - self.origin).min(self.buf.len());
             self.buf.drain(..cut);
-            self.origin = keep_from;
+            self.origin += cut;
         }
     }
 }
@@ -334,6 +336,41 @@ mod tests {
             out.clear();
             s.process(&block, 1.25, &mut out);
             assert!(s.buf.len() < 20_000, "{}", s.buf.len());
+        }
+    }
+
+    /// Small deterministic generator for the randomised tests.
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            self.0 >> 33
+        }
+        fn below(&mut self, n: u64) -> usize {
+            (self.next() % n) as usize
+        }
+    }
+
+    #[test]
+    fn no_stream_length_chunking_or_speed_makes_finish_panic() {
+        // A stream that ends while the frame position is near the end of a buffer that is still
+        // longer than the 2048 samples kept back used to cut past the end of the buffer.
+        let mut rng = Lcg(7);
+        for round in 0..60 {
+            let mut s = TimeScaler::new(RATE);
+            let mut out = Vec::new();
+            let total = rng.below(30_000);
+            let speed = 1.0 + rng.below(1_000) as f32 / 1_000.0;
+            let mut left = total;
+            while left > 0 {
+                let n = (1 + rng.below(9_000)).min(left);
+                let block: Vec<f32> = (0..n).map(|i| 0.4 * ((i + round) as f32 * 0.07).sin()).collect();
+                s.process(&block, speed, &mut out);
+                left -= n;
+            }
+            s.finish(speed, &mut out);
+            assert!(s.is_empty());
+            assert!(out.len() <= total + 2_200, "round {round}: {} out of {total}", out.len());
         }
     }
 }

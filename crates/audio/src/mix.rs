@@ -370,6 +370,8 @@ fn gains_of(cfg: &MixerConfig, mode: MixMode) -> (f32, f32) {
 }
 
 #[cfg(test)]
+mod fuzz_tests;
+#[cfg(test)]
 mod gap_tests;
 #[cfg(test)]
 mod shape_tests;

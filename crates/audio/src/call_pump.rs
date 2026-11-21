@@ -530,7 +530,26 @@ struct Worker {
 }
 
 impl Worker {
+    /// The thread's body. A panic in the loop (or in a closure the pipeline lent the pump) never
+    /// leaves the endpoints running: the pump is marked failed, the loss is reported like a lost
+    /// source, and both endpoints are released.
     fn run(mut self) {
+        let looped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.pump_loop()));
+        if looped.is_err() {
+            tracing::error!(pump = %self.config.name, "the pump loop panicked; the path is closed");
+            self.events.push(PumpEvent::SourceLost {
+                reason: "the pump loop panicked".to_owned(),
+            });
+            self.shared.failed.store(true, Ordering::Release);
+        }
+        let closed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.close()));
+        if closed.is_err() {
+            tracing::error!(pump = %self.config.name, "closing the pump's endpoints panicked");
+            self.shared.running.store(false, Ordering::Release);
+        }
+    }
+
+    fn pump_loop(&mut self) {
         let mut frames = Vec::new();
         let mut meter = LevelMeter::new();
         let mut mix_failures = 0u64;
@@ -576,7 +595,6 @@ impl Worker {
                 }
             }
         }
-        self.close();
     }
 
     /// Whether the echo gate keeps this loop's frames from the mixer and the pipeline.

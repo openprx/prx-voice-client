@@ -124,6 +124,7 @@ fn init_logging() {
         .map(|p| p.logs_dir)
         .filter(|dir| prxvc_config::paths::create_private_dir_all(dir).is_ok());
     let log_file = logging::init(logs_dir.as_deref());
+    prxvc_observe::panic_report::install();
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         log_file = ?log_file,

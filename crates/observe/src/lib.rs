@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tracing_subscriber::EnvFilter;
 
 pub mod metrics;
+pub mod panic_report;
 pub mod spans;
 
 // ---------------------------------------------------------------------------

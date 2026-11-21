@@ -698,3 +698,40 @@ fn the_mixer_reports_the_level_of_what_it_outputs() {
     assert!(stats.output_level.peak > 0.45, "{:?}", stats.output_level);
     assert!(stats.translated_level.peak > 0.45);
 }
+
+#[test]
+fn a_panic_in_a_lent_closure_fails_the_pump_and_still_releases_both_endpoints() {
+    use prxvc_media::SystemClock;
+
+    let (sink, _out, sink_stopped) = CollectSink::new();
+    let source = FakeAudioSource::new(RATE, ramp_frames(50)).with_frames_per_read(1);
+    let mut pump = Pump::start(spec(
+        "outgoing",
+        Box::new(source),
+        PumpRoute::Mix {
+            mixer: mixer(MixerConfig::default()),
+            sink: Box::new(sink),
+        },
+    ))
+    .expect("start");
+    let _feed = pump
+        .connect(PumpLink {
+            tap: FrameTap {
+                rate: SampleRate::HZ_16000,
+                sink: Box::new(|_| panic!("a closure of the pipeline panicked")),
+            },
+            on_playback: Box::new(|_| {}),
+            clock: Arc::new(SystemClock::new()),
+        })
+        .expect("connect");
+    wait_until("the pump to end", || !pump.stats().running);
+    assert!(pump.stats().failed);
+    assert!(sink_stopped.load(Ordering::SeqCst), "the sink is released");
+    let events = pump.take_events();
+    assert!(
+        matches!(events.as_slice(), [PumpEvent::SourceLost { reason }] if reason.contains("panicked")),
+        "{events:?}"
+    );
+    // The thread ended normally: joining it reports no panic and stopping is harmless.
+    assert!(pump.stop(Duration::from_secs(2)).is_ok());
+}
