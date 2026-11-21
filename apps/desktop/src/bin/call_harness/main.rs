@@ -20,6 +20,8 @@
 //!   `config.toml` keeps the values of the release that wrote it).
 //! * `--own-set DIR` takes the rows of `DIR/own.tsv` in the set's language (id, lang, voice, text;
 //!   `DIR/own/<id>.wav`); `--no-barge-in` sets `call.barge_in = false` for the run.
+//! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
+//!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
 //!   records it (by UID, no default device changed) and recognises the recording again: the round trip.
 //! * Every utterance runs at the pace of real time with 0.3 s of silence before and 2 s after.
@@ -33,6 +35,7 @@ mod run;
 mod sinks;
 mod source;
 mod sysinfo;
+mod vad_profile;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -76,6 +79,7 @@ struct Options {
     own_set: Option<PathBuf>,
     own: String,
     peer: String,
+    vad_profile: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -98,6 +102,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         own_set: None,
         own: "zh".into(),
         peer: "en".into(),
+        vad_profile: false,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -145,6 +150,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--default-pipeline" => o.default_pipeline = true,
             "--subset" => o.subset = Some(value(arg, &mut it)?),
             "--no-backlog-skip" => o.no_backlog_skip = true,
+            "--vad-profile" => o.vad_profile = true,
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -229,7 +235,10 @@ fn load_items(o: &Options) -> Result<Vec<Item>, String> {
     if let Some(subset) = &o.subset {
         let items = take(subset, o.count);
         if items.is_empty() {
-            return Err(format!("no utterances of subset {subset} in {}", manifest.display()));
+            return Err(format!(
+                "no utterances of subset {subset} in {}",
+                manifest.display()
+            ));
         }
         return Ok(items);
     }
@@ -312,7 +321,11 @@ fn execute(o: &Options) -> Result<bool, String> {
     );
     println!(
         "backlog skipping {}, max backlog {} ms, max lag {} ms",
-        if config.pipeline.backlog_skipping { "on" } else { "off" },
+        if config.pipeline.backlog_skipping {
+            "on"
+        } else {
+            "off"
+        },
         config.pipeline.max_backlog_ms,
         config.pipeline.max_lag_ms
     );
@@ -332,6 +345,27 @@ fn execute(o: &Options) -> Result<bool, String> {
         direction_plan.tts.primary.voice.selection(),
         plan.recognition,
     );
+    if o.vad_profile {
+        // Only the VAD: voiced time, longest voiced run and its level, per input.
+        println!("id\tvoiced_ms\tlongest_run_ms\trun_rms_dbfs\tpeak_frame_dbfs");
+        for item in &items {
+            let rec = Recording::read(&item.path)?;
+            let p = vad_profile::profile(
+                build.providers.vad.as_ref(),
+                &rec,
+                config.pipeline.vad_threshold,
+            )?;
+            println!(
+                "{}\t{:.0}\t{:.0}\t{}\t{:.1}",
+                item.id,
+                p.voiced_ms,
+                p.longest_run_ms,
+                p.run_rms_dbfs.map_or("-".to_owned(), |v| format!("{v:.1}")),
+                p.peak_frame_dbfs
+            );
+        }
+        return Ok(true);
+    }
     let out_dir = o.out.join(&o.tag);
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let output = if o.vmic {
@@ -365,14 +399,25 @@ fn execute(o: &Options) -> Result<bool, String> {
     let mut runs: Vec<UtteranceRun> = Vec::new();
     for item in &items {
         let rec = Recording::read(&item.path)?;
-        let bounds = speech_bounds(build.providers.vad.as_ref(), &rec)?;
-        eprintln!(
-            "{}: {:.1} s, speech {:.2}..{:.2} s",
-            item.id,
-            rec.seconds(),
-            bounds.0,
-            bounds.1
-        );
+        let found = speech_bounds(build.providers.vad.as_ref(), &rec)?;
+        // A noise-only input has no speech to time: the run still shows what the pipeline makes of it.
+        let bounds = found.unwrap_or((0.0, 0.0));
+        match found {
+            Some(b) => eprintln!(
+                "{}: {:.1} s, speech {:.2}..{:.2} s",
+                item.id,
+                rec.seconds(),
+                b.0,
+                b.1
+            ),
+            None => {
+                eprintln!(
+                    "{}: {:.1} s, no frame reaches the speech probability 0.5",
+                    item.id,
+                    rec.seconds()
+                );
+            }
+        }
         match run_utterance(&rig, &item.id, &item.reference, &rec, bounds) {
             Ok(r) => {
                 println!(

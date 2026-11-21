@@ -54,8 +54,12 @@ pub(crate) struct Rig {
     pub jitter: Duration,
 }
 
-/// Speech start and end in the recording, from the VAD the pipeline uses (probability of at least 0.5).
-pub(crate) fn speech_bounds(vad: &dyn VadProvider, rec: &Recording) -> Result<(f64, f64), String> {
+/// Speech start and end in the recording, from the VAD the pipeline uses (probability of at least
+/// 0.5); `None` when no frame reaches it (a noise-only input).
+pub(crate) fn speech_bounds(
+    vad: &dyn VadProvider,
+    rec: &Recording,
+) -> Result<Option<(f64, f64)>, String> {
     let mut engine = vad.open().map_err(|e| e.to_string())?;
     let rate = engine.rate();
     let samples = if rec.rate == rate {
@@ -76,8 +80,8 @@ pub(crate) fn speech_bounds(vad: &dyn VadProvider, rec: &Recording) -> Result<(f
         }
     }
     match (first, last) {
-        (Some(a), Some(b)) => Ok((a as f64 * frame_s, (b + 1) as f64 * frame_s)),
-        _ => Err("the VAD finds no speech in the recording".into()),
+        (Some(a), Some(b)) => Ok(Some((a as f64 * frame_s, (b + 1) as f64 * frame_s))),
+        _ => Ok(None),
     }
 }
 
