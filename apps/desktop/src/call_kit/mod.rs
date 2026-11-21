@@ -14,6 +14,7 @@
 
 pub(crate) mod config;
 pub(crate) mod disclosure;
+pub(crate) mod model_server;
 pub(crate) mod models;
 pub(crate) mod params;
 pub(crate) mod problems;

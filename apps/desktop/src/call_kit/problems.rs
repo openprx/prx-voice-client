@@ -85,6 +85,14 @@ pub(crate) fn build_fault(error: &BuildError) -> HostFault {
     HostFault::new(CallErrorCode::Provider(issue), error.to_string())
 }
 
+/// The managed local model server could not be provided; `detail` is the manager's own sentence.
+pub(crate) fn server_fault(detail: &str) -> HostFault {
+    HostFault::new(
+        CallErrorCode::Provider(ProviderIssue::ServerFailed),
+        detail.to_owned(),
+    )
+}
+
 /// The translation server does not answer at `base_url`.
 pub(crate) fn unreachable_fault(base_url: &str, reason: &str) -> HostFault {
     HostFault::new(

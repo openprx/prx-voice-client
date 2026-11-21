@@ -417,7 +417,14 @@ fn run_write(manager: &AppConfigManager, job: WriteJob) -> WriteResult {
     match job {
         WriteJob::Settings { before, after } => {
             match manager.update(|c| settings::apply_changes(c, &before, &after)) {
-                Ok(_) => WriteResult::Saved,
+                Ok(_) => {
+                    // Selecting the language model starts the model server, selecting system
+                    // translation stops it.
+                    if before.call_translation_engine != after.call_translation_engine {
+                        crate::llm_server::on_engine_changed(&after.call_translation_engine);
+                    }
+                    WriteResult::Saved
+                }
                 Err(e) => WriteResult::SettingsFailed {
                     before,
                     after,

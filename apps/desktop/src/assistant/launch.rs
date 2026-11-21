@@ -69,10 +69,13 @@ impl Launcher for RealLauncher {
         };
         let handle = start(deps, params).map_err(|e| vec![issues::from_start_error(&e)])?;
         let registry = prepared.registry;
+        // Held until the session has ended: the model server may then idle out.
+        let server = prepared.server;
         Ok(Launched {
             handle,
             devices: Some(devices),
             on_end: Some(Box::new(move || {
+                drop(server);
                 let live = registry.live_engines();
                 tracing::info!(
                     ?live,

@@ -41,6 +41,7 @@ mod diagnostics;
 mod driver_install;
 mod event_map;
 mod hotkey;
+mod llm_server;
 mod logging;
 mod native_libs;
 mod persistence;

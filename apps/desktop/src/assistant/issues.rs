@@ -33,6 +33,15 @@ pub(crate) fn dialogue_down(base_url: &str, reason: &str) -> AssistantIssue {
     )
 }
 
+/// The managed local model server could not be provided for the dialogue.
+pub(crate) fn server_failed(detail: &str) -> AssistantIssue {
+    make(
+        "server_failed",
+        detail.to_owned(),
+        IssueAction::OpenAssistantSettings,
+    )
+}
+
 /// The page a problem of `role` is fixed on when it is a matter of settings.
 fn settings_action(role: Option<CallRole>) -> IssueAction {
     if role == Some(CallRole::Dialogue) {

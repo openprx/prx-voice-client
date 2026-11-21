@@ -28,6 +28,7 @@ pub struct AppConfig {
     pub hotkeys: HotkeysConfig,
     pub models: ModelsConfig,
     pub providers: ProvidersConfig,
+    pub llm_server: LlmServerConfig,
     pub network_policy: NetworkPolicyConfig,
 }
 
@@ -48,6 +49,7 @@ impl Default for AppConfig {
             hotkeys: HotkeysConfig::default(),
             models: ModelsConfig::default(),
             providers: ProvidersConfig::default(),
+            llm_server: LlmServerConfig::default(),
             network_policy: NetworkPolicyConfig::default(),
         }
     }

@@ -50,6 +50,8 @@ impl eframe::App for PrxVoiceApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.call.shutdown();
         settings_host::on_exit(&self.ui_state);
+        // Stops the model server we started, if any (an adopted one is left alone).
+        crate::llm_server::shutdown();
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

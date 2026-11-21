@@ -7,6 +7,22 @@ use crate::app::PrxVoiceApp;
 use crate::config_load::{app_paths, initialize_config};
 use crate::{hotkey, settings, tray};
 
+/// Start the manager of the local model server, and keep the server running when the language
+/// model is the selected translation engine.
+fn start_llm_server(config: &prxvc_config::AppConfig) {
+    let Some(paths) = crate::config_load::app_paths() else {
+        tracing::warn!("no application directories: the local model server is not managed");
+        return;
+    };
+    crate::llm_server::install(config, paths);
+    crate::call_kit::model_server::install(|provider, base_url| {
+        crate::llm_server::hold_for(provider, base_url)
+            .map(|lease| lease.map(|l| Box::new(l) as crate::call_kit::model_server::Hold))
+            .map_err(|problem| problem.to_string())
+    });
+    crate::llm_server::on_engine_changed(&config.call.translation_engine);
+}
+
 /// Bootstrap the application: install fonts and theme, load the configuration,
 /// create shared state and spawn the engine runtime.
 pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
@@ -41,6 +57,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     // First thing that touches audio: put the default input back if the last run
     // ended in call mode without restoring it (pipeline-design PD-4.2.3).
     crate::routing_recovery::recover_at_start(&shared);
+    start_llm_server(&config);
     let call = crate::call_compose::CallControl::start(&shared, &config);
     let handle = spawn_assistant_thread(shared.clone(), call.clone());
 

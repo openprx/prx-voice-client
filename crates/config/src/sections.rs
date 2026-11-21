@@ -343,6 +343,29 @@ impl Default for CallConfig {
     }
 }
 
+/// `[llm_server]`: the local `llama-server` the application starts and stops by itself for the
+/// language-model engine and the assistant's dialogue (the built-in `local-llama-server` provider).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmServerConfig {
+    /// Path of the `llama-server` binary; empty searches `/opt/homebrew/bin`, `/usr/local/bin`
+    /// and `PATH`.
+    pub binary: String,
+    /// Seconds the server keeps running after the last consumer released it while the engine is
+    /// not the language model (the assistant's dialogue, for example). The language-model
+    /// engine keeps it running without a limit.
+    pub idle_stop_s: u32,
+}
+
+impl Default for LlmServerConfig {
+    fn default() -> Self {
+        Self {
+            binary: String::new(),
+            idle_stop_s: 60,
+        }
+    }
+}
+
 /// `[pipeline]`: tuning of the call-translation pipeline (segmentation,
 /// commit rules, buffers). Shown under Advanced settings only. These keys are
 /// not written into an existing file by the migration, so a better default

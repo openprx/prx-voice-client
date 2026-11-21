@@ -114,6 +114,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "settings.engine.mirror",
         "Translation engine: {0}. Change it under Call translation.",
     ),
+    (
+        "assistant.issue.server_failed",
+        "The local language model server could not start or stopped answering. See the reason below.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -231,6 +235,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "settings.engine.mirror",
         "\u{7ffb}\u{8bd1}\u{5f15}\u{64ce}\u{ff1a}{0}\u{3002}\u{53ef}\u{5728}\u{201c}\u{901a}\u{8bdd}\u{7ffb}\u{8bd1}\u{201d}\u{4e2d}\u{66f4}\u{6539}\u{3002}",
+    ),
+    (
+        "assistant.issue.server_failed",
+        "\u{672c}\u{5730}\u{8bed}\u{8a00}\u{6a21}\u{578b}\u{670d}\u{52a1}\u{65e0}\u{6cd5}\u{542f}\u{52a8}\u{6216}\u{5df2}\u{4e0d}\u{518d}\u{54cd}\u{5e94}\u{3002}\u{8bf7}\u{67e5}\u{770b}\u{4e0b}\u{65b9}\u{7684}\u{539f}\u{56e0}\u{3002}",
     ),
 ];
 

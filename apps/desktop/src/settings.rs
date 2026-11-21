@@ -733,6 +733,7 @@ mod tests {
         ("providers.active", "role choices belong to the provider editor package"),
         ("providers.fallback", "role choices belong to the provider editor package"),
         ("providers.entries", "provider entries belong to the provider editor package"),
+        ("llm_server.", "the local model server's binary path and idle time: set in the config file; the engine choice and the server's status are in the window"),
         ("models.skipped_updates", "set by the model update dialog (model manager package)"),
     ];
 

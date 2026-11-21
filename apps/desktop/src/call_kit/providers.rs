@@ -36,6 +36,8 @@ pub(crate) struct ProviderHost {
     source: ConfigSource,
     directions: Vec<Direction>,
     registry: Option<Arc<ProviderRegistry>>,
+    /// The hold on the local model server while the call uses it as its translation engine.
+    server: Option<super::model_server::Hold>,
     /// Directories to use instead of the platform's (tests).
     paths: Option<AppPaths>,
 }
@@ -47,6 +49,7 @@ impl ProviderHost {
             source,
             directions,
             registry: None,
+            server: None,
             paths: None,
         }
     }
@@ -108,6 +111,7 @@ impl ProviderHost {
         for warning in &plan.warnings {
             tracing::warn!(%warning, "a fallback provider cannot be used");
         }
+        self.server = hold_model_server(&plan.directions)?;
         check_servers(&plan.directions)?;
         let built = build_directions(&registry, &config, &plan);
         // Keep the registry only when something was built, so that `release` can report the engines.
@@ -118,6 +122,8 @@ impl ProviderHost {
 
     /// Let go of the registry after the call ended and report which engines are still alive.
     pub(crate) fn release(&mut self) -> LiveEngines {
+        // The call is over: the model server may idle out (or keep running for the engine's pin).
+        self.server = None;
         let live = self
             .registry
             .take()
@@ -130,6 +136,30 @@ impl ProviderHost {
         }
         live
     }
+}
+
+/// The language-model engine runs on the local model server: start it if it is not running and
+/// wait until it is ready; the problem it reports is the call's typed fault.
+fn hold_model_server(
+    directions: &[DirectionPlan],
+) -> Result<Option<super::model_server::Hold>, ProvidersFailure> {
+    for d in directions {
+        let spec = &d.mt.primary;
+        if spec.is_system() {
+            continue;
+        }
+        match super::model_server::hold(spec.id.as_str(), &spec.base_url) {
+            Ok(Some(lease)) => return Ok(Some(lease)),
+            Ok(None) => {}
+            Err(problem) => {
+                return Err(ProvidersFailure::single(
+                    ProviderRole::Mt,
+                    super::problems::server_fault(&problem),
+                ));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// The translation server of each direction that uses one must accept a connection.
