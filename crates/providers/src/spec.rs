@@ -230,3 +230,43 @@ mod tests {
         assert_eq!(locality("http://0.0.0.0:9"), Locality::Remote);
     }
 }
+
+/// The assistant's dialogue backend over an OpenAI-compatible chat endpoint.
+#[derive(Clone, Debug)]
+pub struct DialogueSpec {
+    /// The provider id as configured.
+    pub id: ProviderId,
+    /// Display name of the entry or template.
+    pub display_name: String,
+    /// The template the entry came from, when any.
+    pub template: Option<String>,
+    /// Chat endpoint base URL.
+    pub base_url: String,
+    /// Host of `base_url`.
+    pub host: String,
+    /// Where the host is.
+    pub locality: Locality,
+    /// Model name sent in requests.
+    pub model: String,
+    /// The catalogue model this endpoint is expected to serve, for display.
+    pub serves: Option<ModelId>,
+    /// The bearer token, when the entry has a credential.
+    pub secret: Option<Secret>,
+    /// Extra request-body fields: schema defaults overlaid with the entry's values, with
+    /// `temperature` and `chat_template_kwargs` (thinking off) among them for a local server.
+    pub params: Map<String, Value>,
+    /// Timeouts.
+    pub timeouts: Timeouts,
+    /// How much conversation is kept and sent (`[assistant]`).
+    pub history: prxvc_adapters::dialogue::HistoryLimits,
+}
+
+impl DialogueSpec {
+    /// What the endpoint receives: the text of every turn.
+    pub const fn data_leaving(&self) -> DataLeaving {
+        match self.locality {
+            Locality::ThisComputer => DataLeaving::Nothing,
+            _ => DataLeaving::Text,
+        }
+    }
+}

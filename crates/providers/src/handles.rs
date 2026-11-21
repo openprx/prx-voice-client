@@ -7,11 +7,13 @@
 
 use std::sync::Arc;
 
+use prxvc_adapters::dialogue::OpenAiChatDialogue;
 use prxvc_adapters::mt::OpenAiChatMt;
 use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_media::{Lang, MonoTime, SampleRate};
 use prxvc_ports::{
-    AsrContext, AsrError, AsrHypothesis, AsrStream, CancellationToken, MtError, MtRequest,
+    AsrContext, AsrError, ConversationId, DialogueBackend, DialogueError, DialogueRequest,
+    DialogueStream, AsrHypothesis, AsrStream, CancellationToken, MtError, MtRequest,
     MtStream, PreparedVoice, ProviderDescriptor, RefineAsr, SpeechSynth, StreamingAsr, Translator,
     TtsError, TtsItem, TtsRequest, TtsStream, VadEngine, VadError, VadProvider, VoiceReference,
     VoiceSelection,
@@ -39,6 +41,34 @@ impl Translator for SharedTranslator {
     fn translate(&self, req: MtRequest) -> Result<Box<dyn MtStream>, MtError> {
         // The client is stateless: no failure of a request is a reason to rebuild it.
         self.lease.engine().translate(req)
+    }
+}
+
+/// A dialogue handle.
+pub struct SharedDialogue {
+    pub(crate) lease: Lease<OpenAiChatDialogue>,
+}
+
+impl SharedDialogue {
+    /// The lease, to compare engines or retire the engine.
+    pub fn lease(&self) -> &Lease<OpenAiChatDialogue> {
+        &self.lease
+    }
+}
+
+impl DialogueBackend for SharedDialogue {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.lease.engine().descriptor()
+    }
+
+    fn respond(&self, req: DialogueRequest) -> Result<Box<dyn DialogueStream>, DialogueError> {
+        // The client holds only the conversations: no failure of a request is a reason to
+        // rebuild it (that would forget them).
+        self.lease.engine().respond(req)
+    }
+
+    fn end_conversation(&self, conversation: &ConversationId) {
+        self.lease.engine().end_conversation(conversation);
     }
 }
 

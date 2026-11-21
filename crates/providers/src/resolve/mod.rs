@@ -3,12 +3,14 @@
 //!
 //! * `mod`: the [`Resolver`] and the selection rules (primary, fallback, catalogue defaults).
 //! * `local`: catalogue models for VAD, recognition and synthesis.
-//! * `mt`: provider entries of the OpenAI-compatible chat protocol.
+//! * `mt`: provider entries of the OpenAI-compatible chat protocol (translation and dialogue).
+//! * `dialogue`: the assistant's dialogue backend and the OpenPRX placeholder.
 //! * `voice`: the voice of a synthesis spec.
 //!
 //! Resolution is pure with respect to engines and the network: it reads files' metadata, the
 //! credential store and the policy, and builds nothing.
 
+mod dialogue;
 mod local;
 mod mt;
 mod protocol;
@@ -27,6 +29,9 @@ use crate::model_source::ModelSource;
 use crate::problem::{Problem, ProblemKind, Slot};
 use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec};
 
+pub use dialogue::{
+    DEFAULT_DIALOGUE_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME, OPENPRX_PROVIDER,
+};
 pub use voice::{VoiceChoice, VoiceDirs};
 
 /// The id of the built-in translation provider: a `llama-server` endpoint from the catalogue
@@ -59,6 +64,7 @@ fn selection_map(sel: &prxvc_config::RoleSelection, role: CallRole) -> &prxvc_co
         CallRole::AsrRefine => &sel.asr_refine,
         CallRole::Mt => &sel.mt,
         CallRole::Tts => &sel.tts,
+        CallRole::Dialogue => &sel.dialogue,
     }
 }
 
@@ -94,6 +100,7 @@ impl Resolver<'_> {
             RoleKey::Asr(l) => recommended(Role::Asr, &LangKey::Lang(l.code().to_owned())),
             RoleKey::Tts(l) => recommended(Role::Tts, &LangKey::Lang(l.code().to_owned())),
             RoleKey::Mt { .. } => Some(DEFAULT_MT_PROVIDER.to_owned()),
+            RoleKey::Dialogue => Some(DEFAULT_DIALOGUE_PROVIDER.to_owned()),
             RoleKey::AsrRefine(l) => {
                 let candidates = self.catalogue.candidates(
                     Role::Asr,

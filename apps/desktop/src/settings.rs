@@ -667,6 +667,7 @@ mod tests {
         ("debug.call_trace.", "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE"),
         ("debug.call_trace_text.", "diagnostic switch that adds spoken text to the trace; config file only, off by default"),
         ("pipeline.", "pipeline tuning, shown under Advanced in a later package"),
+        ("assistant.", "wired to the Assistant page with the new assistant loop"),
         ("providers.egress_acknowledged", "set by the egress dialog (provider editor package)"),
         ("providers.active", "role choices belong to the provider editor package"),
         ("providers.fallback", "role choices belong to the provider editor package"),

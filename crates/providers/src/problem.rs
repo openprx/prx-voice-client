@@ -281,6 +281,14 @@ pub enum ProblemKind {
         /// The language the preset declares.
         found: String,
     },
+    /// The backend is known to the application but cannot serve yet: its interface does not exist.
+    #[error("`{id}` ({name}) is not available yet")]
+    NotAvailableYet {
+        /// The provider id.
+        id: ProviderId,
+        /// What it is, for display.
+        name: String,
+    },
     /// The fallback is the primary provider.
     #[error("the fallback `{id}` is the same as the primary provider")]
     FallbackIsPrimary {

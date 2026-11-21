@@ -2,6 +2,7 @@
 //! construction and lifecycle over fake engines, the offline policy against a recording
 //! listener, "test provider" and the disclosure. No network beyond loopback, no native code.
 
+mod dialogue;
 mod fixtures;
 mod lifecycle;
 mod no_mock;

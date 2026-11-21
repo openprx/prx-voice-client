@@ -28,12 +28,18 @@ impl Protocol {
         })
     }
 
-    /// The role the protocol serves.
+    /// The role the protocol serves (a chat protocol serves translation and the assistant's
+    /// dialogue; see [`Protocol::serves`]).
     pub(super) fn role(self) -> CallRole {
         match self {
             Self::OpenAiChat | Self::OllamaChat => CallRole::Mt,
             Self::DeepgramListen | Self::PrxHttpAsr => CallRole::Asr,
             Self::OpenAiAudioSpeech | Self::AzureSpeechTts | Self::PrxHttpTts => CallRole::Tts,
         }
+    }
+
+    /// Whether the protocol can serve `role`.
+    pub(super) fn serves(self, role: CallRole) -> bool {
+        self.role() == role || (self.role() == CallRole::Mt && role == CallRole::Dialogue)
     }
 }

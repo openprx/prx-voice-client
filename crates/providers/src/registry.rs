@@ -10,26 +10,31 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use prxvc_adapters::asr::AsrParams;
+use prxvc_adapters::dialogue::{DialogueConfig, OpenAiChatDialogue};
 use prxvc_adapters::mt::{OpenAiChatConfig, OpenAiChatMt};
 use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_config::{AppConfig, NetworkPolicy};
 use prxvc_media::Lang;
 use prxvc_models::{Catalogue, HardwareInfo};
-use prxvc_ports::{RefineAsr, SpeechSynth, StreamingAsr, Translator, VadProvider};
+use prxvc_ports::{
+    DialogueBackend, RefineAsr, SpeechSynth, StreamingAsr, Translator, VadProvider,
+};
 use sha2::{Digest, Sha256};
 
 use crate::credentials::CredentialReader;
 use crate::egress::{EgressSummary, summarize};
 use crate::engines::{Engines, Lease};
-use crate::handles::{SharedAsr, SharedRefine, SharedSynth, SharedTranslator, SharedVad};
+use crate::handles::{
+    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedTranslator, SharedVad,
+};
 use crate::keys::CallLanguages;
 use crate::model_source::ModelSource;
 use crate::plan::CallPlan;
 use crate::problem::{BuildError, Problem};
 use crate::recognition::{BuiltInRecognition, RecognitionLoader, asr_params};
-use crate::resolve::{Resolver, VoiceChoice, VoiceDirs};
+use crate::resolve::{DialogueChoice, Resolver, VoiceChoice, VoiceDirs};
 use crate::runtime::BuiltRuntimes;
-use crate::spec::{LocalModelSpec, MtSpec, Resolved, TtsSpec, VoicePlan};
+use crate::spec::{DialogueSpec, LocalModelSpec, MtSpec, Resolved, TtsSpec, VoicePlan};
 use crate::tts_loader::{BuiltInTts, TtsLoader, check_capabilities, register_voice};
 
 /// The result of preparing the owner's voice.
@@ -67,6 +72,8 @@ pub struct LiveEngines {
     pub refine: usize,
     /// Voice activity detection engines.
     pub vad: usize,
+    /// Dialogue clients.
+    pub dialogue: usize,
 }
 
 struct Snapshot {
@@ -87,6 +94,7 @@ pub struct ProviderRegistry {
     recognition: Arc<dyn RecognitionLoader>,
     tts: Engines<(String, String), QwenTts>,
     mt: Engines<String, OpenAiChatMt>,
+    dialogue: Engines<String, OpenAiChatDialogue>,
     asr: Engines<String, Arc<dyn StreamingAsr>>,
     refine: Engines<String, Arc<dyn RefineAsr>>,
     vad: Engines<String, Arc<dyn VadProvider>>,
@@ -117,6 +125,7 @@ impl ProviderRegistry {
             recognition: Arc::new(BuiltInRecognition),
             tts: Engines::default(),
             mt: Engines::default(),
+            dialogue: Engines::default(),
             asr: Engines::default(),
             refine: Engines::default(),
             vad: Engines::default(),
@@ -217,6 +226,17 @@ impl ProviderRegistry {
     /// Resolve translation from `source` to `target`.
     pub fn resolve_mt(&self, source: Lang, target: Lang) -> Result<Resolved<MtSpec>, Vec<Problem>> {
         self.with_resolver(|r| r.mt(source, target))
+    }
+
+    /// Resolve the assistant's dialogue backend (`providers.active.dialogue`; the built-in local
+    /// server when nothing is selected). The OpenPRX placeholder resolves to a typed problem.
+    pub fn resolve_dialogue(&self) -> Result<Resolved<DialogueSpec>, Vec<Problem>> {
+        self.with_resolver(|r| r.dialogue())
+    }
+
+    /// The backends the settings can offer for the dialogue.
+    pub fn dialogue_choices(&self) -> Vec<DialogueChoice> {
+        self.with_resolver(|r| r.dialogue_choices())
     }
 
     /// Resolve synthesis of `lang` with `voice`.
@@ -320,6 +340,26 @@ impl ProviderRegistry {
         Ok(Box::new(SharedTranslator { lease }))
     }
 
+    /// Build the dialogue backend of `spec`. The offline policy is checked again first. The client
+    /// is shared by every handle built from the same spec and holds the conversations.
+    pub fn build_dialogue(&self, spec: &DialogueSpec) -> Result<Box<dyn DialogueBackend>, BuildError> {
+        if let Err(blocked) = self.state.read().policy.check(&spec.base_url) {
+            return Err(match blocked {
+                prxvc_config::Blocked::Offline { host } => BuildError::Blocked {
+                    provider: spec.id.clone(),
+                    host,
+                },
+                prxvc_config::Blocked::MalformedUrl { detail, .. } => BuildError::InvalidEndpoint {
+                    provider: spec.id.clone(),
+                    detail,
+                },
+            });
+        }
+        let lease = self.dialogue.acquire(dialogue_key(spec), || start_dialogue(spec))?;
+        lease.engine().descriptor().require_native()?;
+        Ok(Box::new(SharedDialogue { lease }))
+    }
+
     /// Build the synthesiser of `spec` with its voice registered. The engine is shared by every
     /// spec with the same model: the first build loads and warms it up, the later ones only add
     /// their voice.
@@ -377,6 +417,7 @@ impl ProviderRegistry {
         LiveEngines {
             tts: self.tts.live(),
             mt: self.mt.live(),
+            dialogue: self.dialogue.live(),
             asr: self.asr.live(),
             refine: self.refine.live(),
             vad: self.vad.live(),
@@ -418,6 +459,39 @@ fn start_mt(spec: &MtSpec) -> Result<OpenAiChatMt, BuildError> {
         cfg = cfg.with_api_key(secret.expose());
     }
     OpenAiChatMt::new(cfg).map_err(|e| BuildError::Start {
+        provider: spec.id.clone(),
+        detail: e.to_string(),
+    })
+}
+
+fn dialogue_key(spec: &DialogueSpec) -> String {
+    let secret = spec
+        .secret
+        .as_ref()
+        .map(|s| format!("{:x}", Sha256::digest(s.expose().as_bytes())))
+        .unwrap_or_default();
+    format!(
+        "{}|{}|{}|{}|{:?}|{:?}|{}",
+        spec.id,
+        spec.base_url,
+        spec.model,
+        serde_json::Value::Object(spec.params.clone()),
+        spec.timeouts,
+        spec.history,
+        secret
+    )
+}
+
+fn start_dialogue(spec: &DialogueSpec) -> Result<OpenAiChatDialogue, BuildError> {
+    let mut cfg = DialogueConfig::new(&spec.base_url, &spec.model)
+        .with_provider_id(spec.id.as_str())
+        .with_params(spec.params.clone())
+        .with_timeouts(spec.timeouts)
+        .with_history(spec.history);
+    if let Some(secret) = &spec.secret {
+        cfg = cfg.with_api_key(secret.expose());
+    }
+    OpenAiChatDialogue::new(cfg).map_err(|e| BuildError::Start {
         provider: spec.id.clone(),
         detail: e.to_string(),
     })

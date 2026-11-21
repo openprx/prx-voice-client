@@ -1,4 +1,4 @@
-//! Tests of the call-translation keys (schema version 2): defaults, loading
+//! Tests of the call-translation keys (added with schema version 2): defaults, loading
 //! files of every earlier version, and the round trip.
 
 use super::*;
@@ -20,7 +20,7 @@ local_output_mode = "both"
 barge_in = false
 
 [providers.active.asr]
-zh = "whisper-small"
+zh = "qwen3-asr-0.6b-q8"
 "#;
 
 fn mgr(dir: &TempDir) -> ConfigManager {
@@ -32,9 +32,9 @@ fn write_config(dir: &TempDir, text: &str) {
 }
 
 #[test]
-fn schema_version_is_two() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 2);
-    assert_eq!(AppConfig::default().schema_version, 2);
+fn schema_version_is_three() {
+    assert_eq!(CURRENT_SCHEMA_VERSION, 3);
+    assert_eq!(AppConfig::default().schema_version, 3);
 }
 
 #[test]
@@ -127,10 +127,10 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 1, to: 2 }]
+        vec![LoadNotice::Migrated { from: 1, to: 3 }]
     );
     let c = report.config;
-    assert_eq!(c.schema_version, 2);
+    assert_eq!(c.schema_version, 3);
 
     assert_eq!(c.audio.echo_mode, EchoMode::Always);
     assert_eq!(c.audio.input_device, "usb-mic");
@@ -140,7 +140,7 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     assert!(!c.call.barge_in, "an explicit old value is not overwritten");
     assert_eq!(
         c.providers.active.asr.get("zh").map(String::as_str),
-        Some("whisper-small")
+        Some("qwen3-asr-0.6b-q8")
     );
 
     assert_eq!(c.call.start_mode, "manual");
@@ -156,11 +156,11 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
 }
 
 #[test]
-fn values_a_user_set_under_version_2_survive_a_load_and_save() {
+fn values_a_user_set_under_the_current_version_survive_a_load_and_save() {
     let dir = TempDir::new("ct_v2_values");
     write_config(
         &dir,
-        "schema_version = 2\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
+        "schema_version = 3\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
          original_gain_db = -6.5\n[pipeline]\nclause_pause_ms = 450\nrecognition_mode = \"streaming\"\n",
     );
     let m = mgr(&dir);
@@ -184,7 +184,7 @@ fn values_a_user_set_under_version_2_survive_a_load_and_save() {
 }
 
 #[test]
-fn the_whole_chain_takes_an_unversioned_file_to_version_two() {
+fn the_whole_chain_takes_an_unversioned_file_to_the_current_version() {
     let dir = TempDir::new("ct_chain");
     write_config(
         &dir,
@@ -193,13 +193,14 @@ fn the_whole_chain_takes_an_unversioned_file_to_version_two() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 0, to: 2 }]
+        vec![LoadNotice::Migrated { from: 0, to: 3 }]
     );
     let c = report.config;
     assert_eq!(c.audio.echo_mode, EchoMode::Off, "step of version 0 -> 1");
     assert!(c.privacy.save_transcript, "step of version 0 -> 1");
     assert!(!c.call.barge_in);
     assert_eq!(c.call.start_mode, "manual", "step of version 1 -> 2");
+    assert_eq!(c.assistant, AssistantConfig::default(), "step of version 2 -> 3 adds nothing");
 }
 
 #[test]

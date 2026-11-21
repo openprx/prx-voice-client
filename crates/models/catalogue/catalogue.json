@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalogue_version": 2026112005,
+  "catalogue_version": 2026112101,
   "min_app_version": "0.2.0",
   "models": [
     {
@@ -46,54 +46,7 @@
           "badge": "recommended",
           "rank": 0
         }
-      ],
-      "legacy_file_names": [
-        "ggml-silero-vad.bin"
       ]
-    },
-    {
-      "id": "silero-vad-5.1.2",
-      "role": "vad",
-      "display_name": "Silero VAD (v5.1.2)",
-      "description": {
-        "en": "Detects when someone is speaking (older version, kept for migration).",
-        "zh-CN": "检测是否有人在说话（旧版本，仅用于迁移）。"
-      },
-      "version_label": "v5.1.2 (ggml)",
-      "languages": [
-        {
-          "kind": "any"
-        }
-      ],
-      "runtime": {
-        "name": "transcribe.cpp"
-      },
-      "files": [
-        {
-          "name": "ggml-silero-v5.1.2.bin",
-          "purpose": "vad",
-          "size": 885098,
-          "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
-          "source": {
-            "kind": "huggingface",
-            "repo": "ggml-org/whisper-vad",
-            "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
-            "path": "ggml-silero-v5.1.2.bin"
-          }
-        }
-      ],
-      "licence": {
-        "code": "MIT",
-        "weights": "MIT",
-        "weights_url": "https://github.com/snakers4/silero-vad"
-      },
-      "memory_mb": 20,
-      "streaming": "native",
-      "recommended_for": [],
-      "legacy_file_names": [
-        "ggml-silero-vad.bin"
-      ],
-      "hidden": true
     },
     {
       "id": "qwen3-asr-0.6b-q8",
@@ -193,65 +146,6 @@
           "badge": "most_accurate",
           "rank": 1
         }
-      ]
-    },
-    {
-      "id": "whisper-small",
-      "role": "asr",
-      "display_name": "Whisper small",
-      "description": {
-        "en": "Multilingual speech recognition, small and fast.",
-        "zh-CN": "多语种语音识别，体积小、速度快。"
-      },
-      "version_label": "ggml f16",
-      "languages": [
-        {
-          "kind": "lang",
-          "code": "zh"
-        },
-        {
-          "kind": "lang",
-          "code": "en"
-        }
-      ],
-      "runtime": {
-        "name": "whisper.cpp",
-        "params": {
-          "language_codes": {
-            "zh": "zh",
-            "en": "en"
-          }
-        }
-      },
-      "files": [
-        {
-          "name": "ggml-small.bin",
-          "purpose": "model",
-          "size": 487601967,
-          "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-          "source": {
-            "kind": "huggingface",
-            "repo": "ggerganov/whisper.cpp",
-            "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-            "path": "ggml-small.bin"
-          }
-        }
-      ],
-      "licence": {
-        "code": "MIT",
-        "weights": "MIT",
-        "weights_url": "https://github.com/openai/whisper/blob/main/LICENSE"
-      },
-      "memory_mb": 900,
-      "streaming": "segmented",
-      "recommended_for": [
-        {
-          "badge": "smallest",
-          "rank": 10
-        }
-      ],
-      "legacy_file_names": [
-        "ggml-small.bin"
       ]
     },
     {

@@ -7,13 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::credentials::PendingSecret;
 
-/// A role to key to provider id map, e.g. `asr.zh = "whisper-small"`.
+/// A role to key to provider id map, e.g. `asr.zh = "qwen3-asr-0.6b-q8"`.
 pub type RoleMap = BTreeMap<String, String>;
 
 /// `[providers.active]` and `[providers.fallback]`: role, then key, then
 /// provider id. The key is a language for `asr` and `tts`, a `"src>dst"` pair
-/// for `mt`, and the empty string for `vad`. `asr_refine` is keyed by language
-/// like `asr`: the model of the refine pass of two-pass recognition.
+/// for `mt`, and the empty string for `vad` and `dialogue`. `asr_refine` is keyed by language
+/// like `asr`: the model of the refine pass of two-pass recognition. `dialogue` is the assistant's
+/// conversational backend.
 ///
 /// Empty by default: the design fills it at run time from the catalogue's
 /// recommendations and writes it when the user first chooses (design 2.5,
@@ -25,6 +26,7 @@ pub struct RoleSelection {
     pub asr: RoleMap,
     pub asr_refine: RoleMap,
     pub mt: RoleMap,
+    pub dialogue: RoleMap,
     pub tts: RoleMap,
     pub tts_fallback: RoleMap,
 }

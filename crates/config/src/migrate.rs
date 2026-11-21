@@ -13,7 +13,7 @@
 use crate::ConfigError;
 
 /// The schema version this build reads and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 type Step = fn(&mut toml::Table) -> Result<(), ConfigError>;
 
@@ -36,6 +36,13 @@ const CHAIN: &[Link] = &[
     Link {
         from: 1,
         steps: &[("pin the call-translation keys of [call]", pin_call_translation_keys)],
+    },
+    Link {
+        from: 2,
+        steps: &[
+            ("move the assistant keys into [assistant]", assistant_keys),
+            ("drop the selections of the retired assistant models", drop_retired_selections),
+        ],
     },
 ];
 
@@ -143,6 +150,82 @@ pub(crate) fn pin_call_translation_keys(table: &mut toml::Table) -> Result<(), C
         call.entry(key).or_insert(value);
     }
     Ok(())
+}
+
+/// The `[assistant]` table, created when missing.
+fn assistant_table(table: &mut toml::Table) -> Result<&mut toml::Table, ConfigError> {
+    table
+        .entry("assistant")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| ConfigError::MigrationError("`assistant` is not a table".to_owned()))
+}
+
+/// Version 3 gives the voice assistant its own section. `network.language` (the language of the
+/// assistant's session) becomes `assistant.language` and `audio.end_silence_ms` (the silence that
+/// ends a user turn) becomes `assistant.end_silence_ms`, each unless the new key is already there.
+/// Nothing is written when the file has neither, so that the typed defaults apply.
+pub(crate) fn assistant_keys(table: &mut toml::Table) -> Result<(), ConfigError> {
+    let language = table
+        .get("network")
+        .and_then(|n| n.get("language"))
+        .and_then(toml::Value::as_str)
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned);
+    let end_silence = table
+        .get("audio")
+        .and_then(|a| a.get("end_silence_ms"))
+        .and_then(toml::Value::as_integer);
+    if language.is_none() && end_silence.is_none() {
+        return Ok(());
+    }
+    let assistant = assistant_table(table)?;
+    if let Some(language) = language {
+        assistant
+            .entry("language")
+            .or_insert(toml::Value::String(language));
+    }
+    if let Some(ms) = end_silence {
+        assistant
+            .entry("end_silence_ms")
+            .or_insert(toml::Value::Integer(ms));
+    }
+    Ok(())
+}
+
+/// Version 3 removes the role selections that name a model of the retired assistant stack
+/// (`whisper-small`, `silero-vad-5.1.2`), so that the catalogue's recommendation applies again, and
+/// the update-dialog entries for them. Selections of every other model are not touched.
+pub(crate) fn drop_retired_selections(table: &mut toml::Table) -> Result<(), ConfigError> {
+    if let Some(providers) = table.get_mut("providers").and_then(toml::Value::as_table_mut) {
+        for slot in ["active", "fallback"] {
+            let Some(roles) = providers.get_mut(slot).and_then(toml::Value::as_table_mut) else {
+                continue;
+            };
+            for (_, role) in roles.iter_mut() {
+                if let Some(keys) = role.as_table_mut() {
+                    keys.retain(|_, id| !id.as_str().is_some_and(is_retired_model));
+                }
+            }
+        }
+    }
+    if let Some(skipped) = table
+        .get_mut("models")
+        .and_then(|m| m.get_mut("skipped_updates"))
+        .and_then(toml::Value::as_array_mut)
+    {
+        skipped.retain(|v| {
+            !v.as_str()
+                .is_some_and(|s| is_retired_model(s.split('@').next().unwrap_or(s)))
+        });
+    }
+    Ok(())
+}
+
+/// The catalogue ids of the models of the retired assistant stack.
+fn is_retired_model(id: &str) -> bool {
+    matches!(id, "whisper-small" | "silero-vad-5.1.2")
 }
 
 #[cfg(test)]
@@ -264,13 +347,72 @@ mod tests {
             "schema_version = 1\n[audio]\necho_control = false\n[privacy]\nsave_transcript = false\n",
         );
         assert_eq!(migrate(&mut t).unwrap(), Some(1));
-        assert_eq!(t["schema_version"].as_integer(), Some(2));
+        assert_eq!(t["schema_version"].as_integer(), Some(CURRENT_SCHEMA_VERSION.into()));
         assert!(
             t["audio"].get("echo_mode").is_none(),
             "version 0 steps do not run again"
         );
         assert_eq!(t["privacy"]["save_transcript"].as_bool(), Some(false));
         assert_eq!(t["call"]["outgoing_on_failure"].as_str(), Some("original"));
+    }
+
+    #[test]
+    fn the_assistant_keys_move_and_never_overwrite() {
+        let mut t = parse(
+            "[network]\nlanguage = \"en\"\nuse_mock = true\n[audio]\nend_silence_ms = 900\nsample_rate = 16000\n",
+        );
+        assistant_keys(&mut t).unwrap();
+        assert_eq!(t["assistant"]["language"].as_str(), Some("en"));
+        assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(900));
+
+        let mut kept = parse(
+            "[assistant]\nlanguage = \"zh-CN\"\n[network]\nlanguage = \"en\"\n[audio]\nend_silence_ms = 900\n",
+        );
+        assistant_keys(&mut kept).unwrap();
+        assert_eq!(kept["assistant"]["language"].as_str(), Some("zh-CN"));
+
+        let mut neither = parse("[audio]\nsample_rate = 16000\n");
+        assistant_keys(&mut neither).unwrap();
+        assert!(neither.get("assistant").is_none(), "defaults apply, nothing is pinned");
+        let mut bad = parse("assistant = 3\n[network]\nlanguage = \"en\"\n");
+        assert!(assistant_keys(&mut bad).is_err());
+    }
+
+    #[test]
+    fn the_retired_selections_are_dropped_and_other_selections_stay() {
+        let mut t = parse(
+            "[providers.active.asr]\nzh = \"whisper-small\"\nen = \"qwen3-asr-0.6b-q8\"\n\
+             [providers.active]\nvad = { \"\" = \"silero-vad-5.1.2\" }\n\
+             [providers.fallback.asr]\nzh = \"whisper-small\"\n\
+             [models]\nskipped_updates = [\"whisper-small@abc\", \"qwen3-asr-0.6b-q8@def\"]\n",
+        );
+        drop_retired_selections(&mut t).unwrap();
+        let asr = t["providers"]["active"]["asr"].as_table().unwrap();
+        assert!(asr.get("zh").is_none());
+        assert_eq!(asr["en"].as_str(), Some("qwen3-asr-0.6b-q8"));
+        assert!(t["providers"]["active"]["vad"].as_table().unwrap().is_empty());
+        assert!(t["providers"]["fallback"]["asr"].as_table().unwrap().is_empty());
+        let skipped = t["models"]["skipped_updates"].as_array().unwrap();
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].as_str(), Some("qwen3-asr-0.6b-q8@def"));
+        let mut none = parse("[audio]\nsample_rate = 16000\n");
+        drop_retired_selections(&mut none).unwrap();
+        assert_eq!(none, parse("[audio]\nsample_rate = 16000\n"));
+    }
+
+    #[test]
+    fn a_version_2_file_takes_only_the_third_link_and_the_result_is_stable() {
+        let mut t = parse(
+            "schema_version = 2\n[network]\nlanguage = \"zh-CN\"\nuse_mock = false\n[audio]\nend_silence_ms = 650\n[call]\nstart_mode = \"on_call\"\n",
+        );
+        assert_eq!(migrate(&mut t).unwrap(), Some(2));
+        assert_eq!(t["schema_version"].as_integer(), Some(3));
+        assert_eq!(t["assistant"]["language"].as_str(), Some("zh-CN"));
+        assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(650));
+        assert_eq!(t["call"]["start_mode"].as_str(), Some("on_call"), "earlier keys untouched");
+        let once = t.clone();
+        assert_eq!(migrate(&mut t).unwrap(), None);
+        assert_eq!(t, once);
     }
 
     #[test]

@@ -351,7 +351,7 @@ fn a_valid_fallback_is_resolved_and_validated_like_the_primary() {
 }
 
 #[test]
-fn whisper_is_never_the_default_for_a_call_role_on_any_machine() {
+fn the_defaults_of_the_call_roles_are_the_same_on_every_machine() {
     for (gb, os, arch) in [
         (8, prxvc_models::Os::Macos, prxvc_models::Arch::Aarch64),
         (64, prxvc_models::Os::Linux, prxvc_models::Arch::X86_64),

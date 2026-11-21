@@ -88,6 +88,29 @@ fn duration_ms(params: &mut Map<String, Value>, key: &str) -> Result<Option<Dura
     }
 }
 
+/// What an OpenAI-compatible chat provider resolves to, whichever role it serves.
+pub(super) struct ChatEndpoint {
+    pub(super) id: ProviderId,
+    pub(super) display_name: String,
+    pub(super) template: Option<String>,
+    pub(super) base_url: String,
+    pub(super) host: String,
+    pub(super) locality: crate::spec::Locality,
+    pub(super) model: String,
+    pub(super) serves: Option<ModelId>,
+    pub(super) secret: Option<Secret>,
+    pub(super) params: Map<String, Value>,
+    pub(super) prompt_template: PromptTemplate,
+    pub(super) timeouts: Timeouts,
+}
+
+/// The sampling temperature of a spoken assistant when the entry sets none.
+const DIALOGUE_TEMPERATURE: f64 = 0.7;
+/// How long a dialogue server may take to its first token, and to go quiet, when the entry sets
+/// neither: a reply starts later than the translation of one clause.
+const DIALOGUE_FIRST_TOKEN: Duration = Duration::from_secs(15);
+const DIALOGUE_IDLE: Duration = Duration::from_secs(8);
+
 impl Resolver<'_> {
     pub(super) fn mt_provider(
         &self,
@@ -95,6 +118,33 @@ impl Resolver<'_> {
         source: Lang,
         target: Lang,
     ) -> Result<MtSpec, Vec<ProblemKind>> {
+        let ep = self.chat_provider(id, CallRole::Mt, Some((source, target)))?;
+        Ok(MtSpec {
+            id: ep.id,
+            display_name: ep.display_name,
+            template: ep.template,
+            base_url: ep.base_url,
+            host: ep.host,
+            locality: ep.locality,
+            model: ep.model,
+            serves: ep.serves,
+            secret: ep.secret,
+            params: ep.params,
+            prompt_template: ep.prompt_template,
+            timeouts: ep.timeouts,
+            source,
+            target,
+        })
+    }
+
+    /// A chat endpoint for `role` (translation of `pair`, or the assistant's dialogue): a user
+    /// entry, the built-in `local-llama-server`, or a catalogue model served by `llama-server`.
+    pub(super) fn chat_provider(
+        &self,
+        id: &str,
+        role: CallRole,
+        pair: Option<(Lang, Lang)>,
+    ) -> Result<ChatEndpoint, Vec<ProblemKind>> {
         let template_of = |t: &str| self.catalogue.provider(t);
         let (draft, model_problems) =
             if let Some(entry) = self.cfg.providers.entries.iter().find(|e| e.id == id) {
@@ -112,7 +162,7 @@ impl Resolver<'_> {
                 if model.role != Role::Mt {
                     return Err(vec![ProblemKind::KindNotValidForRole {
                         id: pid,
-                        role: CallRole::Mt,
+                        role,
                         found: format!("a {:?} model", model.role),
                     }]);
                 }
@@ -152,7 +202,7 @@ impl Resolver<'_> {
                 return Err(vec![ProblemKind::UnknownProvider { id: id.to_owned() }]);
             };
         let mut problems = model_problems;
-        match self.finish_mt(draft, source, target) {
+        match self.finish_chat(draft, role, pair) {
             Ok(spec) if problems.is_empty() => Ok(spec),
             Ok(_) => Err(problems),
             Err(mut more) => {
@@ -162,12 +212,12 @@ impl Resolver<'_> {
         }
     }
 
-    fn finish_mt(
+    fn finish_chat(
         &self,
         draft: Draft,
-        source: Lang,
-        target: Lang,
-    ) -> Result<MtSpec, Vec<ProblemKind>> {
+        role: CallRole,
+        pair: Option<(Lang, Lang)>,
+    ) -> Result<ChatEndpoint, Vec<ProblemKind>> {
         let pid = ProviderId::new(draft.id.clone());
         let entry = draft.id.clone();
         let mut problems = Vec::new();
@@ -200,10 +250,10 @@ impl Resolver<'_> {
                 });
                 return Err(problems);
             }
-            Some(p) if p.role() != CallRole::Mt => {
+            Some(p) if !p.serves(role) => {
                 problems.push(ProblemKind::KindNotValidForRole {
                     id: pid,
-                    role: CallRole::Mt,
+                    role,
                     found: format!("an endpoint of protocol `{protocol_text}`"),
                 });
                 return Err(problems);
@@ -279,7 +329,8 @@ impl Resolver<'_> {
                 param: "model".to_owned(),
                 reason: "is empty".to_owned(),
             });
-        } else if let Some(t) = template
+        } else if let Some((source, target)) = pair
+            && let Some(t) = template
             && let Some(known) = t.known_models.iter().find(|k| k.name == model)
             && let Some(langs) = known.languages.as_ref().filter(|l| !l.is_empty())
             && !pair_listed(langs, source, target)
@@ -297,7 +348,7 @@ impl Resolver<'_> {
             &mut problems,
         );
 
-        let params = self.mt_params(&draft, template, &pid, &mut problems);
+        let params = self.mt_params(&draft, template, role, &pid, &mut problems);
 
         let (Some(url), Some(params)) = (parsed, params) else {
             return Err(problems);
@@ -306,7 +357,7 @@ impl Resolver<'_> {
             return Err(problems);
         }
         let host = url.host_str().unwrap_or_default().to_owned();
-        Ok(MtSpec {
+        Ok(ChatEndpoint {
             id: pid,
             display_name: draft.display_name,
             template: draft.template,
@@ -319,8 +370,6 @@ impl Resolver<'_> {
             params: params.body,
             prompt_template: params.prompt_template,
             timeouts: params.timeouts,
-            source,
-            target,
         })
     }
 
@@ -371,6 +420,7 @@ impl Resolver<'_> {
         &self,
         draft: &Draft,
         template: Option<&ProviderTemplate>,
+        role: CallRole,
         pid: &ProviderId,
         problems: &mut Vec<ProblemKind>,
     ) -> Option<ResolvedParams> {
@@ -422,6 +472,19 @@ impl Resolver<'_> {
         // The adapter owns some body fields; ask it so the list lives in one place.
         let mut body = OpenAiChatConfig::new("http://placeholder.invalid", "m").params;
         body.extend(merged);
+        if role == CallRole::Dialogue {
+            // A spoken assistant is not translating: the template's temperature of zero and its
+            // translation timeouts apply only when the entry sets them itself.
+            if !draft.params.contains_key("temperature") {
+                body.insert("temperature".to_owned(), DIALOGUE_TEMPERATURE.into());
+            }
+            if !draft.params.contains_key("first_token_timeout_ms") {
+                timeouts.first_token = DIALOGUE_FIRST_TOKEN;
+            }
+            if !draft.params.contains_key("idle_timeout_ms") {
+                timeouts.idle = DIALOGUE_IDLE;
+            }
+        }
         let probe =
             OpenAiChatConfig::new("http://placeholder.invalid", "m").with_params(body.clone());
         if let Err(prxvc_adapters::mt::ConfigError::ReservedParam(key)) = probe.validate() {

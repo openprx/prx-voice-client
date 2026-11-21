@@ -65,7 +65,6 @@ impl ManagerConfig {
             max_concurrent: 2,
             app_version,
             runtimes: [
-                "whisper.cpp",
                 "transcribe.cpp",
                 "llama.cpp",
                 "llama-server",

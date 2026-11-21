@@ -1,7 +1,8 @@
 //! The provider registry of the call pipeline (layer L3, CS-2.2).
 //!
 //! From configuration, the model catalogue and the model store, the registry resolves each role
-//! of a call (voice activity detection, recognition, the refine pass, translation, synthesis)
+//! of a call (voice activity detection, recognition, the refine pass, translation, synthesis) and
+//! the assistant's dialogue backend
 //! into a typed specification, and builds the provider as a boxed port. It is the one place that
 //! names concrete adapters.
 //!
@@ -61,17 +62,23 @@ pub use credentials::{
 };
 pub use egress::{EgressSummary, RoleEgress};
 pub use engines::Lease;
-pub use handles::{SharedAsr, SharedRefine, SharedSynth, SharedTranslator, SharedVad};
+pub use handles::{
+    SharedAsr, SharedDialogue, SharedRefine, SharedSynth, SharedTranslator, SharedVad,
+};
 pub use keys::{CallLanguages, CallRole, RoleKey};
 pub use model_source::ModelSource;
 pub use plan::{CallPlan, DirectionPlan, DirectionsPlan, RecognitionMode};
 pub use problem::{BuildError, Problem, ProblemKind, Slot};
 pub use recognition::{BuiltInRecognition, RecognitionLoader, TRANSCRIBE_BUILT_IN};
 pub use registry::{LiveEngines, PrepareError, ProviderRegistry, VoicePrepared};
-pub use resolve::{DEFAULT_MT_PROVIDER, VoiceChoice, VoiceDirs};
+pub use resolve::{
+    DEFAULT_DIALOGUE_PROVIDER, DEFAULT_MT_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME,
+    OPENPRX_PROVIDER, VoiceChoice, VoiceDirs,
+};
 pub use runtime::{BuiltRuntimes, Runtime};
 pub use spec::{
-    DataLeaving, LocalModelSpec, Locality, MtSpec, Resolved, TtsFiles, TtsSpec, VoicePlan,
+    DataLeaving, DialogueSpec, LocalModelSpec, Locality, MtSpec, Resolved, TtsFiles, TtsSpec,
+    VoicePlan,
 };
 pub use test_provider::{FailureClass, TestError, TestReport};
 pub use tts_loader::{BuiltInTts, TtsLoader};

@@ -36,6 +36,7 @@ pub(crate) fn row_label(role: PipelineRole, key: &str) -> String {
         PipelineRole::Refine => "settings.pipeline.role.refine",
         PipelineRole::Translation => "settings.pipeline.role.mt",
         PipelineRole::Voice => "settings.pipeline.role.tts",
+        PipelineRole::Dialogue => "settings.pipeline.role.dialogue",
     });
     if key.is_empty() {
         return role_text;

@@ -214,6 +214,8 @@ pub enum PipelineRole {
     Translation,
     /// Speech synthesis.
     Voice,
+    /// The assistant's dialogue backend.
+    Dialogue,
 }
 
 /// What a provider receives.

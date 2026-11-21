@@ -26,7 +26,7 @@ fn catalogue_role(role: CallRole) -> Role {
     match role {
         CallRole::Vad => Role::Vad,
         CallRole::Asr | CallRole::AsrRefine => Role::Asr,
-        CallRole::Mt => Role::Mt,
+        CallRole::Mt | CallRole::Dialogue => Role::Mt,
         CallRole::Tts => Role::Tts,
     }
 }

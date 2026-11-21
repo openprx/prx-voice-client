@@ -203,6 +203,53 @@ impl Default for NetworkConfig {
 }
 
 // ---------------------------------------------------------------------------
+// [assistant]
+// ---------------------------------------------------------------------------
+
+/// Default silence (ms) after speech that ends the user's turn.
+pub const DEFAULT_ASSISTANT_END_SILENCE_MS: u32 = 700;
+/// Default most user turns the dialogue backend keeps in a conversation.
+pub const DEFAULT_ASSISTANT_HISTORY_TURNS: u32 = 12;
+/// Default most estimated tokens of conversation sent with a request.
+pub const DEFAULT_ASSISTANT_HISTORY_TOKENS: u32 = 3_000;
+
+/// The voice assistant: the language it listens and answers in, its voice, how it ends a turn and
+/// how much conversation it remembers. The dialogue backend itself is chosen like any provider
+/// (`providers.active.dialogue`, an entry of `providers.entries` for its address, model and
+/// credential); the recognition and synthesis models are those of call translation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AssistantConfig {
+    /// The language the assistant listens and answers in (`"zh-CN"` or `"en"`); empty follows the
+    /// interface language.
+    pub language: String,
+    /// `"preset"` (a preset voice) or `"clone"` (the owner's enrolled voice).
+    pub voice: String,
+    /// The preset voice when `voice` is `"preset"`; empty is the catalogue default.
+    pub voice_preset: String,
+    /// Silence after speech that ends the user's turn, in milliseconds. Natural pauses inside a
+    /// sentence are shorter than this.
+    pub end_silence_ms: u32,
+    /// Most user turns kept in a conversation (the current one included).
+    pub history_max_turns: u32,
+    /// Most estimated tokens of conversation sent with a request (the current turn is always sent).
+    pub history_max_tokens: u32,
+}
+
+impl Default for AssistantConfig {
+    fn default() -> Self {
+        Self {
+            language: String::new(),
+            voice: "preset".to_owned(),
+            voice_preset: String::new(),
+            end_silence_ms: DEFAULT_ASSISTANT_END_SILENCE_MS,
+            history_max_turns: DEFAULT_ASSISTANT_HISTORY_TURNS,
+            history_max_tokens: DEFAULT_ASSISTANT_HISTORY_TOKENS,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // [privacy], [debug]
 // ---------------------------------------------------------------------------
 

@@ -681,7 +681,7 @@ fn probe_reports_reachability() {
 /// One optional test with the real network; run it by hand with
 /// `cargo test -p prxvc-models -- --ignored live`.
 #[test]
-#[ignore = "downloads 885,098 bytes from huggingface.co"]
+#[ignore = "downloads 1,241,056 bytes from huggingface.co"]
 fn live_download_of_the_silero_vad_file() {
     let cat = Catalogue::embedded();
     let entry = cat
@@ -706,6 +706,6 @@ fn live_download_of_the_silero_vad_file() {
     let ready = store.ready(&entry).unwrap();
     assert_eq!(
         fs::metadata(ready.file("vad").unwrap()).unwrap().len(),
-        885_098
+        1_241_056
     );
 }

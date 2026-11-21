@@ -48,7 +48,7 @@ impl ModelSpec {
         ModelSpec {
             id: id.into(),
             role: "asr",
-            runtime: "whisper.cpp",
+            runtime: "transcribe.cpp",
             files: vec![(
                 format!("{id}.bin"),
                 blob(size, id.len() as u64 + size as u64),

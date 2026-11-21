@@ -74,6 +74,7 @@ fn role_of(key: RoleKey) -> PipelineRole {
         CallRole::AsrRefine => PipelineRole::Refine,
         CallRole::Mt => PipelineRole::Translation,
         CallRole::Tts => PipelineRole::Voice,
+        CallRole::Dialogue => PipelineRole::Dialogue,
     }
 }
 
@@ -190,7 +191,6 @@ fn runtime_name(runtime: &prxvc_providers::Runtime) -> String {
         Runtime::LlamaServer => "llama-server".to_owned(),
         Runtime::QwenTts => "qwentts.cpp".to_owned(),
         Runtime::Transcribe => "transcribe.cpp".to_owned(),
-        Runtime::WhisperCpp => "whisper.cpp".to_owned(),
         Runtime::OnnxRuntime => "onnxruntime".to_owned(),
         Runtime::Other(name) => name.clone(),
     }

@@ -242,10 +242,10 @@ fn round_trip_with_every_new_section_filled() {
         monitor_height: Some(1080.0),
         page: Some("audio".into()),
     };
-    c.models.skipped_updates = vec!["whisper-small@abc123".into()];
+    c.models.skipped_updates = vec!["qwen3-asr-1.7b-q8@abc123".into()];
     c.models.max_concurrent = 3;
     c.providers.active.vad.insert(String::new(), "silero-vad-6.2".into());
-    c.providers.active.asr.insert("zh".into(), "whisper-small".into());
+    c.providers.active.asr.insert("zh".into(), "qwen3-asr-0.6b-q8".into());
     c.providers.active.mt.insert("zh>en".into(), "hy-mt2-7b-q4km".into());
     c.providers.fallback.mt.insert("zh>en".into(), "none".into());
     let mut params = toml::Table::new();

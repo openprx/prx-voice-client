@@ -21,6 +21,8 @@ pub enum CallRole {
     Mt,
     /// Speech synthesis.
     Tts,
+    /// The assistant's conversational backend (not a stage of a call).
+    Dialogue,
 }
 
 impl CallRole {
@@ -32,6 +34,7 @@ impl CallRole {
             Self::AsrRefine => "asr_refine",
             Self::Mt => "mt",
             Self::Tts => "tts",
+            Self::Dialogue => "dialogue",
         }
     }
 }
@@ -60,6 +63,8 @@ pub enum RoleKey {
     },
     /// Synthesis of `Lang`.
     Tts(Lang),
+    /// The assistant's dialogue backend (one for the application).
+    Dialogue,
 }
 
 impl RoleKey {
@@ -71,13 +76,14 @@ impl RoleKey {
             Self::AsrRefine(_) => CallRole::AsrRefine,
             Self::Mt { .. } => CallRole::Mt,
             Self::Tts(_) => CallRole::Tts,
+            Self::Dialogue => CallRole::Dialogue,
         }
     }
 
     /// The key as configuration spells it: `""`, `"zh"` or `"zh>en"`.
     pub fn config_key(self) -> String {
         match self {
-            Self::Vad => String::new(),
+            Self::Vad | Self::Dialogue => String::new(),
             Self::Asr(l) | Self::AsrRefine(l) | Self::Tts(l) => l.code().to_owned(),
             Self::Mt { source, target } => format!("{source}>{target}"),
         }
@@ -88,6 +94,7 @@ impl fmt::Display for RoleKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Vad => f.write_str("vad"),
+            Self::Dialogue => f.write_str("dialogue"),
             other => write!(f, "{}[{}]", other.role(), other.config_key()),
         }
     }
@@ -148,6 +155,8 @@ mod tests {
     #[test]
     fn config_keys_follow_the_configuration_spelling() {
         assert_eq!(RoleKey::Vad.config_key(), "");
+        assert_eq!(RoleKey::Dialogue.config_key(), "");
+        assert_eq!(RoleKey::Dialogue.role().config_name(), "dialogue");
         assert_eq!(RoleKey::Asr(Lang::Zh).config_key(), "zh");
         assert_eq!(
             RoleKey::Mt {

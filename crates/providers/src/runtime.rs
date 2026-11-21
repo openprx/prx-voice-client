@@ -9,8 +9,6 @@ pub enum Runtime {
     QwenTts,
     /// In-process `transcribe.cpp`: recognition and VAD (cargo feature `transcribe`).
     Transcribe,
-    /// The retired `whisper.cpp` binding (removed in CT-20); no call role uses it.
-    WhisperCpp,
     /// ONNX Runtime, for the light TTS fallback; no adapter exists yet.
     OnnxRuntime,
     /// A runtime name this client does not know.
@@ -24,7 +22,6 @@ impl Runtime {
             "llama-server" => Self::LlamaServer,
             "qwentts.cpp" => Self::QwenTts,
             "transcribe" | "transcribe.cpp" => Self::Transcribe,
-            "whisper.cpp" => Self::WhisperCpp,
             "onnxruntime" => Self::OnnxRuntime,
             other => Self::Other(other.to_owned()),
         }
@@ -36,7 +33,6 @@ impl Runtime {
             Self::LlamaServer => "llama-server",
             Self::QwenTts => "qwentts.cpp",
             Self::Transcribe => "transcribe.cpp",
-            Self::WhisperCpp => "whisper.cpp",
             Self::OnnxRuntime => "onnxruntime",
             Self::Other(n) => n,
         }
@@ -48,7 +44,7 @@ impl Runtime {
             Self::LlamaServer => true,
             Self::QwenTts => built.qwentts,
             Self::Transcribe => built.transcribe,
-            Self::WhisperCpp | Self::OnnxRuntime | Self::Other(_) => false,
+            Self::OnnxRuntime | Self::Other(_) => false,
         }
     }
 }
@@ -73,7 +69,6 @@ mod tests {
             "llama-server",
             "qwentts.cpp",
             "transcribe.cpp",
-            "whisper.cpp",
             "onnxruntime",
         ] {
             assert_eq!(Runtime::parse(name).name(), name);

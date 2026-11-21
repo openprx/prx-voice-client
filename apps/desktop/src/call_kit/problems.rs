@@ -52,7 +52,8 @@ pub(crate) fn role_of(problem: &Problem) -> ProviderRole {
         Some(CallRole::AsrRefine) => ProviderRole::AsrRefine,
         Some(CallRole::Mt) => ProviderRole::Mt,
         Some(CallRole::Tts) => ProviderRole::Tts,
-        Some(CallRole::Asr) | None => ProviderRole::Asr,
+        // The assistant's dialogue is resolved on its own and never in a call's resolution.
+        Some(CallRole::Asr | CallRole::Dialogue) | None => ProviderRole::Asr,
     }
 }
 
