@@ -10,7 +10,7 @@ repository.workspace = true
 prxvc-core = { workspace = true }
 prxvc-session = { workspace = true }
 prxvc-audio = { workspace = true }
-prxvc-protocol = { workspace = true }
+prxvc-protocol = { workspace = true, features = ["test-double"] }
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }

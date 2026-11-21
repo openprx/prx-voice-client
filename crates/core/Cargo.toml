@@ -18,5 +18,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 parking_lot = { workspace = true }
 
+[dev-dependencies]
+prxvc-protocol = { workspace = true, features = ["test-double"] }
+
 [lints]
 workspace = true

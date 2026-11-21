@@ -12,7 +12,8 @@ crate-type = ["lib", "cdylib", "staticlib"]
 [dependencies]
 prxvc-core = { workspace = true }
 prxvc-session = { workspace = true }
-prxvc-protocol = { workspace = true }
+# The mobile skeleton still has no transport of its own: it runs on the in-memory double (see crates/ffi).
+prxvc-protocol = { workspace = true, features = ["test-double"] }
 prxvc-config = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }

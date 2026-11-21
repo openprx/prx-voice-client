@@ -60,13 +60,6 @@ pub(crate) fn is_http_url(text: &str) -> bool {
     rest.is_some_and(|r| !r.is_empty() && !r.starts_with('/') && !r.contains(char::is_whitespace))
 }
 
-/// Whether `text` is a whole number from `min` to `max`.
-pub(crate) fn is_number_in(text: &str, min: u64, max: u64) -> bool {
-    text.trim()
-        .parse::<u64>()
-        .is_ok_and(|n| (min..=max).contains(&n))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,14 +72,6 @@ mod tests {
         assert!(!is_http_url("ftp://example.org"));
         assert!(!is_http_url("http://"));
         assert!(!is_http_url("http://a b"));
-    }
-
-    #[test]
-    fn numbers_are_checked_against_a_range() {
-        assert!(is_number_in("5000", 100, 60_000));
-        assert!(!is_number_in("5", 100, 60_000));
-        assert!(!is_number_in("abc", 0, 10));
-        assert!(!is_number_in("-3", 0, 10));
     }
 
     #[test]

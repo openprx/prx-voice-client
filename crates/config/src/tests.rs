@@ -132,7 +132,7 @@ fn partial_sections_load_with_defaults() {
     assert!(c.debug.enabled);
     assert_eq!(c.debug.log_level, "info");
     assert!(!c.privacy.save_history);
-    assert_eq!(c.network, NetworkConfig::default());
+    assert_eq!(c.assistant, AssistantConfig::default());
 }
 
 // --- the real-world file --------------------------------------------------
@@ -150,23 +150,13 @@ fn real_world_file_keeps_every_value_and_migrates() {
     assert!(c.audio.auto_play_reply);
     assert!(c.audio.echo_control);
     assert_eq!(c.audio.echo_mode, EchoMode::Auto, "migrated from echo_control = true");
-    assert_eq!(c.audio.end_silence_ms, 800);
-    assert_eq!(c.audio.merge_window_ms, 4_000);
-    assert_eq!(c.audio.min_speech_ms, 280);
+    assert_eq!(c.assistant.end_silence_ms, DEFAULT_ASSISTANT_END_SILENCE_MS, "the file had no explicit value");
 
     assert_eq!(c.ui.language, "zh-CN");
     assert!(c.ui.show_transcript);
     assert!(!c.ui.compact_mode);
 
-    assert_eq!(c.network.connect_timeout_ms, 5000);
-    assert_eq!(c.network.reconnect_attempts, 3);
-    assert_eq!(c.network.reconnect_delay_ms, 1000);
-    assert_eq!(c.network.server_url, "http://localhost:3000");
-    assert!(c.network.use_mock);
-    assert_eq!(c.network.language, "zh-CN");
-    assert_eq!(c.network.asr_provider, "mock");
-    assert_eq!(c.network.agent_provider, "mock");
-    assert_eq!(c.network.tts_provider, "mock");
+    assert_eq!(c.assistant.language, "zh-CN", "network.language moved to [assistant]");
 
     assert!(c.privacy.save_history);
     assert!(c.privacy.save_transcript, "explicit value is unchanged");
@@ -435,7 +425,21 @@ fn two_updates_on_different_keys_both_persist() {
     assert!(loaded.ui.compact_mode);
     assert!(!loaded.audio.auto_play_reply);
     assert_eq!(loaded.ui.language, "zh-CN");
-    assert_eq!(loaded.network.server_url, "http://localhost:3000");
+    assert_eq!(loaded.assistant.language, "zh-CN");
+}
+
+#[test]
+fn a_migrated_file_loses_the_retired_keys_on_its_next_save() {
+    let dir = TempDir::new("retired_keys");
+    write_config(&dir, REAL_WORLD);
+    let c = mgr(&dir).update(|c| c.ui.compact_mode = true).unwrap();
+    assert_eq!(c.assistant.language, "zh-CN");
+    let text = read_config(&dir);
+    assert!(!text.contains("[network]"), "{text}");
+    assert!(!text.contains("use_mock"), "{text}");
+    assert!(!text.contains("server_url"), "{text}");
+    assert!(text.contains("[assistant]"), "{text}");
+    assert!(text.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")), "{text}");
 }
 
 // --- secrets ---------------------------------------------------------------
@@ -548,7 +552,5 @@ fn old_files_without_the_turn_fields_still_load() {
     let c = mgr(&dir).load().unwrap();
     assert_eq!(c.audio.sample_rate, 8000);
     assert!(!c.audio.echo_control);
-    assert_eq!(c.audio.end_silence_ms, 800);
-    assert_eq!(c.audio.merge_window_ms, 4_000);
-    assert_eq!(c.audio.min_speech_ms, 280);
+    assert_eq!(c.assistant, AssistantConfig::default());
 }

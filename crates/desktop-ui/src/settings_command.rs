@@ -48,6 +48,4 @@ pub enum SettingsCommand {
     Reveal(RevealTarget),
     /// Write a diagnostics bundle.
     ExportDiagnostics,
-    /// Try to reach the assistant server again.
-    RetryConnection,
 }

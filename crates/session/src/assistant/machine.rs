@@ -170,6 +170,8 @@ impl AssistantState {
             (S::Thinking { .. }, I::Interrupt) => {
                 Ok((listening(false, None), vec![A::CancelReply]))
             }
+            // With speaking switched off a reply is text only: it ends without audio.
+            (S::Thinking { .. }, I::ReplyDone) => Ok((listening(false, None), vec![])),
             (S::Thinking { .. }, I::Stop) => Ok((S::Idle, vec![A::CancelReply, A::EndSession])),
 
             // Speaking.
@@ -319,6 +321,13 @@ mod tests {
     }
 
     #[test]
+    fn a_text_only_reply_ends_the_turn_without_a_sound() {
+        let (s, a) = step(thinking(), I::ReplyDone);
+        assert_eq!(s, l(false));
+        assert!(a.is_empty());
+    }
+
+    #[test]
     fn speech_while_speaking_cuts_the_reply_and_the_output() {
         let (s, a) = step(speaking(), I::SpeechStarted);
         assert_eq!(s, l(true));
@@ -407,7 +416,6 @@ mod tests {
             (thinking(), I::Start),
             (thinking(), I::Turn("x".into())),
             (thinking(), I::NoTurn),
-            (thinking(), I::ReplyDone),
             (speaking(), I::Start),
             (speaking(), I::Turn("x".into())),
             (speaking(), I::NoTurn),

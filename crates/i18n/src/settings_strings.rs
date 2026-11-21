@@ -33,10 +33,6 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "settings.note.saved_only",
         "Saved now; the app does not use it yet.",
     ),
-    (
-        "settings.note.restart",
-        "Applies after you restart PRX Voice.",
-    ),
     ("settings.note.next_session", "Applies to the next session."),
     (
         "settings.note.next_download",
@@ -170,30 +166,6 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Fixed by the speech models; it cannot be changed.",
     ),
     ("settings.advanced.capture_format.value", "{0} kHz, {1} ch"),
-    ("settings.advanced.providers", "Assistant providers"),
-    (
-        "settings.advanced.providers.desc",
-        "Names of the server-side providers the assistant uses.",
-    ),
-    ("settings.advanced.asr_provider", "Recognition provider"),
-    ("settings.advanced.agent_provider", "Assistant provider"),
-    ("settings.advanced.tts_provider", "Voice provider"),
-    ("settings.advanced.timing", "Connection timing"),
-    (
-        "settings.advanced.timing.desc",
-        "How long to wait for the server, and how often and how soon to retry.",
-    ),
-    (
-        "settings.advanced.connect_timeout",
-        "Connection timeout (ms)",
-    ),
-    ("settings.advanced.reconnect_attempts", "Reconnect attempts"),
-    ("settings.advanced.reconnect_delay", "Reconnect delay (ms)"),
-    ("settings.advanced.required", "This cannot be empty."),
-    (
-        "settings.advanced.number_range",
-        "Enter a whole number from {0} to {1}.",
-    ),
     ("settings.advanced.setup_again", "Run setup again"),
     (
         "settings.advanced.setup_again.desc",
@@ -279,7 +251,6 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "settings.note.saved_only",
         "已保存，应用暂时还不会用到这项设置。",
     ),
-    ("settings.note.restart", "重启 PRX Voice 后生效。"),
     ("settings.note.next_session", "下次会话开始时生效。"),
     ("settings.note.next_download", "下次下载时生效。"),
     (
@@ -385,27 +356,6 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "settings.advanced.capture_format.value",
         "{0} kHz，{1} 声道",
-    ),
-    ("settings.advanced.providers", "助手的服务提供方"),
-    (
-        "settings.advanced.providers.desc",
-        "助手在服务器端使用的提供方名称。",
-    ),
-    ("settings.advanced.asr_provider", "识别提供方"),
-    ("settings.advanced.agent_provider", "助手提供方"),
-    ("settings.advanced.tts_provider", "语音提供方"),
-    ("settings.advanced.timing", "连接时间设置"),
-    (
-        "settings.advanced.timing.desc",
-        "等待服务器的时间，以及重试的次数和间隔。",
-    ),
-    ("settings.advanced.connect_timeout", "连接超时（毫秒）"),
-    ("settings.advanced.reconnect_attempts", "重连次数"),
-    ("settings.advanced.reconnect_delay", "重连间隔（毫秒）"),
-    ("settings.advanced.required", "不能为空。"),
-    (
-        "settings.advanced.number_range",
-        "请输入 {0} 到 {1} 之间的整数。",
     ),
     ("settings.advanced.setup_again", "重新运行设置向导"),
     (

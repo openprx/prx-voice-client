@@ -158,10 +158,16 @@ fn check_servers(directions: &[DirectionPlan]) -> Result<(), ProvidersFailure> {
 
 /// Connect to a local or local-network server; a remote endpoint is judged by its first request.
 pub(crate) fn probe_server(spec: &MtSpec) -> Result<(), String> {
-    if spec.locality == Locality::Remote {
+    probe_address(&spec.base_url, spec.locality)
+}
+
+/// Connect to the server at `base_url` when it is on this computer or the local network (the
+/// assistant's dialogue server shares this check with the call's translation server).
+pub(crate) fn probe_address(base_url: &str, locality: Locality) -> Result<(), String> {
+    if locality == Locality::Remote {
         return Ok(());
     }
-    let url = url::Url::parse(&spec.base_url).map_err(|e| e.to_string())?;
+    let url = url::Url::parse(base_url).map_err(|e| e.to_string())?;
     let host = url.host_str().ok_or("the address has no host")?;
     let port = url
         .port_or_known_default()

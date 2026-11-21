@@ -10,7 +10,7 @@ use prxvc_desktop_ui::theme::{self, Scheme};
 use prxvc_desktop_ui::tool_window::ToolKind;
 use prxvc_desktop_ui::widgets::{self, ButtonKind};
 use prxvc_desktop_ui::{
-    DesktopUiState, HistoryEntry, NetworkStatus, Theme, TranscriptLine, render_error_banner,
+    DesktopUiState, HistoryEntry, Theme, TranscriptLine,
 };
 use prxvc_i18n::Locale;
 
@@ -98,8 +98,6 @@ fn sample_state() -> DesktopUiState {
     let mut state = DesktopUiState::new();
     state.session_active = true;
     state.session_state = "AssistantSpeaking".to_owned();
-    state.network_status = NetworkStatus::Reconnecting;
-    state.reconnect_attempts = 2;
     state.transcript_lines = vec![
         TranscriptLine {
             role: "user".into(),
@@ -183,7 +181,6 @@ fn popup_dialogs_render_for_both_schemes_and_languages() {
             state.windows.request_open(ToolKind::Settings);
             state.windows.request_open(ToolKind::History);
             state.windows.request_open(ToolKind::Debug);
-            state.settings.use_mock = false; // also shows the server URL field
             let (shapes, text) = run_frames(&ctx, system, 3, |ui| {
                 prxvc_desktop_ui::render_app(ui, &mut state);
             });
@@ -217,23 +214,19 @@ fn legacy_themes_still_render() {
 }
 
 #[test]
-fn banner_and_panels_render() {
+fn history_and_debug_panels_render() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(Locale::En);
     let ctx = new_ctx();
-    let mut state = sample_state();
-    state.error_message = Some("Connection lost".into());
-    state.error_recoverable = true;
+    let state = sample_state();
     let (shapes, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
         egui::CentralPanel::default().show(ui, |ui| {
-            render_error_banner(ui, &mut state);
             prxvc_desktop_ui::render_history_panel(ui, &state.history_entries.clone());
             prxvc_desktop_ui::render_debug_page(ui, &state);
         });
     });
     assert!(shapes > 0);
-    assert!(text.contains("Connection lost"));
-    assert!(text.contains(&prxvc_i18n::t("common.retry")));
+    assert!(text.contains("First session"));
 }
 
 /// Press and release the pointer at `pos` over three frames and return
@@ -655,6 +648,39 @@ fn call_control_renders_in_both_languages_with_issues() {
                 assert!(shapes > 0);
                 assert!(text.contains(&prxvc_i18n::t("call.title")), "{text}");
                 assert!(text.contains(&prxvc_i18n::t("callwin.debug_link")));
+            }
+        }
+    }
+    prxvc_i18n::set_locale(Locale::En);
+}
+
+#[test]
+fn every_state_of_the_assistant_has_a_pill_and_the_transcript_shows_the_interim_line_in_both_languages() {
+    let _guard = lock_locale();
+    for locale in LOCALES {
+        prxvc_i18n::set_locale(locale.clone());
+        for (session, key) in [
+            ("Idle", "orb.ready"),
+            ("Listening", "orb.listening"),
+            ("UserSpeaking", "orb.hearing"),
+            ("Thinking", "orb.thinking"),
+            ("AssistantSpeaking", "orb.speaking"),
+        ] {
+            let ctx = new_ctx();
+            let mut state = sample_state();
+            state.session_state = session.to_owned();
+            state.session_active = session != "Idle";
+            state.transcript_lines = vec![
+                TranscriptLine { role: "user".into(), text: "what time is it".into(), is_final: true },
+                TranscriptLine { role: "assistant".into(), text: "It is noon.".into(), is_final: true },
+                TranscriptLine { role: "user".into(), text: "and tomorr".into(), is_final: false },
+            ];
+            let (_, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
+                prxvc_desktop_ui::render_app(ui, &mut state);
+            });
+            assert!(text.contains(&prxvc_i18n::t(key)), "{session} / {locale:?} shows {key}");
+            for line in ["what time is it", "It is noon.", "and tomorr"] {
+                assert!(text.contains(line), "{session}: {line}");
             }
         }
     }

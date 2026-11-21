@@ -46,6 +46,6 @@ pub mod prelude {
     pub use crate::paths::{AppPaths, APP_ID};
     pub use crate::{
         AppConfig, AppConfigManager, AudioConfig, ConfigError, ConfigManager, DebugConfig,
-        EchoMode, LoadNotice, LoadReport, NetworkConfig, PrivacyConfig, UiConfig,
+        EchoMode, LoadNotice, LoadReport, PrivacyConfig, UiConfig,
     };
 }

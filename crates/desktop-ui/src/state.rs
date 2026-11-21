@@ -1,6 +1,7 @@
 //! UI state: the view models, `DesktopUiState` and its sync from and flush to the shared state.
 
-use crate::shared::{NetworkStatus, SharedAppState};
+use crate::assistant_view::AssistantIssue;
+use crate::shared::SharedAppState;
 use crate::theme_presets::Theme;
 use crate::tool_window;
 
@@ -59,10 +60,6 @@ pub struct UiSettings {
     pub show_transcript: bool,
     /// Whether the global hotkey is enabled.
     pub hotkey_enabled: bool,
-    /// Server URL for prx-voice connection.
-    pub server_url: String,
-    /// Whether using mock mode (offline).
-    pub use_mock: bool,
     // ---- fields of the settings window (design 2.2); each maps to one config key ----
     /// `app.mode`: `"assistant"` or `"call"`.
     pub mode: String,
@@ -88,8 +85,15 @@ pub struct UiSettings {
     pub call_captions_show_source: bool,
     /// `call.barge_in`.
     pub call_barge_in: bool,
-    /// `network.language`: the assistant's session language.
-    pub network_language: String,
+    /// `assistant.language`: the language the assistant listens and answers in; empty follows the
+    /// interface language.
+    pub assistant_language: String,
+    /// `assistant.voice`: `"preset"` or `"clone"` (the owner's enrolled voice).
+    pub assistant_voice: String,
+    /// `assistant.voice_preset`; empty is the catalogue default.
+    pub assistant_voice_preset: String,
+    /// `providers.active.dialogue`: the id of the dialogue backend; empty is the local server.
+    pub dialogue_provider: String,
     /// `audio.echo_mode`: `"auto"`, `"always"` or `"off"`.
     pub echo_mode: String,
     /// `audio.virtual_mic_device`: a sink UID; empty is this app's own driver.
@@ -140,18 +144,6 @@ pub struct UiSettings {
     pub debug_show_panel: bool,
     /// `debug.log_level`.
     pub debug_log_level: String,
-    /// `network.asr_provider`.
-    pub network_asr_provider: String,
-    /// `network.agent_provider`.
-    pub network_agent_provider: String,
-    /// `network.tts_provider`.
-    pub network_tts_provider: String,
-    /// `network.connect_timeout_ms`.
-    pub connect_timeout_ms: u64,
-    /// `network.reconnect_attempts`.
-    pub reconnect_attempts: u32,
-    /// `network.reconnect_delay_ms`.
-    pub reconnect_delay_ms: u64,
     /// `network_policy.offline`.
     pub offline: bool,
     /// `network_policy.allow_hosts`.
@@ -168,8 +160,6 @@ impl Default for UiSettings {
             save_history: true,
             show_transcript: true,
             hotkey_enabled: false,
-            server_url: "http://localhost:3000".to_owned(),
-            use_mock: true,
             mode: "assistant".to_owned(),
             theme: "rf".to_owned(),
             compact_mode: false,
@@ -182,7 +172,10 @@ impl Default for UiSettings {
             call_outgoing_capture: "hands_free".to_owned(),
             call_captions_show_source: true,
             call_barge_in: true,
-            network_language: "zh-CN".to_owned(),
+            assistant_language: String::new(),
+            assistant_voice: "preset".to_owned(),
+            assistant_voice_preset: String::new(),
+            dialogue_provider: String::new(),
             echo_mode: "auto".to_owned(),
             virtual_mic_device: String::new(),
             sample_rate: 16_000,
@@ -208,12 +201,6 @@ impl Default for UiSettings {
             debug_enabled: false,
             debug_show_panel: false,
             debug_log_level: "info".to_owned(),
-            network_asr_provider: "mock".to_owned(),
-            network_agent_provider: "mock".to_owned(),
-            network_tts_provider: "mock".to_owned(),
-            connect_timeout_ms: 5_000,
-            reconnect_attempts: 3,
-            reconnect_delay_ms: 1_000,
             offline: false,
             allow_hosts: Vec::new(),
         }
@@ -298,14 +285,8 @@ pub struct DesktopUiState {
     pub debug_events: Vec<String>,
     /// Current state machine info for the debug page.
     pub debug_state_info: String,
-    /// Current error message to display (if any).
-    pub error_message: Option<String>,
-    /// Whether the current error is recoverable (shows retry button).
-    pub error_recoverable: bool,
-    /// Network/transport connection status.
-    pub network_status: NetworkStatus,
-    /// Number of reconnect attempts so far.
-    pub reconnect_attempts: u32,
+    /// What keeps the assistant from working, when something does.
+    pub assistant_issue: Option<AssistantIssue>,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     pub mic_paused: bool,
     /// Name of the input device being captured; empty when none.
@@ -356,12 +337,9 @@ impl DesktopUiState {
             settings: UiSettings::default(),
             debug_events: Vec::new(),
             debug_state_info: "Idle".to_owned(),
-            error_message: None,
-            error_recoverable: false,
-            network_status: NetworkStatus::default(),
+            assistant_issue: None,
             mic_paused: false,
             input_device: String::new(),
-            reconnect_attempts: 0,
             status_message: None,
             call: crate::call_view::CallPanel::default(),
             call_translate: false,
@@ -453,10 +431,7 @@ impl DesktopUiState {
         self.status_message = snap.status_message;
 
         // Error and network
-        self.error_message = snap.error_message;
-        self.error_recoverable = snap.error_recoverable;
-        self.network_status = snap.network_status;
-        self.reconnect_attempts = snap.reconnect_attempts;
+        self.assistant_issue = snap.assistant_issue;
         self.mic_paused = snap.mic_paused;
         self.input_device = snap.input_device;
     }

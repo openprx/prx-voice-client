@@ -14,7 +14,6 @@ use crate::settings_data::{SettingsData, SettingsNotice};
 use crate::settings_rows::{PageCx, notice};
 use crate::settings_section::SettingsSection;
 use crate::settings_view;
-use crate::shared::NetworkStatus;
 use crate::state::UiSettings;
 use crate::theme::{Tokens, size, space};
 use crate::tool_window::WINDOW_PADDING;
@@ -74,8 +73,6 @@ pub struct BodyArgs<'a> {
     pub current_theme: &'a str,
     /// A theme chosen this frame.
     pub pending_theme: &'a mut Option<String>,
-    /// Assistant transport status.
-    pub network: &'a NetworkStatus,
 }
 
 /// Draw the window body into the padded frame of the settings window.
@@ -87,7 +84,6 @@ pub fn body(ui: &mut Ui, tk: &Tokens, args: BodyArgs<'_>) {
         view,
         current_theme,
         pending_theme,
-        network,
     } = args;
     let now = ui.ctx().input(|i| i.time);
     let window_width = ui.available_width() + 2.0 * WINDOW_PADDING;
@@ -101,7 +97,6 @@ pub fn body(ui: &mut Ui, tk: &Tokens, args: BodyArgs<'_>) {
         view,
         current_theme,
         pending_theme,
-        network,
         now,
     };
     if is_wide(window_width) {

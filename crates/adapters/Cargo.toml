@@ -20,9 +20,8 @@ prxvc-ports = { workspace = true }
 # cancelled request drops its connection (`mt::openai_chat`).
 tokio = { workspace = true }
 
-# The TTS adapter needs only the workspace resampler, so the Whisper recogniser stays off here;
-# the `integration` feature turns it back on.
-prxvc-audio = { workspace = true, default-features = false }
+# The TTS adapter needs only the workspace resampler.
+prxvc-audio = { workspace = true }
 # Prepared-voice cache keys and the model fingerprint.
 sha2 = { workspace = true }
 # Lock and condition variable of the job queue.
@@ -34,8 +33,6 @@ prxvc-transcribe-sys = { workspace = true, optional = true }
 
 [features]
 default = []
-# Enables the audio-wired end-to-end example (capture → ASR → driver → playback).
-integration = ["prxvc-audio/whisper"]
 # The in-process `qwentts.cpp` engine behind `tts::qwentts::QwenTts`: builds the vendored C++ runtime
 # (cmake, clang) and links it as a dynamic library. Off by default, additive (CS-7.5).
 qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]

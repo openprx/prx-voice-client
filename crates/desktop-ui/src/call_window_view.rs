@@ -274,6 +274,10 @@ fn action_of(action: IssueAction) -> Option<(&'static str, CallWindowAction)> {
             "callwin.action.open_audio",
             CallWindowAction::OpenSettings(SettingsSection::Audio),
         )),
+        IssueAction::OpenAssistantSettings => Some((
+            "assistant.action.open_assistant",
+            CallWindowAction::OpenSettings(SettingsSection::Assistant),
+        )),
     }
 }
 

@@ -42,6 +42,7 @@ const CHAIN: &[Link] = &[
         steps: &[
             ("move the assistant keys into [assistant]", assistant_keys),
             ("drop the selections of the retired assistant models", drop_retired_selections),
+            ("drop the keys of the retired assistant stack", drop_retired_keys),
         ],
     },
 ];
@@ -219,6 +220,24 @@ pub(crate) fn drop_retired_selections(table: &mut toml::Table) -> Result<(), Con
             !v.as_str()
                 .is_some_and(|s| is_retired_model(s.split('@').next().unwrap_or(s)))
         });
+    }
+    Ok(())
+}
+
+/// Version 3 removes the keys of the retired assistant stack, which sent recognised text to a
+/// server (or to a built-in demo backend):
+///
+/// * the whole `[network]` section: server address, demo mode, reconnect settings and the server's
+///   provider names (its `language` and `audio.end_silence_ms` were moved by [`assistant_keys`]);
+/// * `audio.end_silence_ms`, `audio.merge_window_ms` and `audio.min_speech_ms`: the merging of a
+///   sentence split by a pause is now the voice loop's rule (a user turn that is still being
+///   answered is continued), and the minimum speech is `pipeline.min_speech_ms`.
+pub(crate) fn drop_retired_keys(table: &mut toml::Table) -> Result<(), ConfigError> {
+    table.remove("network");
+    if let Some(audio) = table.get_mut("audio").and_then(toml::Value::as_table_mut) {
+        for key in ["end_silence_ms", "merge_window_ms", "min_speech_ms"] {
+            audio.remove(key);
+        }
     }
     Ok(())
 }
@@ -401,6 +420,20 @@ mod tests {
     }
 
     #[test]
+    fn the_server_section_and_the_endpointing_keys_are_dropped() {
+        let mut t = parse(
+            "[network]\nuse_mock = true\nserver_url = \"http://x\"\n\
+             [audio]\nend_silence_ms = 800\nmerge_window_ms = 4000\nmin_speech_ms = 280\nsample_rate = 16000\n",
+        );
+        drop_retired_keys(&mut t).unwrap();
+        assert!(t.get("network").is_none());
+        assert_eq!(t["audio"].as_table().unwrap().len(), 1, "only sample_rate is left");
+        let mut none = parse("[ui]\nlanguage = \"en\"\n");
+        drop_retired_keys(&mut none).unwrap();
+        assert_eq!(none, parse("[ui]\nlanguage = \"en\"\n"));
+    }
+
+    #[test]
     fn a_version_2_file_takes_only_the_third_link_and_the_result_is_stable() {
         let mut t = parse(
             "schema_version = 2\n[network]\nlanguage = \"zh-CN\"\nuse_mock = false\n[audio]\nend_silence_ms = 650\n[call]\nstart_mode = \"on_call\"\n",
@@ -409,6 +442,8 @@ mod tests {
         assert_eq!(t["schema_version"].as_integer(), Some(3));
         assert_eq!(t["assistant"]["language"].as_str(), Some("zh-CN"));
         assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(650));
+        assert!(t.get("network").is_none(), "the server section is gone");
+        assert!(t["audio"].get("end_silence_ms").is_none());
         assert_eq!(t["call"]["start_mode"].as_str(), Some("on_call"), "earlier keys untouched");
         let once = t.clone();
         assert_eq!(migrate(&mut t).unwrap(), None);

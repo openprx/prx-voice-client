@@ -147,3 +147,36 @@ fn stopping_while_speaking_silences_the_output_and_ends_the_session() {
     assert!(rig.seen.contains(&AssistantEvent::ReplyCut));
     assert_eq!(rig.phases().last(), Some(&Phase::Idle));
 }
+
+#[test]
+fn with_speaking_off_the_reply_is_text_only_and_the_turn_still_ends() {
+    let (cfg, clock) = RigConfig::new("what time is it", ["It is noon!", " Anything else?"]);
+    let mut rig = Rig::build(cfg, clock);
+    rig.params_mut().speak = false;
+    rig.start().expect("starts");
+    rig.speak();
+    rig.wait_for("the reply is done", |e| *e == AssistantEvent::ReplyDone);
+    rig.wait_phase(Phase::Listening);
+    assert_eq!(rig.reply_text(), "It is noon! Anything else?");
+    assert!(rig.tts.requests().is_empty(), "nothing is synthesised");
+    assert_eq!(
+        rig.out.chunks.load(Ordering::SeqCst),
+        0,
+        "nothing is played"
+    );
+    assert_eq!(
+        rig.phases(),
+        [
+            Phase::Listening,
+            Phase::UserSpeaking,
+            Phase::Thinking,
+            Phase::Listening
+        ],
+        "the assistant never speaks"
+    );
+    assert!(
+        rig.faults().is_empty(),
+        "a text-only reply is not a missing-audio fault"
+    );
+    rig.stop();
+}

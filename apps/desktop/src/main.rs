@@ -1,18 +1,16 @@
 //! PRX Voice Client desktop application: entry point and module table of contents.
 //!
-//! Runs the egui UI on the main thread and a tokio async runtime on a
-//! background thread. The two communicate through [`SharedAppState`] which
-//! uses `parking_lot::Mutex` for minimal-contention synchronization.
+//! Runs the egui UI on the main thread and the assistant's host on a background thread. The two
+//! communicate through [`SharedAppState`] which uses `parking_lot::Mutex` for minimal-contention
+//! synchronization.
 //!
 //! Modules:
 //! - `compose`: composition root, the only place concrete types are wired together
 //! - `config_load`: configuration load and legacy-migration reporting
 //! - `app`: the egui application and its `eframe::App` implementation
-//! - `engine_loop`: the polling loop on the background runtime
-//! - `commands`: UI command dispatch
-//! - `event_map`: engine events to shared UI state
-//! - `asr_session`: ASR and audio capture loop start-up
-//! - `persistence`: history and session save
+//! - `assistant`: the voice assistant's host: the orb's commands, the loop's events, issues, the session record
+//! - `event_map`: the debug log
+//! - `persistence`: history load
 //! - `call_compose`: call mode: the coordinator thread, its commands and snapshots, exclusion with the assistant
 //! - `call_panel`: the coordinator's snapshot as the debug control's view model
 //! - `call_host` (macOS): the real host and audio paths behind the coordinator's seams
@@ -26,10 +24,10 @@
 //! - `settings`: mapping between the configuration and the settings window (pure)
 //! - `settings_data`: what the settings window shows that only the app can probe
 //! - `settings_host`: applies the window's edits, commands and memory; runs the probes
-//! - `hotkey`, `tray`, `playback`: platform and device helpers
+//! - `hotkey`, `tray`: platform helpers
 
 mod app;
-mod asr_session;
+mod assistant;
 mod bundle;
 mod call_kit;
 #[cfg(target_os = "macos")]
@@ -37,18 +35,15 @@ mod call_host;
 mod call_compose;
 mod call_panel;
 mod cli;
-mod commands;
 mod compose;
 mod config_load;
 mod diagnostics;
 mod driver_install;
-mod engine_loop;
 mod event_map;
 mod hotkey;
 mod logging;
 mod native_libs;
 mod persistence;
-mod playback;
 mod routing_recovery;
 mod settings;
 mod settings_data;

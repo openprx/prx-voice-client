@@ -288,6 +288,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "settings.models.unused.desc",
         "Remove models no step uses, to free disk space.",
     ),
+    ("settings.pipeline.assistant", "Voice assistant"),
+    ("settings.pipeline.assistant.desc", "What runs when you talk to the assistant: the same speech models as a call, and its own dialogue backend."),
+    ("settings.pipeline.problem.not_available_yet", "{1} is not available yet. Choose another dialogue backend on the Assistant page."),
+    ("settings.pipeline.problem.server_not_answering", "The server at {0} does not answer ({1}). Start it, or choose another dialogue backend."),
 ];
 
 /// Simplified Chinese strings.
@@ -559,6 +563,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "settings.models.unused.desc",
         "删除没有任何环节使用的模型，释放磁盘空间。",
     ),
+    ("settings.pipeline.assistant", "语音助手"),
+    ("settings.pipeline.assistant.desc", "与助手对话时运行的内容：与通话相同的语音模型，加上助手自己的对话后端。"),
+    ("settings.pipeline.problem.not_available_yet", "{1}暂不可用。请在“助手”页选择其他对话后端。"),
+    ("settings.pipeline.problem.server_not_answering", "{0} 处的服务器没有响应（{1}）。请启动它，或选择其他对话后端。"),
 ];
 
 #[cfg(test)]

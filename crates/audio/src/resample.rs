@@ -2,7 +2,7 @@
 //!
 //! The Core Audio tap (and most system audio) delivers **interleaved float32 at
 //! the device's native rate** — typically 48 kHz stereo. ASR engines
-//! (SenseVoice / Whisper / Moonshine) want **16 kHz mono float32**. This module
+//! (SenseVoice, Moonshine, Qwen3-ASR) want **16 kHz mono float32**. This module
 //! does the two conversions, streaming:
 //!
 //!   1. downmix interleaved N-channel → mono (channel average)

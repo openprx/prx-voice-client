@@ -293,6 +293,40 @@ pub enum PipelineData {
     Problems(Vec<PipelineProblem>),
 }
 
+/// Where a dialogue backend of the list comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogueKindView {
+    /// The built-in local server.
+    LocalServer,
+    /// A provider entry of the configuration.
+    Entry,
+    /// The OpenPRX agent: listed, not available yet.
+    OpenPrx,
+}
+
+/// One dialogue backend the assistant can talk to, with what is wrong with it, if anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogueChoiceView {
+    /// The id `providers.active.dialogue` takes.
+    pub id: String,
+    /// Its name; empty for the entries that have none (the id is shown then).
+    pub name: String,
+    /// Where it comes from.
+    pub kind: DialogueKindView,
+    /// Why it cannot serve now (a problem with a translated sentence), when it cannot.
+    pub problem: Option<PipelineProblem>,
+}
+
+/// What the Assistant page and the Speech pipeline page show about the assistant.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AssistantData {
+    /// The backends to choose from, the built-in local server first.
+    pub backends: Vec<DialogueChoiceView>,
+    /// The assistant's chain as the registry resolves it: voice activity, recognition, the
+    /// dialogue backend and the voice.
+    pub chain: PipelineData,
+}
+
 /// An installed voice profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceProfileView {
@@ -347,6 +381,8 @@ pub struct SettingsData {
     pub permissions: PermissionsData,
     /// The speech pipeline.
     pub pipeline: PipelineData,
+    /// The assistant: its backends and its chain.
+    pub assistant: AssistantData,
     /// The installed voice profile, when there is one.
     pub voice_profile: Option<VoiceProfileView>,
     /// Ids of the preset voices that can be chosen.

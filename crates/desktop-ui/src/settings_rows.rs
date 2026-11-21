@@ -34,8 +34,6 @@ pub(crate) struct PageCx<'a> {
     pub current_theme: &'a str,
     /// A theme chosen this frame, for the app to apply.
     pub pending_theme: &'a mut Option<String>,
-    /// Connection status of the assistant transport.
-    pub network: &'a crate::shared::NetworkStatus,
     /// Time of this frame in seconds (egui's clock), for waiting states.
     pub now: f64,
 }

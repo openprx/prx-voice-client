@@ -29,13 +29,12 @@ const CONTROL_ROLES: [Role; 6] = [
 ];
 
 /// The page as the user sees it first (`rich_data`), and a busy variant that opens every
-/// optional part of it: the server field, offline mode with hosts, the driver with a failed
+/// optional part of it: the assistant's backend problem, offline mode with hosts, the driver with a failed
 /// operation, a permission that waits, pipeline problems.
 fn variants(section: SettingsSection) -> Vec<WindowState> {
     let plain = WindowState::new(section);
     let mut busy = WindowState::new(section);
     busy.settings = UiSettings {
-        use_mock: false,
         offline: true,
         allow_hosts: vec![
             "192.168.1.20".into(),
@@ -45,6 +44,9 @@ fn variants(section: SettingsSection) -> Vec<WindowState> {
         models_endpoint: "https://a-very-long-mirror-address.example.org/huggingface".into(),
         call_self_language: "zh".into(),
         call_peer_language: "en".into(),
+        dialogue_provider: "openprx".into(),
+        assistant_voice: "clone".into(),
+        assistant_language: "zh-CN".into(),
         hotkey_push_to_talk: "F5".into(),
         ..UiSettings::default()
     };
@@ -75,6 +77,12 @@ fn variants(section: SettingsSection) -> Vec<WindowState> {
             args: vec!["gemma-4-e4b-it-q4".into(), "4.6 GB".into()],
         },
     ]);
+    busy.data.assistant.chain = PipelineData::Problems(vec![PipelineProblem {
+        subject: Some((PipelineRole::Dialogue, String::new())),
+        fallback: false,
+        code: "not_available_yet".into(),
+        args: vec!["openprx".into(), "OpenPRX agent".into()],
+    }]);
     busy.data.notices = vec![
         SettingsNotice::UnreadableFileKept {
             kept_as: "config.toml.unreadable-1700000000".into(),
@@ -197,7 +205,6 @@ fn painted_bounds(width: f32, scheme: Theme, mut state: WindowState) -> egui::Re
                                 view: &mut state.view,
                                 current_theme: prxvc_desktop_ui::theme::RF_THEME_NAME,
                                 pending_theme: &mut state.pending_theme,
-                                network: &state.network,
                             },
                         );
                     });

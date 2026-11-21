@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use prxvc_config::AppConfig;
 use prxvc_desktop_ui::settings_data::{
-    DataLeavingView, LocalityView, PipelineData, PipelineProblem, PipelineRole, PipelineRow,
+    AssistantData, DataLeavingView, DialogueChoiceView, DialogueKindView, LocalityView,
+    PipelineData, PipelineProblem, PipelineRole, PipelineRow,
 };
 use prxvc_media::Lang;
 use prxvc_models::Catalogue;
@@ -23,27 +24,158 @@ use prxvc_providers::{
 use crate::call_kit::config::paths_for;
 use crate::call_kit::models::StoreModels;
 
-/// Resolve the call for `config` and describe it.
-pub(crate) fn probe(config: &AppConfig) -> PipelineData {
-    let paths = match paths_for(config) {
-        Ok(p) => p,
-        Err(detail) => return store_problem(detail),
-    };
+/// The registry of `config` over the model store, or the data that says why there is none.
+fn open_registry(config: &AppConfig) -> Result<ProviderRegistry, PipelineData> {
+    let paths = paths_for(config).map_err(store_problem)?;
     let catalogue = Arc::new(Catalogue::embedded());
-    let models = match StoreModels::open(paths.models_dir.clone(), Arc::clone(&catalogue)) {
-        Ok(m) => m,
-        Err(detail) => return store_problem(detail),
-    };
-    let registry = ProviderRegistry::new(
+    let models = StoreModels::open(paths.models_dir.clone(), Arc::clone(&catalogue))
+        .map_err(store_problem)?;
+    Ok(ProviderRegistry::new(
         config,
         catalogue,
         Arc::new(models),
         Arc::new(EnvCredentials::from_process()),
         VoiceDirs::from_paths(&paths),
-    );
+    ))
+}
+
+/// Resolve the call for `config` and describe it.
+pub(crate) fn probe(config: &AppConfig) -> PipelineData {
+    let registry = match open_registry(config) {
+        Ok(r) => r,
+        Err(data) => return data,
+    };
     match registry.resolve_call() {
         Ok(plan) => describe_plan(&plan, &registry.egress_summary(&plan)),
         Err(problems) => describe_problems(&problems),
+    }
+}
+
+/// Resolve the assistant for `config`: the backends to choose from, each with what is wrong with
+/// it, and the chain of the configured one.
+pub(crate) fn probe_assistant(config: &AppConfig) -> AssistantData {
+    let registry = match open_registry(config) {
+        Ok(r) => r,
+        Err(chain) => {
+            return AssistantData {
+                backends: Vec::new(),
+                chain,
+            };
+        }
+    };
+    let system = sys_locale::get_locale();
+    let lang = crate::assistant::params::language_of(config, system.as_deref());
+    let choice = crate::assistant::params::voice_choice(config);
+    let backends = registry
+        .dialogue_choices()
+        .into_iter()
+        .map(|c| {
+            let mut one = config.clone();
+            one.providers.active.dialogue.insert(String::new(), c.id.clone());
+            registry.reload(&one);
+            let problem = match registry.resolve_dialogue() {
+                Err(problems) => problems.first().map(problem_view),
+                Ok(resolved) => unreachable_problem(&resolved.primary.base_url, resolved.primary.locality),
+            };
+            DialogueChoiceView {
+                id: c.id,
+                name: c.display_name,
+                kind: match c.kind {
+                    prxvc_providers::DialogueKind::LocalServer => DialogueKindView::LocalServer,
+                    prxvc_providers::DialogueKind::Entry => DialogueKindView::Entry,
+                    prxvc_providers::DialogueKind::OpenPrx => DialogueKindView::OpenPrx,
+                },
+                problem,
+            }
+        })
+        .collect();
+    registry.reload(config);
+    let chain = describe_assistant(&registry, lang, &choice);
+    AssistantData { backends, chain }
+}
+
+/// The problem of a dialogue server that is on this computer or network and does not answer.
+fn unreachable_problem(base_url: &str, locality: Locality) -> Option<PipelineProblem> {
+    crate::call_kit::providers::probe_address(base_url, locality)
+        .err()
+        .map(|reason| PipelineProblem {
+            subject: Some((PipelineRole::Dialogue, String::new())),
+            fallback: false,
+            code: "server_not_answering".to_owned(),
+            args: vec![base_url.to_owned(), reason],
+        })
+}
+
+/// The assistant's chain as the registry resolves it (speech detection, recognition, the
+/// dialogue backend and the voice), or every problem that keeps it from resolving.
+fn describe_assistant(
+    registry: &ProviderRegistry,
+    lang: Lang,
+    choice: &prxvc_providers::VoiceChoice,
+) -> PipelineData {
+    let mut problems = Vec::new();
+    let mut warnings = Vec::new();
+    let vad = take(registry.resolve_vad(), &mut problems, &mut warnings);
+    let asr = take(registry.resolve_asr(lang), &mut problems, &mut warnings);
+    let dialogue = take(registry.resolve_dialogue(), &mut problems, &mut warnings);
+    let tts = take(registry.resolve_tts(lang, choice), &mut problems, &mut warnings);
+    let (Some(vad), Some(asr), Some(dialogue), Some(tts)) = (vad, asr, dialogue, tts) else {
+        return describe_problems(&problems);
+    };
+    let mut views = vec![local_row(RoleKey::Vad, &vad.primary.id.to_string(), &runtime_name(&vad.primary.runtime))];
+    views.push(local_row(
+        RoleKey::Asr(lang),
+        asr.primary.id.as_str(),
+        &runtime_name(&asr.primary.runtime),
+    ));
+    views.push(PipelineRow {
+        role: PipelineRole::Dialogue,
+        key: String::new(),
+        provider: dialogue.primary.display_name.clone(),
+        target: format!("{} \u{b7} {}", dialogue.primary.base_url, dialogue.primary.model),
+        data: data_view(dialogue.primary.data_leaving()),
+        locality: locality_view(dialogue.primary.locality),
+        host: Some(dialogue.primary.host.clone()),
+        fallback: dialogue.fallback.as_ref().map(|s| s.display_name.clone()),
+    });
+    views.push(local_row(RoleKey::Tts(lang), &tts.primary.label, tts.primary.id.as_str()));
+    let leaves = views
+        .iter()
+        .any(|r| r.data != DataLeavingView::Nothing && r.locality != LocalityView::ThisComputer);
+    PipelineData::Resolved {
+        rows: views,
+        leaves_this_computer: leaves,
+        warnings: warnings.iter().map(problem_view).collect(),
+    }
+}
+
+fn local_row(key: RoleKey, provider: &str, target: &str) -> PipelineRow {
+    PipelineRow {
+        role: role_of(key),
+        key: key.config_key(),
+        provider: provider.to_owned(),
+        target: target.to_owned(),
+        data: DataLeavingView::Nothing,
+        locality: LocalityView::ThisComputer,
+        host: None,
+        fallback: None,
+    }
+}
+
+fn take<S>(
+    result: Result<Resolved<S>, Vec<Problem>>,
+    problems: &mut Vec<Problem>,
+    warnings: &mut Vec<Problem>,
+) -> Option<Resolved<S>> {
+    match result {
+        Ok(mut resolved) => {
+            warnings.append(&mut resolved.warnings);
+            Some(resolved)
+        }
+        Err(mut more) => {
+            problems.append(&mut more);
+            None
+        }
     }
 }
 
@@ -304,6 +436,9 @@ pub(crate) fn problem_view(p: &Problem) -> PipelineProblem {
             "voice_preset_language",
             vec![preset.clone(), found.clone(), lang_name(*wanted)],
         ),
+        ProblemKind::NotAvailableYet { id, name } => {
+            ("not_available_yet", vec![id.to_string(), name.clone()])
+        }
         ProblemKind::FallbackIsPrimary { id } => ("fallback_is_primary", vec![id.to_string()]),
         // `ProblemKind` is non-exhaustive: a kind this version does not know is still shown.
         other => ("other", vec![format!("{other}")]),
@@ -421,6 +556,8 @@ mod tests {
             "voice_preset_unreadable",
             "voice_preset_language",
             "fallback_is_primary",
+            "not_available_yet",
+            "server_not_answering",
             "store_unreadable",
             "other",
         ];

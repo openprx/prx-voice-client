@@ -7,7 +7,8 @@
 //! * `audio`: input and output devices and the input policy's verdict;
 //! * `permissions`: microphone and call-audio status, the requests the user triggers, the
 //!   System Settings panes;
-//! * `pipeline`: the provider registry's `resolve_call()` and `egress_summary` as view models;
+//! * `pipeline`: the provider registry's `resolve_call()` and `egress_summary` as view models, and
+//!   the assistant's backends and chain;
 //! * `voice`: the installed profile and the preset voices;
 //! * `about`: version, directories, notices, local endpoints.
 
@@ -58,6 +59,7 @@ pub(crate) fn collect(config: &AppConfig, previous: &SettingsData) -> SettingsDa
             local_endpoints: about::local_endpoints(config),
         },
         pipeline: pipeline::probe(config),
+        assistant: pipeline::probe_assistant(config),
         voice_profile: paths
             .as_ref()
             .and_then(|p| voice::profile(&p.voices_dir, &config.voice.self_profile_id)),

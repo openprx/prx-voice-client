@@ -18,14 +18,9 @@ uuid = { workspace = true }
 cpal = { workspace = true }
 parking_lot = { workspace = true }
 rubato = { workspace = true }
-whisper-cpp-plus = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
 cc = { workspace = true }
-
-[features]
-default = ["whisper"]
-whisper = ["dep:whisper-cpp-plus"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

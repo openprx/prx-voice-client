@@ -29,8 +29,7 @@ pub(crate) struct PrxVoiceApp {
     pub(crate) tray_manager: Option<tray::TrayManager>,
     /// Last observed i18n locale, used to detect language changes reliably.
     pub(crate) last_locale: String,
-    /// The configuration in effect (loaded at startup, the one the engine is
-    /// built from). The settings window writes through the configuration's
+    /// The configuration in effect at startup (a session reads the file again when it starts). The settings window writes through the configuration's
     /// atomic `update`, never into this copy.
     pub(crate) config: prxvc_config::AppConfig,
     /// The state of the settings window last known to be stored (or loaded);
@@ -151,12 +150,17 @@ impl eframe::App for PrxVoiceApp {
         }
         // The tray's first line says what the app is doing (text is set only when it changes;
         // a language change changes the text too).
+        let issue_text = self
+            .ui_state
+            .assistant_issue
+            .as_ref()
+            .map(|i| prxvc_i18n::t(&i.key));
         if let Some(ref tray) = self.tray_manager {
             tray.set_state_line(
                 &tray::tray_state(
                     &self.ui_state.session_state,
                     self.ui_state.call.phase,
-                    self.ui_state.error_message.as_deref(),
+                    issue_text.as_deref(),
                 )
                 .text(),
             );

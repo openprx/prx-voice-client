@@ -52,7 +52,7 @@ fn clicking_a_section_shows_its_page() {
     let marker = |s: SettingsSection| match s {
         SettingsSection::General => "Interface language",
         SettingsSection::CallTranslation => "My language",
-        SettingsSection::Assistant => "Server address",
+        SettingsSection::Assistant => "Dialogue backend",
         SettingsSection::Audio => "Echo protection",
         SettingsSection::Voice => "My voice",
         SettingsSection::SpeechPipeline => "Data leaving this computer",
@@ -63,8 +63,6 @@ fn clicking_a_section_shows_its_page() {
         SettingsSection::About => "Data folder",
     };
     let mut harness = wide(SettingsSection::General);
-    // Server address needs live mode.
-    harness.state_mut().settings.use_mock = false;
     for section in SettingsSection::ALL {
         harness
             .get_by_role_and_label(Role::MenuItem, &section.label())
@@ -240,46 +238,43 @@ fn the_two_call_languages_must_differ() {
 }
 
 #[test]
-fn a_text_field_commits_a_valid_value_on_blur_and_restores_an_invalid_one() {
+fn the_assistant_page_chooses_the_backend_and_shows_why_one_cannot_serve() {
+    let _guard = english();
+    let mut h = wide(SettingsSection::Assistant);
+    // The built-in local server is the default: an empty setting, ready.
+    assert_eq!(h.state().settings.dialogue_provider, "");
+    assert!(h.query_all_by_label_contains(&t("settings.pipeline.ready")).next().is_some());
+    // The OpenPRX agent can be chosen; the page then says it is not available yet.
+    h.get_by_role_and_label(Role::ComboBox, "Dialogue backend").click();
+    h.run();
+    h.get_by_label(&t("settings.assistant.backend.openprx")).click();
+    h.run();
+    assert_eq!(h.state().settings.dialogue_provider, "openprx");
+    assert!(
+        h.query_all_by_label_contains("not available yet").next().is_some(),
+        "the problem of the chosen backend is told, not hidden"
+    );
+}
+
+#[test]
+fn the_assistant_voice_can_be_a_preset_or_the_users_own_and_clone_without_a_profile_is_explained() {
     let _guard = english();
     let mut st = WindowState::new(SettingsSection::Assistant);
-    st.settings.use_mock = false;
+    st.data.voice_profile = None;
+    st.settings.assistant_voice = "clone".into();
     let mut h = window_harness(WIDE, Theme::Light, st);
     h.run();
-    let field = h.get_by_role_and_label(Role::TextInput, "Server address");
-    field.focus();
-    h.run();
-    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-    h.run();
-    h.get_by_role_and_label(Role::TextInput, "Server address")
-        .type_text("http://10.0.0.5:4000");
-    h.run();
-    assert_eq!(
-        h.state().settings.server_url,
-        "http://localhost:3000",
-        "not committed while typing"
-    );
-    h.key_press(egui::Key::Tab);
-    h.run();
-    assert_eq!(h.state().settings.server_url, "http://10.0.0.5:4000");
-
-    // An invalid address is not stored and the old value returns.
-    let field = h.get_by_role_and_label(Role::TextInput, "Server address");
-    field.focus();
-    h.run();
-    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
-    h.run();
-    h.get_by_role_and_label(Role::TextInput, "Server address")
-        .type_text("not a url");
-    h.run();
     assert!(
-        h.query_by_label_contains(&t("settings.server_url.invalid"))
-            .is_some(),
-        "the error shows while typing"
+        h.query_by_label_contains(&t("settings.assistant.voice.needs_profile")).is_some(),
+        "the missing profile is explained"
     );
-    h.key_press(egui::Key::Tab);
+    assert!(
+        h.query_all_by_label(&t("settings.assistant.voice.preset_name")).next().is_none(),
+        "no preset to choose while the voice is the user's own"
+    );
+    h.state_mut().settings.assistant_voice = "preset".into();
     h.run();
-    assert_eq!(h.state().settings.server_url, "http://10.0.0.5:4000");
+    assert!(h.query_all_by_label(&t("settings.assistant.voice.preset_name")).next().is_some());
 }
 
 #[test]
@@ -380,7 +375,11 @@ fn the_resolved_pipeline_shows_provider_readiness_and_what_leaves() {
         h.query_by_label_contains("Sends text to api.example.com")
             .is_some()
     );
-    assert!(h.query_by_label_contains("Runs on this computer").is_some());
+    assert!(
+        h.query_all_by_label_contains("Runs on this computer")
+            .next()
+            .is_some()
+    );
     assert!(
         h.query_by_label_contains("Sent to api.example.com")
             .is_some()
@@ -435,22 +434,8 @@ fn the_virtual_microphone_row_leads_to_the_permissions_page() {
 }
 
 #[test]
-fn retry_connection_and_export_diagnostics_issue_their_commands() {
+fn export_diagnostics_issues_its_command() {
     let _guard = english();
-    let mut st = WindowState::new(SettingsSection::Assistant);
-    st.settings.use_mock = false;
-    st.network = prxvc_desktop_ui::NetworkStatus::Failed;
-    let mut h = window_harness(WIDE, Theme::Light, st);
-    h.run();
-    h.get_by_label("Not connected");
-    h.get_by_role_and_label(Role::Button, "Connection: Retry connection")
-        .click();
-    h.run();
-    assert_eq!(
-        h.state().commands_without_refresh(),
-        [SettingsCommand::RetryConnection]
-    );
-
     let mut h = wide(SettingsSection::Advanced);
     h.get_by_role_and_label(Role::Button, "Export diagnostics: Export")
         .click();

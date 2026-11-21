@@ -9,12 +9,6 @@ use serde::{Deserialize, Serialize};
 // [audio]
 // ---------------------------------------------------------------------------
 
-/// Default silence (ms) after speech that ends an utterance.
-pub const DEFAULT_END_SILENCE_MS: u32 = 800;
-/// Default window (ms) in which a new utterance continues the previous turn.
-pub const DEFAULT_MERGE_WINDOW_MS: u32 = 4_000;
-/// Default minimum speech duration (ms) for an utterance to become a turn.
-pub const DEFAULT_MIN_SPEECH_MS: u32 = 280;
 /// Default time (ms) the microphone stays closed after playback ends.
 pub const DEFAULT_HALF_DUPLEX_TAIL_MS: u32 = 300;
 
@@ -61,16 +55,6 @@ pub struct AudioConfig {
     pub echo_mode: EchoMode,
     /// The microphone stays closed this long after playback ends.
     pub half_duplex_tail_ms: u32,
-    /// Silence after speech that ends an utterance, in milliseconds.
-    /// Natural pauses inside a sentence are shorter than this.
-    pub end_silence_ms: u32,
-    /// An utterance recognised within this many milliseconds after the
-    /// previous one was sent, before the assistant started answering, is a
-    /// continuation of it: one merged turn replaces the first.
-    pub merge_window_ms: u32,
-    /// Utterances with less speech than this (milliseconds) are not sent as
-    /// turns unless they continue the previous one.
-    pub min_speech_ms: u32,
     /// Input device name; empty is the system default.
     pub input_device: String,
     /// Output device name; empty is the system default.
@@ -89,9 +73,6 @@ impl Default for AudioConfig {
             echo_control: true,
             echo_mode: EchoMode::Auto,
             half_duplex_tail_ms: DEFAULT_HALF_DUPLEX_TAIL_MS,
-            end_silence_ms: DEFAULT_END_SILENCE_MS,
-            merge_window_ms: DEFAULT_MERGE_WINDOW_MS,
-            min_speech_ms: DEFAULT_MIN_SPEECH_MS,
             input_device: String::new(),
             output_device: String::new(),
             virtual_mic_device: String::new(),
@@ -148,56 +129,6 @@ impl Default for UiConfig {
             always_on_top: true,
             sounds: false,
             settings_window: SettingsWindowConfig::default(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// [network]
-// ---------------------------------------------------------------------------
-
-/// Network / connectivity settings.
-///
-/// Every field has a default, so a `config.toml` written before a field was
-/// added still loads.
-///
-/// To run the desktop app against a real server set, in `[network]`:
-/// `use_mock = false`, `server_url = "http://host:3000"`, and the provider
-/// names the server should use (`asr_provider`, `agent_provider`,
-/// `tts_provider`, e.g. `"sherpa"`, `"ollama"`, `"sherpa"` for the local
-/// models) and `language`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct NetworkConfig {
-    pub connect_timeout_ms: u64,
-    pub reconnect_attempts: u32,
-    pub reconnect_delay_ms: u64,
-    /// PRX Voice server base URL.
-    pub server_url: String,
-    /// Whether to use the mock gateway (offline) instead of a live server.
-    pub use_mock: bool,
-    /// Session language requested from the server (e.g. `"zh-CN"`).
-    pub language: String,
-    /// Server-side ASR provider name (e.g. `"sherpa"`, `"mock"`).
-    pub asr_provider: String,
-    /// Server-side agent provider name (e.g. `"ollama"`, `"mock"`).
-    pub agent_provider: String,
-    /// Server-side TTS provider name (e.g. `"sherpa"`, `"mock"`).
-    pub tts_provider: String,
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        Self {
-            connect_timeout_ms: 5_000,
-            reconnect_attempts: 3,
-            reconnect_delay_ms: 1_000,
-            server_url: "http://localhost:3000".to_owned(),
-            use_mock: true,
-            language: "zh-CN".to_owned(),
-            asr_provider: "mock".to_owned(),
-            agent_provider: "mock".to_owned(),
-            tts_provider: "mock".to_owned(),
         }
     }
 }

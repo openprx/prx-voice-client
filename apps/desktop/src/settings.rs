@@ -23,6 +23,7 @@ pub fn ui_settings_from_config(config: &AppConfig) -> UiSettings {
     read_plain(&mut ui, config);
     ui.theme = theme_from_config(&config.ui.theme);
     ui.echo_mode = echo_mode_to_text(config.audio.echo_mode).to_owned();
+    ui.dialogue_provider = dialogue_provider_of(config);
     // Read-only here: shown, never written by the window.
     ui.sample_rate = config.audio.sample_rate;
     ui.channels = config.audio.channels;
@@ -48,6 +49,9 @@ pub fn apply_changes(config: &mut AppConfig, before: &UiSettings, after: &UiSett
     if before.echo_mode != after.echo_mode {
         config.audio.echo_mode = echo_mode_from_text(&after.echo_mode);
     }
+    if before.dialogue_provider != after.dialogue_provider {
+        set_dialogue_provider(config, &after.dialogue_provider);
+    }
     config.normalize();
 }
 
@@ -60,6 +64,11 @@ pub fn revert_changes(current: &mut UiSettings, before: &UiSettings, after: &UiS
     }
     if before.echo_mode != after.echo_mode && current.echo_mode == after.echo_mode {
         current.echo_mode = before.echo_mode.clone();
+    }
+    if before.dialogue_provider != after.dialogue_provider
+        && current.dialogue_provider == after.dialogue_provider
+    {
+        current.dialogue_provider = before.dialogue_provider.clone();
     }
 }
 
@@ -101,8 +110,6 @@ plain_fields! {
     save_history => privacy.save_history,
     show_transcript => ui.show_transcript,
     hotkey_enabled => hotkeys.enabled,
-    server_url => network.server_url,
-    use_mock => network.use_mock,
     mode => app.mode,
     compact_mode => ui.compact_mode,
     always_on_top => ui.always_on_top,
@@ -114,7 +121,9 @@ plain_fields! {
     call_outgoing_capture => call.outgoing_capture,
     call_captions_show_source => call.captions_show_source,
     call_barge_in => call.barge_in,
-    network_language => network.language,
+    assistant_language => assistant.language,
+    assistant_voice => assistant.voice,
+    assistant_voice_preset => assistant.voice_preset,
     virtual_mic_device => audio.virtual_mic_device,
     voice_use_clone => voice.use_clone_outgoing,
     voice_incoming_preset => voice.incoming_preset,
@@ -132,12 +141,6 @@ plain_fields! {
     debug_enabled => debug.enabled,
     debug_show_panel => debug.show_debug_panel,
     debug_log_level => debug.log_level,
-    network_asr_provider => network.asr_provider,
-    network_agent_provider => network.agent_provider,
-    network_tts_provider => network.tts_provider,
-    connect_timeout_ms => network.connect_timeout_ms,
-    reconnect_attempts => network.reconnect_attempts,
-    reconnect_delay_ms => network.reconnect_delay_ms,
     offline => network_policy.offline,
     allow_hosts => network_policy.allow_hosts,
 }
@@ -165,6 +168,30 @@ pub fn theme_to_config(name: &str) -> String {
         RF_CONFIG_NAME.to_owned()
     } else {
         name.to_owned()
+    }
+}
+
+/// `providers.active.dialogue`: the id of the dialogue backend; empty (not set) is the local server.
+fn dialogue_provider_of(config: &AppConfig) -> String {
+    config
+        .providers
+        .active
+        .dialogue
+        .get("")
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Select the dialogue backend `id`; an empty id removes the selection (the local server).
+fn set_dialogue_provider(config: &mut AppConfig, id: &str) {
+    if id.trim().is_empty() {
+        config.providers.active.dialogue.remove("");
+    } else {
+        config
+            .providers
+            .active
+            .dialogue
+            .insert(String::new(), id.trim().to_owned());
     }
 }
 
@@ -260,15 +287,13 @@ mod tests {
     /// A config with a non-default value in every key the window shows.
     fn busy_config() -> AppConfig {
         let mut c = AppConfig::default();
-        c.network.use_mock = false;
-        c.network.server_url = "http://10.0.0.5:3000".to_owned();
-        c.network.language = "en".to_owned();
-        c.network.asr_provider = "sherpa".to_owned();
-        c.network.agent_provider = "ollama".to_owned();
-        c.network.tts_provider = "kokoro".to_owned();
-        c.network.reconnect_attempts = 9;
-        c.network.connect_timeout_ms = 7_000;
-        c.network.reconnect_delay_ms = 250;
+        c.assistant.language = "en".to_owned();
+        c.assistant.voice = "clone".to_owned();
+        c.assistant.voice_preset = "calm-zh".to_owned();
+        c.providers
+            .active
+            .dialogue
+            .insert(String::new(), "cloud-chat".to_owned());
         c.ui.language = "zh-CN".to_owned();
         c.ui.theme = "Midnight".to_owned();
         c.audio.auto_play_reply = false;
@@ -321,8 +346,10 @@ mod tests {
     fn startup_state_reflects_every_key_of_the_loaded_config() {
         let c = busy_config();
         let ui = ui_settings_from_config(&c);
-        assert!(!ui.use_mock);
-        assert_eq!(ui.server_url, "http://10.0.0.5:3000");
+        assert_eq!(ui.assistant_language, "en");
+        assert_eq!(ui.assistant_voice, "clone");
+        assert_eq!(ui.assistant_voice_preset, "calm-zh");
+        assert_eq!(ui.dialogue_provider, "cloud-chat");
         assert_eq!(ui.language, "zh-CN");
         assert_eq!(ui.theme, "Midnight");
         assert_eq!(ui.echo_mode, "always");
@@ -394,8 +421,6 @@ mod tests {
             save_history => privacy.save_history : true,
             show_transcript => ui.show_transcript : true,
             hotkey_enabled => hotkeys.enabled : true,
-            server_url => network.server_url : "http://example.test:4000".to_owned(),
-            use_mock => network.use_mock : true,
             mode => app.mode : "assistant".to_owned(),
             compact_mode => ui.compact_mode : false,
             always_on_top => ui.always_on_top : true,
@@ -407,7 +432,9 @@ mod tests {
             call_outgoing_capture => call.outgoing_capture : "hands_free".to_owned(),
             call_captions_show_source => call.captions_show_source : true,
             call_barge_in => call.barge_in : true,
-            network_language => network.language : "zh-CN".to_owned(),
+            assistant_language => assistant.language : "zh-CN".to_owned(),
+            assistant_voice => assistant.voice : "preset".to_owned(),
+            assistant_voice_preset => assistant.voice_preset : String::new(),
             virtual_mic_device => audio.virtual_mic_device : String::new(),
             voice_use_clone => voice.use_clone_outgoing : true,
             voice_incoming_preset => voice.incoming_preset : String::new(),
@@ -425,12 +452,6 @@ mod tests {
             debug_enabled => debug.enabled : false,
             debug_show_panel => debug.show_debug_panel : false,
             debug_log_level => debug.log_level : "trace".to_owned(),
-            network_asr_provider => network.asr_provider : "mock".to_owned(),
-            network_agent_provider => network.agent_provider : "mock".to_owned(),
-            network_tts_provider => network.tts_provider : "mock".to_owned(),
-            connect_timeout_ms => network.connect_timeout_ms : 1_500,
-            reconnect_attempts => network.reconnect_attempts : 0,
-            reconnect_delay_ms => network.reconnect_delay_ms : 4_000,
             offline => network_policy.offline : false,
             allow_hosts => network_policy.allow_hosts : vec!["10.0.0.2".to_owned(), "nas.local".to_owned()],
         };
@@ -487,6 +508,38 @@ mod tests {
     }
 
     #[test]
+    fn the_dialogue_backend_is_converted_to_its_role_selection() {
+        let original = busy_config();
+        let before = ui_settings_from_config(&original);
+        assert_eq!(before.dialogue_provider, "cloud-chat");
+        let mut after = before.clone();
+        after.dialogue_provider = "openprx".into();
+        let mut written = original.clone();
+        apply_changes(&mut written, &before, &after);
+        let mut expected = original.clone();
+        expected
+            .providers
+            .active
+            .dialogue
+            .insert(String::new(), "openprx".into());
+        assert_eq!(written, expected, "only the dialogue selection changes");
+        assert_eq!(ui_settings_from_config(&written).dialogue_provider, "openprx");
+
+        // The empty choice is the local server: no selection is stored.
+        let mut local = before.clone();
+        local.dialogue_provider = String::new();
+        let mut cleared = original.clone();
+        apply_changes(&mut cleared, &before, &local);
+        assert!(cleared.providers.active.dialogue.is_empty());
+        assert_eq!(ui_settings_from_config(&cleared).dialogue_provider, "");
+
+        // A failed save puts the old value back.
+        let mut current = after.clone();
+        revert_changes(&mut current, &before, &after);
+        assert_eq!(current.dialogue_provider, "cloud-chat");
+    }
+
+    #[test]
     fn read_only_fields_are_never_written() {
         let original = busy_config();
         let before = ui_settings_from_config(&original);
@@ -509,12 +562,12 @@ mod tests {
         // The window opened with these values ...
         let before = ui_settings_from_config(&on_disk);
         // ... the file was then edited by hand ...
-        on_disk.network.server_url = "http://edited-by-hand:1".to_owned();
+        on_disk.assistant.end_silence_ms = 1_234;
         // ... and the user changed a different setting.
         let mut after = before.clone();
         after.auto_play = true;
         apply_changes(&mut on_disk, &before, &after);
-        assert_eq!(on_disk.network.server_url, "http://edited-by-hand:1");
+        assert_eq!(on_disk.assistant.end_silence_ms, 1_234);
         assert!(on_disk.audio.auto_play_reply);
     }
 
@@ -652,9 +705,6 @@ mod tests {
         ("ui.settings_window", "the window's own memory (set by the window, not a row)"),
         ("app.first_run_", "first-run flow state, a later package"),
         ("audio.half_duplex_tail_ms.", "endpointing tuning; not in the design's rows"),
-        ("audio.end_silence_ms.", "endpointing tuning; not in the design's rows"),
-        ("audio.merge_window_ms.", "endpointing tuning; not in the design's rows"),
-        ("audio.min_speech_ms.", "endpointing tuning; not in the design's rows"),
         ("call.start_mode.", "call behaviour beyond the design's rows"),
         ("call.outgoing_when_paused.", "call behaviour beyond the design's rows"),
         ("call.incoming_when_paused.", "call behaviour beyond the design's rows"),
@@ -667,7 +717,9 @@ mod tests {
         ("debug.call_trace.", "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE"),
         ("debug.call_trace_text.", "diagnostic switch that adds spoken text to the trace; config file only, off by default"),
         ("pipeline.", "pipeline tuning, shown under Advanced in a later package"),
-        ("assistant.", "wired to the Assistant page with the new assistant loop"),
+        ("assistant.end_silence_ms.", "turn-taking tuning; not in the design's rows"),
+        ("assistant.history_max_turns.", "conversation bound; not in the design's rows"),
+        ("assistant.history_max_tokens.", "conversation bound; not in the design's rows"),
         ("providers.egress_acknowledged", "set by the egress dialog (provider editor package)"),
         ("providers.active", "role choices belong to the provider editor package"),
         ("providers.fallback", "role choices belong to the provider editor package"),

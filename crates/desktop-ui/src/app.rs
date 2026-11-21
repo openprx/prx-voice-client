@@ -2,6 +2,7 @@
 
 use egui::Color32;
 
+use crate::assistant_view::issue_card;
 use crate::call_window_view::{self, CallWindowAction};
 use crate::context_menu::orb_context_menu;
 use crate::debug_view::debug_body;
@@ -103,9 +104,12 @@ fn render_stage(ui: &mut egui::Ui, state: &mut DesktopUiState, tk: &Tokens, time
         0.0
     };
 
+    // The assistant's issue, when there is one, above the transcript.
+    let issue_h = issue_card(ui, state, tk, rect, below_pill + controls_h);
+
     // Transcript card (must be created before painting)
     if !state.transcript_lines.is_empty() {
-        transcript_card(ui, state, tk, rect, below_pill + controls_h);
+        transcript_card(ui, state, tk, rect, below_pill + controls_h + issue_h);
     }
 
     // === PAINT EVERYTHING (only needs &ui / painter, no more mutations) ===
@@ -207,7 +211,6 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
             settings_view,
             settings_data,
             settings_commands,
-            network_status,
             ..
         } = &mut *state;
         tool_window::show_raw(ctx, tk, ToolKind::Settings, &mut windows.settings, placement, |ui| {
@@ -221,7 +224,6 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
                     view: &mut *settings_view,
                     current_theme,
                     pending_theme: &mut *pending_theme,
-                    network: network_status,
                 },
             );
         });

@@ -51,6 +51,8 @@ pub(crate) struct ReplyJob {
     pub(crate) lang: Lang,
     pub(crate) conversation: ConversationId,
     pub(crate) voice: VoiceSelection,
+    /// Speak the reply; without it the reply is text only and nothing is synthesised.
+    pub(crate) speak: bool,
     pub(crate) token: CancellationToken,
 }
 
@@ -204,6 +206,9 @@ fn run_synthesis(
         if job.token.is_cancelled() {
             return;
         }
+        if !job.speak {
+            continue;
+        }
         if !has_speakable_content(&text) {
             continue;
         }
@@ -255,7 +260,7 @@ fn run_synthesis(
     if job.token.is_cancelled() {
         return;
     }
-    if produced_audio {
+    if produced_audio || !job.speak {
         send(tx, job, ReplyKind::AudioDone);
     } else {
         send(tx, job, ReplyKind::Failed(AssistantFault::NoAudio));

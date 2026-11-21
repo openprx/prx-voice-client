@@ -80,7 +80,6 @@ sys-locale = { version = "0.3" }
 
 # Audio
 cpal = { version = "0.15" }
-whisper-cpp-plus = { version = "0.1.4" }
 rubato = { version = "0.15" }
 
 # Native build (Core Audio Tap shim on macOS)

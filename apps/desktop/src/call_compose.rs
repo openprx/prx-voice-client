@@ -260,6 +260,37 @@ impl CallControl {
         }
     }
 
+    /// Whether an assistant session holds the microphone claim now.
+    #[cfg(test)]
+    pub(crate) fn assistant_holds_microphone(&self) -> bool {
+        self.0.assistant.lock().is_some()
+    }
+
+    /// A control with no coordinator behind it (the host's tests): what would be sent is recorded.
+    #[cfg(test)]
+    pub(crate) fn without_coordinator(shared: &SharedAppState) -> Self {
+        Self(Arc::new(Inner {
+            handle: Mutex::new(None),
+            ownership: MicOwnership::new(),
+            assistant: Mutex::new(None),
+            shared: shared.clone(),
+            handoff: Mutex::new(Handoff::default()),
+            sent: Mutex::new(Vec::new()),
+        }))
+    }
+
+    /// Call mode takes the microphone (the test of an assistant that is refused while a call runs).
+    #[cfg(test)]
+    pub(crate) fn hold_for_call(&self) -> prxvc_session::call::MicClaim {
+        self.0.ownership.claim(MicOwner::Call).expect("the microphone is free")
+    }
+
+    /// The call commands sent so far, by name.
+    #[cfg(test)]
+    pub(crate) fn sent_commands(&self) -> Vec<&'static str> {
+        self.0.sent.lock().clone()
+    }
+
     /// Stop call mode (restoring the default input) and end the coordinator; the application is closing.
     pub(crate) fn shutdown(&self) {
         let handle = self.0.handle.lock().take();
@@ -437,14 +468,7 @@ mod tests {
 
     /// A control with no coordinator behind it: what would be sent is recorded in `sent`.
     fn control() -> CallControl {
-        CallControl(Arc::new(Inner {
-            handle: Mutex::new(None),
-            ownership: MicOwnership::new(),
-            assistant: Mutex::new(None),
-            shared: SharedAppState::new(),
-            handoff: Mutex::new(Handoff::default()),
-            sent: Mutex::new(Vec::new()),
-        }))
+        CallControl::without_coordinator(&SharedAppState::new())
     }
 
     fn sent(c: &CallControl) -> Vec<&'static str> {

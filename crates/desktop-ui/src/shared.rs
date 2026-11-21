@@ -7,29 +7,9 @@ use parking_lot::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use crate::assistant_view::AssistantIssue;
 use crate::call_view::CallPanel;
 use crate::{HistoryEntry, TranscriptLine};
-
-/// Network/transport connection status.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NetworkStatus {
-    /// Transport is connected and operational.
-    Connected,
-    /// Transport has been disconnected.
-    Disconnected,
-    /// Transport is establishing the initial connection.
-    Connecting,
-    /// Transport is attempting to reconnect.
-    Reconnecting,
-    /// Transport reconnection has failed permanently.
-    Failed,
-}
-
-impl Default for NetworkStatus {
-    fn default() -> Self {
-        Self::Connected
-    }
-}
 
 /// Maximum number of debug events retained in the ring buffer.
 const MAX_DEBUG_EVENTS: usize = 100;
@@ -62,14 +42,8 @@ pub struct UiSnapshot {
     pub debug_events: Vec<String>,
     /// Optional status bar message.
     pub status_message: Option<String>,
-    /// Current error message (if any).
-    pub error_message: Option<String>,
-    /// Whether the current error is recoverable.
-    pub error_recoverable: bool,
-    /// Network/transport status.
-    pub network_status: NetworkStatus,
-    /// Reconnect attempt count.
-    pub reconnect_attempts: u32,
+    /// What keeps the assistant from working, when something does.
+    pub assistant_issue: Option<AssistantIssue>,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     pub mic_paused: bool,
     /// Name of the input device being captured; empty when none.
@@ -132,14 +106,8 @@ struct SharedStateInner {
     debug_events: Vec<String>,
     /// Optional status bar message.
     status_message: Option<String>,
-    /// Current error message (if any).
-    error_message: Option<String>,
-    /// Whether the current error is recoverable.
-    error_recoverable: bool,
-    /// Network/transport status.
-    network_status: NetworkStatus,
-    /// Reconnect attempt count.
-    reconnect_attempts: u32,
+    /// What keeps the assistant from working, when something does.
+    assistant_issue: Option<AssistantIssue>,
     /// The microphone is paused while the assistant speaks (echo gate closed).
     mic_paused: bool,
     /// Name of the input device being captured; empty when none.
@@ -173,10 +141,7 @@ impl SharedAppState {
                 history_entries: Vec::new(),
                 debug_events: Vec::new(),
                 status_message: None,
-                error_message: None,
-                error_recoverable: false,
-                network_status: NetworkStatus::default(),
-                reconnect_attempts: 0,
+                assistant_issue: None,
                 mic_paused: false,
                 input_device: String::new(),
                 outside_app_bundle: false,
@@ -309,44 +274,94 @@ impl SharedAppState {
         });
     }
 
-    /// Set an error message for display in the UI.
-    pub fn set_error(&self, message: &str, recoverable: bool) {
+    /// Show `issue` on the orb stage, or take the card away.
+    pub fn set_assistant_issue(&self, issue: Option<AssistantIssue>) {
         self.mutate(|inner| {
-            let changed = inner.error_message.as_deref() != Some(message)
-                || inner.error_recoverable != recoverable;
+            let changed = inner.assistant_issue != issue;
             if changed {
-                inner.error_message = Some(message.to_owned());
-                inner.error_recoverable = recoverable;
+                inner.assistant_issue = issue;
             }
             changed
         });
     }
 
-    /// Clear the current error message.
-    pub fn clear_error(&self) {
+    /// The user's words so far in the turn being spoken: replaces the interim user line, or adds one.
+    pub fn set_interim_user_line(&self, text: &str) {
         self.mutate(|inner| {
-            let changed = inner.error_message.is_some() || inner.error_recoverable;
-            inner.error_message = None;
-            inner.error_recoverable = false;
-            changed
+            match inner.transcript_lines.last_mut() {
+                Some(line) if line.role == "user" && !line.is_final => {
+                    if line.text == text {
+                        return false;
+                    }
+                    line.text = text.to_owned();
+                }
+                _ => inner.transcript_lines.push(TranscriptLine {
+                    role: "user".into(),
+                    text: text.to_owned(),
+                    is_final: false,
+                }),
+            }
+            true
         });
     }
 
-    /// Update the network/transport status.
-    pub fn set_network_status(&self, status: NetworkStatus) {
+    /// The user's turn is final: closes the interim user line with `text`, or adds a final line.
+    pub fn finish_user_line(&self, text: &str) {
         self.mutate(|inner| {
-            let changed = inner.network_status != status;
-            inner.network_status = status;
-            changed
+            match inner.transcript_lines.last_mut() {
+                Some(line) if line.role == "user" && !line.is_final => {
+                    line.text = text.to_owned();
+                    line.is_final = true;
+                }
+                _ => inner.transcript_lines.push(TranscriptLine {
+                    role: "user".into(),
+                    text: text.to_owned(),
+                    is_final: true,
+                }),
+            }
+            true
         });
     }
 
-    /// Update the reconnect attempt counter.
-    pub fn set_reconnect_attempts(&self, count: u32) {
+    /// Drop an interim user line that never became a turn (a hum, filler).
+    pub fn drop_interim_user_line(&self) {
         self.mutate(|inner| {
-            let changed = inner.reconnect_attempts != count;
-            inner.reconnect_attempts = count;
-            changed
+            if inner
+                .transcript_lines
+                .last()
+                .is_some_and(|l| l.role == "user" && !l.is_final)
+            {
+                inner.transcript_lines.pop();
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    /// More of the assistant's reply: appended to the reply line being written, or a new one.
+    pub fn append_assistant_text(&self, delta: &str) {
+        self.mutate(|inner| {
+            match inner.transcript_lines.last_mut() {
+                Some(line) if line.role == "assistant" && !line.is_final => line.text.push_str(delta),
+                _ => inner.transcript_lines.push(TranscriptLine {
+                    role: "assistant".into(),
+                    text: delta.trim_start().to_owned(),
+                    is_final: false,
+                }),
+            }
+            true
+        });
+    }
+
+    /// The reply line is complete (heard to the end, or cut).
+    pub fn finish_assistant_line(&self) {
+        self.mutate(|inner| match inner.transcript_lines.last_mut() {
+            Some(line) if line.role == "assistant" && !line.is_final => {
+                line.is_final = true;
+                true
+            }
+            _ => false,
         });
     }
 
@@ -423,10 +438,7 @@ impl SharedAppState {
                 .collect(),
             debug_events: inner.debug_events.clone(),
             status_message: inner.status_message.clone(),
-            error_message: inner.error_message.clone(),
-            error_recoverable: inner.error_recoverable,
-            network_status: inner.network_status.clone(),
-            reconnect_attempts: inner.reconnect_attempts,
+            assistant_issue: inner.assistant_issue.clone(),
             mic_paused: inner.mic_paused,
             input_device: inner.input_device.clone(),
             outside_app_bundle: inner.outside_app_bundle,
@@ -486,10 +498,15 @@ mod tests {
             ("replace_last_user_line", Box::new(|s| s.replace_last_user_line("b".into()))),
             ("clear_transcript", Box::new(|s| s.clear_transcript())),
             ("add_history_entry", Box::new(|s| s.add_history_entry(entry()))),
-            ("set_error", Box::new(|s| s.set_error("boom", true))),
-            ("clear_error", Box::new(|s| s.clear_error())),
-            ("set_network_status", Box::new(|s| s.set_network_status(NetworkStatus::Failed))),
-            ("set_reconnect_attempts", Box::new(|s| s.set_reconnect_attempts(3))),
+            ("set_assistant_issue", Box::new(|s| s.set_assistant_issue(Some(AssistantIssue {
+                key: "assistant.issue.dialogue_down".into(),
+                ..AssistantIssue::default()
+            })))),
+            ("set_interim_user_line", Box::new(|s| s.set_interim_user_line("hel"))),
+            ("drop_interim_user_line", Box::new(|s| s.drop_interim_user_line())),
+            ("finish_user_line", Box::new(|s| s.finish_user_line("hello"))),
+            ("append_assistant_text", Box::new(|s| s.append_assistant_text("Hi"))),
+            ("finish_assistant_line", Box::new(|s| s.finish_assistant_line())),
             ("set_mic_paused", Box::new(|s| s.set_mic_paused(true))),
             ("set_input_device", Box::new(|s| s.set_input_device("Built-in"))),
             ("set_outside_app_bundle", Box::new(|s| s.set_outside_app_bundle(true))),
@@ -550,16 +567,12 @@ mod tests {
         }
         shared.replace_last_user_line("b".into());
         let before = shared.repaint_signal().request_count();
-        // The engine loop repeats these every tick.
+        // The host repeats these every tick.
         shared.update_session_state("Listening", true);
         shared.set_mic_paused(true);
-        shared.set_network_status(NetworkStatus::Failed);
-        shared.set_reconnect_attempts(3);
         shared.set_outside_app_bundle(true);
         shared.set_session_id(Some("id".into()));
         shared.replace_last_user_line("b".into());
-        shared.clear_error();
-        shared.clear_error();
         assert_eq!(shared.repaint_signal().request_count(), before);
     }
 

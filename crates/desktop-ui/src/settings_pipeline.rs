@@ -120,37 +120,12 @@ pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
         "settings.reason.provider_editor",
         None,
     );
-    match cx.data.pipeline.clone() {
-        PipelineData::NotLoaded => {
-            note(ui, tk, &t("settings.pipeline.loading"));
-        }
-        PipelineData::Problems(problems) => {
-            body_medium(ui, tk, &t("settings.pipeline.problems"));
-            ui.add_space(space::S8);
-            for p in &problems {
-                notice(
-                    ui,
-                    tk,
-                    if p.fallback {
-                        Tone::Warning
-                    } else {
-                        Tone::Danger
-                    },
-                    &problem_text(p),
-                );
-                ui.add_space(space::S8);
-            }
-        }
-        PipelineData::Resolved { rows, warnings, .. } => {
-            for row in &rows {
-                role_row(ui, cx, row);
-            }
-            for p in &warnings {
-                notice(ui, tk, Tone::Warning, &problem_text(p));
-                ui.add_space(space::S8);
-            }
-        }
-    }
+    chain(ui, cx, &cx.data.pipeline.clone());
+
+    // b2. The voice assistant's own chain: recognition and voice of the call, and its dialogue.
+    widgets::section_header(ui, tk, &t("settings.pipeline.assistant"), false);
+    note(ui, tk, &t("settings.pipeline.assistant.desc"));
+    chain(ui, cx, &cx.data.assistant.chain.clone());
 
     // c. Cloud and server providers.
     widgets::section_header(ui, tk, &t("settings.pipeline.cloud"), false);
@@ -178,6 +153,42 @@ pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
     // e. Storage and downloads.
     widgets::section_header(ui, tk, &t("settings.pipeline.storage"), false);
     storage_rows(ui, cx);
+}
+
+/// The rows of a resolved chain, or the problems that keep it from resolving.
+fn chain(ui: &mut Ui, cx: &mut PageCx<'_>, data: &PipelineData) {
+    let tk = cx.tk;
+    match data {
+        PipelineData::NotLoaded => {
+            note(ui, tk, &t("settings.pipeline.loading"));
+        }
+        PipelineData::Problems(problems) => {
+            body_medium(ui, tk, &t("settings.pipeline.problems"));
+            ui.add_space(space::S8);
+            for p in problems {
+                notice(
+                    ui,
+                    tk,
+                    if p.fallback {
+                        Tone::Warning
+                    } else {
+                        Tone::Danger
+                    },
+                    &problem_text(p),
+                );
+                ui.add_space(space::S8);
+            }
+        }
+        PipelineData::Resolved { rows, warnings, .. } => {
+            for row in rows {
+                role_row(ui, cx, row);
+            }
+            for p in warnings {
+                notice(ui, tk, Tone::Warning, &problem_text(p));
+                ui.add_space(space::S8);
+            }
+        }
+    }
 }
 
 fn role_row(ui: &mut Ui, cx: &mut PageCx<'_>, row: &PipelineRow) {

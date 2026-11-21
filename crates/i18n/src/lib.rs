@@ -3,6 +3,7 @@
 //! Provides compile-time embedded translations for English and Chinese (Simplified)
 //! with a global locale store, fallback logic, and parameter substitution.
 
+mod assistant_strings;
 mod call_strings;
 mod call_window_strings;
 mod settings_permission_strings;
@@ -241,11 +242,6 @@ fn build_en_translations() -> HashMap<String, String> {
         ("error.title", "Error"),
         ("error.dismiss", "Dismiss"),
         // Network
-        ("network.connected", "Connected"),
-        ("network.disconnected", "Disconnected"),
-        ("network.connecting", "Connecting..."),
-        ("network.reconnecting", "Reconnecting (attempt {0})..."),
-        ("network.failed", "Connection Failed"),
         // Common
         ("common.ok", "OK"),
         ("common.cancel", "Cancel"),
@@ -306,21 +302,11 @@ fn build_en_translations() -> HashMap<String, String> {
             "Show the live transcript under the orb.",
         ),
         (
-            "settings.use_mock.desc",
-            "Run offline with a built-in test assistant instead of a server.",
-        ),
-        (
-            "settings.server_url.desc",
-            "Address of the voice server, for example http://localhost:3000.",
-        ),
-        (
             "settings.hotkey.desc",
             "Start or stop a session with Ctrl+Shift+Space.",
         ),
         ("app.version_label", "Version"),
         ("app.license_label", "License"),
-        ("settings.use_mock", "Mock mode (offline)"),
-        ("settings.server_url", "Server URL"),
         // Status
         ("status.ready", "Ready"),
         ("status.offline", "Offline"),
@@ -336,6 +322,7 @@ fn build_en_translations() -> HashMap<String, String> {
     ];
     pairs
         .iter()
+        .chain(assistant_strings::EN)
         .chain(call_strings::EN)
         .chain(call_window_strings::EN)
         .chain(translation_strings::EN)
@@ -493,14 +480,6 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ("error.title", "\u{9519}\u{8bef}"),
         ("error.dismiss", "\u{5ffd}\u{7565}"),
         // Network
-        ("network.connected", "\u{5df2}\u{8fde}\u{63a5}"),
-        ("network.disconnected", "\u{5df2}\u{65ad}\u{5f00}"),
-        ("network.connecting", "\u{8fde}\u{63a5}\u{4e2d}..."),
-        (
-            "network.reconnecting",
-            "\u{91cd}\u{8fde}\u{4e2d}\u{ff08}\u{7b2c} {0} \u{6b21}\u{ff09}...",
-        ),
-        ("network.failed", "\u{8fde}\u{63a5}\u{5931}\u{8d25}"),
         // Common
         ("common.ok", "\u{786e}\u{5b9a}"),
         ("common.cancel", "\u{53d6}\u{6d88}"),
@@ -554,16 +533,9 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ("settings.auto_play.desc", "\u{81ea}\u{52a8}\u{64ad}\u{653e}\u{52a9}\u{624b}\u{7684}\u{8bed}\u{97f3}\u{56de}\u{590d}\u{3002}"),
         ("settings.save_history.desc", "\u{5c06}\u{5df2}\u{7ed3}\u{675f}\u{7684}\u{4f1a}\u{8bdd}\u{4fdd}\u{5b58}\u{5728}\u{672c}\u{8bbe}\u{5907}\u{4e0a}\u{3002}"),
         ("settings.show_transcript.desc", "\u{5728}\u{5149}\u{7403}\u{4e0b}\u{65b9}\u{663e}\u{793a}\u{5b9e}\u{65f6}\u{6587}\u{5b57}\u{8bb0}\u{5f55}\u{3002}"),
-        ("settings.use_mock.desc", "\u{4f7f}\u{7528}\u{5185}\u{7f6e}\u{6d4b}\u{8bd5}\u{52a9}\u{624b}\u{79bb}\u{7ebf}\u{8fd0}\u{884c}\u{ff0c}\u{4e0d}\u{8fde}\u{63a5}\u{670d}\u{52a1}\u{5668}\u{3002}"),
-        (
-            "settings.server_url.desc",
-            "\u{8bed}\u{97f3}\u{670d}\u{52a1}\u{5668}\u{7684}\u{5730}\u{5740}\u{ff0c}\u{4f8b}\u{5982} http://localhost:3000\u{3002}",
-        ),
         ("settings.hotkey.desc", "\u{4f7f}\u{7528} Ctrl+Shift+Space \u{5f00}\u{59cb}\u{6216}\u{7ed3}\u{675f}\u{4f1a}\u{8bdd}\u{3002}"),
         ("app.version_label", "\u{7248}\u{672c}"),
         ("app.license_label", "\u{8bb8}\u{53ef}\u{8bc1}"),
-        ("settings.use_mock", "\u{6a21}\u{62df}\u{6a21}\u{5f0f}\u{ff08}\u{79bb}\u{7ebf}\u{ff09}"),
-        ("settings.server_url", "\u{670d}\u{52a1}\u{5668}\u{5730}\u{5740}"),
         // Status
         ("status.ready", "\u{5c31}\u{7eea}"),
         ("status.offline", "\u{79bb}\u{7ebf}"),
@@ -579,6 +551,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
     ];
     pairs
         .iter()
+        .chain(assistant_strings::ZH_CN)
         .chain(call_strings::ZH_CN)
         .chain(call_window_strings::ZH_CN)
         .chain(translation_strings::ZH_CN)

@@ -7,8 +7,8 @@
 //!   atomic `update` by a writer thread, one field at a time (`settings::apply_changes`). A write
 //!   that fails puts the old value back and shows a notice.
 //! * **Commands** open System Settings panes and folders, ask for permissions, start the driver
-//!   operations of `driver_install`, and hand `ExportDiagnostics` and `RetryConnection` to the
-//!   engine's command queue.
+//!   operations of `driver_install`, and hand `ExportDiagnostics` to the
+//!   host's command queue.
 //! * **Data** (devices, permissions, the driver, the pipeline) is probed by a thread of its own
 //!   when the window opens, regains focus, or the user asks, and published through the feed,
 //!   which wakes the UI.
@@ -302,7 +302,6 @@ impl Host {
                 }
             }
             SettingsCommand::ExportDiagnostics => self.shared.push_command("ExportDiagnostics"),
-            SettingsCommand::RetryConnection => self.shared.push_command("RetryConnection"),
         }
     }
 
@@ -579,19 +578,19 @@ mod tests {
         let dir = tempfile::tempdir().expect("tmp");
         let m = manager(dir.path());
         // The file has a value the window knows nothing about, edited by hand.
-        m.update(|c| c.network.reconnect_attempts = 9)
+        m.update(|c| c.assistant.history_max_turns = 9)
             .expect("seed");
         let (job, _) = settings_job(|s| s.call_local_output_mode = "both".into());
         assert!(matches!(run_write(&m, job), WriteResult::Saved));
         let read = m.load().expect("load");
         assert_eq!(read.call.local_output_mode, "both");
         assert_eq!(
-            read.network.reconnect_attempts, 9,
+            read.assistant.history_max_turns, 9,
             "the other key is untouched"
         );
         // Exactly the changed key differs from the defaults and the seed.
         let mut expected = AppConfig::default();
-        expected.network.reconnect_attempts = 9;
+        expected.assistant.history_max_turns = 9;
         expected.call.local_output_mode = "both".into();
         assert_eq!(read, expected);
     }

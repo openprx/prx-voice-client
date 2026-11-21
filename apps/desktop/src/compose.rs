@@ -1,16 +1,11 @@
-//! Composition root: builds the configuration, storage, engine, transport, audio collaborators and shared state, and wires the concrete types together.
+//! Composition root: builds the configuration, storage, call control and shared state, starts the assistant's host and wires the concrete types together.
 
-use prxvc_audio::echo_gate::{DEFAULT_HOLD_OFF, EchoGate, EchoGateHandle};
-use prxvc_audio::playback::AssistantPlayer;
-use prxvc_audio::turn_policy::{TurnPolicy, TurnPolicyConfig};
-use prxvc_core::engine::Engine;
 use prxvc_desktop_ui::tool_window::{Geometry, ToolKind};
 use prxvc_desktop_ui::SharedAppState;
 
 use crate::app::PrxVoiceApp;
 use crate::config_load::{app_paths, initialize_config};
-use crate::engine_loop::run_engine_loop;
-use crate::{hotkey, playback, settings, tray};
+use crate::{hotkey, settings, tray};
 
 /// Bootstrap the application: install fonts and theme, load the configuration,
 /// create shared state and spawn the engine runtime.
@@ -47,7 +42,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     // ended in call mode without restoring it (pipeline-design PD-4.2.3).
     crate::routing_recovery::recover_at_start(&shared);
     let call = crate::call_compose::CallControl::start(&shared, &config);
-    let handle = spawn_engine_thread(shared.clone(), config.clone(), call.clone());
+    let handle = spawn_assistant_thread(shared.clone(), call.clone());
 
     let hotkey_manager = match hotkey::HotkeyManager::new(cc.egui_ctx.clone()) {
         Ok(m) => {
@@ -74,7 +69,7 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
     PrxVoiceApp {
         ui_state,
         shared,
-        _runtime_handle: Some(handle),
+        _runtime_handle: handle,
         hotkey_manager,
         tray_manager,
         last_locale: initial_locale.to_owned(),
@@ -125,22 +120,18 @@ fn restore_window_geometry(
     }
 }
 
-/// Start the background thread that owns the tokio runtime and runs the engine loop.
-fn spawn_engine_thread(
+/// Start the background thread that runs the assistant's host.
+fn spawn_assistant_thread(
     shared: SharedAppState,
-    config: prxvc_config::AppConfig,
     call: crate::call_compose::CallControl,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(rt) => rt,
-            Err(e) => {
-                tracing::error!("Failed to create tokio runtime: {}", e);
-                return;
-            }
-        };
-        rt.block_on(run_engine_loop(shared, config, call));
-    })
+) -> Option<std::thread::JoinHandle<()>> {
+    match crate::assistant::run::spawn(shared, call) {
+        Ok(handle) => Some(handle),
+        Err(e) => {
+            tracing::error!("Failed to start the assistant thread: {e}");
+            None
+        }
+    }
 }
 
 /// Attempt to open a SQLite-backed [`StorageManager`].
@@ -163,63 +154,4 @@ pub(crate) fn initialize_storage() -> Option<prxvc_storage::StorageManager> {
             None
         }
     }
-}
-
-/// Create the engine with the transport the configuration selects. Returns
-/// the engine and a label naming the transport for the start-up event.
-pub(crate) fn build_engine(config: &prxvc_config::AppConfig) -> (Engine, &'static str) {
-    let (event_tx, _event_rx) = prxvc_core::bus::event_channel(256);
-
-    let transport: Box<dyn prxvc_protocol::transport::Transport> = if config.network.use_mock {
-        tracing::info!("Using MockGateway (offline mode)");
-        Box::new(prxvc_protocol::mock::MockGateway::new())
-    } else {
-        tracing::info!(
-            "Connecting to prx-voice server: {} (asr={}, agent={}, tts={}, language={})",
-            config.network.server_url,
-            config.network.asr_provider,
-            config.network.agent_provider,
-            config.network.tts_provider,
-            config.network.language,
-        );
-        let prx_config = prxvc_protocol::prx_voice_transport::PrxVoiceConfig {
-            base_url: config.network.server_url.clone(),
-            language: config.network.language.clone(),
-            asr_provider: config.network.asr_provider.clone(),
-            agent_provider: config.network.agent_provider.clone(),
-            tts_provider: config.network.tts_provider.clone(),
-            channel: "app_sdk".into(),
-            client_id: uuid::Uuid::new_v4().to_string(),
-        };
-        Box::new(prxvc_protocol::prx_voice_transport::PrxVoiceTransport::new(prx_config))
-    };
-
-    let transport_label = if config.network.use_mock { "MockGateway" } else { "PrxVoiceTransport" };
-    let mut engine = Engine::new(transport, event_tx);
-    engine.set_auto_play_reply(config.audio.auto_play_reply);
-    // The engine loop plays the reply audio: the end of a reply returns the
-    // session to listening only once the output has drained.
-    engine.set_external_playback(true);
-    (engine, transport_label)
-}
-
-/// Create the playback driver: assistant speech goes to the default output
-/// device, opened on first use. The echo gate keeps the microphone away from
-/// the ASR while it plays (half duplex), unless `echo_control` is off
-/// (headphones).
-pub(crate) fn build_playback(config: &prxvc_config::AppConfig) -> playback::PlaybackDriver {
-    let player = AssistantPlayer::new(Box::new(|| {
-        Ok(Box::new(prxvc_audio::cpal_output::open_default()?)
-            as Box<dyn prxvc_audio::stream_sink::StreamSink>)
-    }));
-    let gate = EchoGateHandle::new(EchoGate::new(config.audio.echo_control, DEFAULT_HOLD_OFF));
-    playback::PlaybackDriver::new(player, gate)
-}
-
-/// Create the turn policy from the audio settings.
-pub(crate) fn build_turn_policy(config: &prxvc_config::AppConfig) -> TurnPolicy {
-    TurnPolicy::new(TurnPolicyConfig::from_ms(
-        config.audio.merge_window_ms,
-        config.audio.min_speech_ms,
-    ))
 }

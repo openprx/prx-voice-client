@@ -66,6 +66,8 @@ pub struct AssistantParams {
     pub lang: prxvc_media::Lang,
     /// The voice the assistant speaks with.
     pub voice: VoiceSelection,
+    /// Speak the replies (`audio.auto_play_reply`); off, a reply is text only.
+    pub speak: bool,
     /// The recognition stage's parameters (`[pipeline]` tuning with the assistant's end-of-turn
     /// silence). The direction is `Outgoing` and recognition is `Streaming`.
     pub recognition: PipelineParams,
@@ -85,6 +87,7 @@ impl AssistantParams {
             lang,
             recognition: recognition_params(lang, voice.clone(), end_silence),
             voice,
+            speak: true,
         }
     }
 }
@@ -411,6 +414,7 @@ impl Session {
             lang: self.params.lang,
             conversation: self.params.conversation.clone(),
             voice: self.params.voice.clone(),
+            speak: self.params.speak,
             token: token.clone(),
         };
         match reply::spawn(job, &self.tools, &self.reply_tx) {

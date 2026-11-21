@@ -28,12 +28,18 @@ fn a_fresh_config_resolves_to_the_local_server_with_thinking_off() {
     assert_eq!(spec.base_url, "http://127.0.0.1:8080/v1");
     assert_eq!(spec.model, "gemma-4-e4b-it-qat-q4-0");
     assert_eq!(spec.locality, Locality::ThisComputer);
-    assert_eq!(spec.params["chat_template_kwargs"]["enable_thinking"], false);
+    assert_eq!(
+        spec.params["chat_template_kwargs"]["enable_thinking"],
+        false
+    );
     assert!(
         !spec.params.contains_key("prompt_template"),
         "a translation prompt is not sent to the assistant"
     );
-    assert_eq!(spec.params["temperature"], 0.7, "a conversation is not translated at zero");
+    assert_eq!(
+        spec.params["temperature"], 0.7,
+        "a conversation is not translated at zero"
+    );
     assert_eq!(spec.timeouts.first_token.as_secs(), 15);
     assert_eq!(spec.history.max_turns, 12);
     assert_eq!(spec.history.max_tokens, 3_000);
@@ -66,7 +72,11 @@ fn an_entry_chosen_for_the_dialogue_keeps_its_own_sampling_and_timeouts() {
     assert_eq!(spec.id.as_str(), "cloud-chat");
     assert_eq!(spec.params["temperature"], 0.2);
     assert_eq!(spec.timeouts.first_token.as_secs(), 4);
-    assert_eq!(spec.timeouts.idle.as_secs(), 8, "the idle default of a dialogue");
+    assert_eq!(
+        spec.timeouts.idle.as_secs(),
+        8,
+        "the idle default of a dialogue"
+    );
     assert_eq!(spec.locality, Locality::Remote);
     assert!(spec.secret.is_some(), "the credential reference is read");
     assert_eq!(spec.data_leaving(), crate::spec::DataLeaving::Text);
@@ -84,7 +94,10 @@ fn an_entry_without_its_credential_is_a_typed_problem() {
         .insert(String::new(), "cloud-chat".into());
     let problems = rig.registry().resolve_dialogue().unwrap_err();
     assert!(
-        matches!(kinds(&problems)[..], [ProblemKind::CredentialMissing { .. }]),
+        matches!(
+            kinds(&problems)[..],
+            [ProblemKind::CredentialMissing { .. }]
+        ),
         "{problems:?}"
     );
     assert_eq!(problems[0].role, Some(RoleKey::Dialogue));
@@ -118,7 +131,10 @@ fn an_unknown_backend_and_a_non_chat_entry_are_typed_problems() {
         .dialogue
         .insert(String::new(), "no-such".into());
     let problems = rig.registry().resolve_dialogue().unwrap_err();
-    assert!(matches!(kinds(&problems)[..], [ProblemKind::UnknownProvider { .. }]));
+    assert!(matches!(
+        kinds(&problems)[..],
+        [ProblemKind::UnknownProvider { .. }]
+    ));
 
     let mut rig = Rig::new();
     rig.cfg.providers.entries.push(toml_entry(
@@ -130,7 +146,10 @@ fn an_unknown_backend_and_a_non_chat_entry_are_typed_problems() {
         .dialogue
         .insert(String::new(), "asr-cloud".into());
     let problems = rig.registry().resolve_dialogue().unwrap_err();
-    assert!(matches!(kinds(&problems)[..], [ProblemKind::KindNotValidForRole { .. }]));
+    assert!(matches!(
+        kinds(&problems)[..],
+        [ProblemKind::KindNotValidForRole { .. }]
+    ));
 }
 
 #[test]
@@ -196,6 +215,9 @@ fn the_offline_policy_blocks_a_remote_dialogue_endpoint_before_anything_is_creat
     };
     assert!(matches!(err, crate::problem::BuildError::Blocked { .. }));
     let problems = registry.resolve_dialogue().unwrap_err();
-    assert!(matches!(kinds(&problems)[..], [ProblemKind::EndpointBlocked { .. }]));
+    assert!(matches!(
+        kinds(&problems)[..],
+        [ProblemKind::EndpointBlocked { .. }]
+    ));
     assert_eq!(registry.live_engines().dialogue, 0);
 }

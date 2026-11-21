@@ -332,6 +332,10 @@ impl Rig {
         self.deps.take().expect("not started")
     }
 
+    pub fn params_mut(&mut self) -> &mut AssistantParams {
+        &mut self.params
+    }
+
     pub fn params(&self) -> AssistantParams {
         self.params.clone()
     }

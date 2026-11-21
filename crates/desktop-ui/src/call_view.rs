@@ -101,6 +101,8 @@ pub enum IssueAction {
     OpenSpeechSettings,
     /// Open the Audio page of the settings (headphones, devices, the driver).
     OpenAudioSettings,
+    /// Open the Assistant page of the settings (the dialogue backend, the assistant's voice).
+    OpenAssistantSettings,
 }
 
 /// One condition to show.

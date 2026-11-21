@@ -12,13 +12,11 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-tokio-tungstenite = { workspace = true }
-tokio = { workspace = true }
-url = { workspace = true }
-tracing = { workspace = true }
-parking_lot = { workspace = true }
-futures = { workspace = true }
-reqwest = { workspace = true }
+
+[features]
+# `mock::MockGateway`, an in-memory transport for tests. Off by default: the application never
+# constructs it.
+test-double = []
 
 [lints]
 workspace = true

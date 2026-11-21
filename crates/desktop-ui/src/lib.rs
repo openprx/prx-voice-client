@@ -11,8 +11,9 @@
 //! - [`state`]: view models and `DesktopUiState` with its sync and flush.
 //! - [`theme_presets`]: the `Theme` colour presets.
 //! - [`app`]: `render_app`, the per-frame composition.
-//! - `orb_view`, `status_pill`, `status_hint`, `context_menu`: the orb and its surroundings.
-//! - `transcript_view`, `history_view`, `debug_view`, `error_banner`: the content views.
+//! - `orb_view`, `status_pill`, `status_hint`, `context_menu`: the orb and its surroundings;
+//!   `assistant_view`: the card of the assistant's issue with the action that fixes it.
+//! - `transcript_view`, `history_view`, `debug_view`: the content views.
 //! - [`call_view`], `call_window_view` and `call_debug_view`: the call-mode view model, the Call
 //!   translation window that runs a call, and the raw diagnostics inside the debug window.
 //! - [`theme`], [`widgets`] (and `widgets_radio`), [`tool_window`], [`fonts`], [`shared`],
@@ -24,13 +25,13 @@
 //!   [`settings_command`] (what the window asks of the app).
 
 mod app;
+mod assistant_view;
 mod call_captions_view;
 mod call_debug_view;
 mod call_window_view;
 pub mod call_view;
 mod context_menu;
 mod debug_view;
-mod error_banner;
 pub mod fonts;
 mod history_view;
 mod orb_view;
@@ -65,9 +66,9 @@ pub mod widgets;
 mod widgets_radio;
 
 pub use app::render_app;
+pub use assistant_view::{AssistantIssue, DISMISS_ISSUE};
 pub use call_view::{ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
 pub use debug_view::render_debug_page;
-pub use error_banner::render_error_banner;
 pub use history_view::render_history_panel;
 pub use orb_view::render_orb;
 pub use settings_command::{RevealTarget, SettingsCommand, SystemPane};
@@ -75,7 +76,7 @@ pub use settings_data::SettingsData;
 pub use settings_feed::SettingsFeed;
 pub use settings_section::SettingsSection;
 pub use settings_window::SettingsViewState;
-pub use shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
+pub use shared::{EventSnapshot, SharedAppState, UiSnapshot};
 pub use state::{
     DesktopUiState, HistoryEntry, Page, SessionViewModel, TranscriptLine, UiSettings,
 };
@@ -85,10 +86,10 @@ pub use transcript_view::render_transcript;
 
 /// Prelude module re-exporting key types and functions.
 pub mod prelude {
-    pub use crate::shared::{EventSnapshot, NetworkStatus, SharedAppState, UiSnapshot};
+    pub use crate::shared::{EventSnapshot, SharedAppState, UiSnapshot};
     pub use crate::{
         DesktopUiState, HistoryEntry, Page, Scheme, SessionViewModel, Theme, Tokens,
-        TranscriptLine, UiSettings, render_app, render_debug_page, render_error_banner,
+        TranscriptLine, UiSettings, render_app, render_debug_page,
         render_history_panel, render_orb, render_transcript,
     };
 }

@@ -4,10 +4,9 @@
 //! and all events the backend can emit, plus supporting types for device info,
 //! error codes, and contract versioning.
 
+#[cfg(any(test, feature = "test-double"))]
 pub mod mock;
-pub mod prx_voice_transport;
 pub mod transport;
-pub mod ws_transport;
 
 use std::fmt;
 
@@ -233,9 +232,8 @@ pub enum Event {
 
 /// Convenience re-exports for downstream crates.
 pub mod prelude {
+    #[cfg(any(test, feature = "test-double"))]
     pub use crate::mock::MockGateway;
-    pub use crate::prx_voice_transport::{PrxVoiceConfig, PrxVoiceTransport};
     pub use crate::transport::{Transport, TransportError, TransportState, TtsAudioChunk};
-    pub use crate::ws_transport::WsTransport;
     pub use crate::{Command, ContractVersion, DeviceInfo, DeviceKind, ErrorCode, Event};
 }

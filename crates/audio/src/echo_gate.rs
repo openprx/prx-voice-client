@@ -200,62 +200,9 @@ impl EchoGateHandle {
     }
 }
 
-/// Receiver of microphone audio (the local recogniser).
-pub trait MicSink {
-    /// Accept captured audio.
-    fn push_frame(&mut self, frame: &prxvc_media::AudioFrame);
-    /// Forget everything accumulated so far.
-    fn reset(&mut self);
-}
-
-/// What [`route_frame`] did with a frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Routed {
-    /// The gate was closed; the frame was dropped.
-    Dropped,
-    /// The frame reached the sink.
-    Delivered,
-    /// The gate had just reopened: the sink was reset, then got the frame.
-    DeliveredAfterReset,
-}
-
-impl Routed {
-    /// Whether the frame reached the sink.
-    pub fn is_delivered(self) -> bool {
-        self != Self::Dropped
-    }
-}
-
-/// Route one captured frame through the gate.
-///
-/// A closed gate drops the frame. When the gate has just reopened the sink is
-/// reset first, so nothing recorded around the assistant's speech survives.
-pub fn route_frame(
-    gate: &EchoGateHandle,
-    now: Instant,
-    frame: &prxvc_media::AudioFrame,
-    sink: &mut impl MicSink,
-) -> Routed {
-    match gate.poll(now) {
-        GateState::Closed => Routed::Dropped,
-        GateState::Open { just_reopened } => {
-            if just_reopened {
-                sink.reset();
-            }
-            sink.push_frame(frame);
-            if just_reopened {
-                Routed::DeliveredAfterReset
-            } else {
-                Routed::Delivered
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prxvc_media::{AudioFrame, MonoTime, SampleRate};
 
     const HOLD: Duration = Duration::from_millis(300);
 
@@ -358,77 +305,5 @@ mod tests {
         // Reopens (after the hold-off, which starts at the stall detection).
         let later = t0 + REPLY_STALL_TIMEOUT + Duration::from_secs(2);
         assert_eq!(g.poll(later), GateState::Open { just_reopened: true });
-    }
-
-    // -- Routing -----------------------------------------------------------
-
-    #[derive(Default)]
-    struct Recorder {
-        samples: usize,
-        resets: u32,
-        /// Samples held at the moment of each reset.
-        held_at_reset: Vec<usize>,
-    }
-
-    impl MicSink for Recorder {
-        fn push_frame(&mut self, frame: &AudioFrame) {
-            self.samples += frame.len();
-        }
-        fn reset(&mut self) {
-            self.held_at_reset.push(self.samples);
-            self.samples = 0;
-            self.resets += 1;
-        }
-    }
-
-    fn frame() -> AudioFrame {
-        AudioFrame::new(vec![0.0; 160], SampleRate::HZ_16000, MonoTime::ZERO, 0).unwrap()
-    }
-
-    #[test]
-    fn audio_fed_while_closed_never_reaches_the_asr() {
-        let t0 = Instant::now();
-        let handle = EchoGateHandle::new(gate());
-        let mut sink = Recorder::default();
-
-        // Before the reply: audio passes.
-        assert!(route_frame(&handle, t0, &frame(), &mut sink).is_delivered());
-        assert_eq!(sink.samples, 160);
-
-        handle.with(|g| g.reply_activity(ms(t0, 10)));
-        for i in 0..50 {
-            assert_eq!(route_frame(&handle, ms(t0, 20 + i), &frame(), &mut sink), Routed::Dropped);
-        }
-        assert_eq!(sink.samples, 160, "nothing added while closed");
-
-        // Playback drains; hold-off still drops audio.
-        handle.with(|g| {
-            g.update(false, ms(t0, 100));
-            g.reply_ended(ms(t0, 200));
-            g.update(true, ms(t0, 1_000));
-        });
-        assert_eq!(route_frame(&handle, ms(t0, 1_100), &frame(), &mut sink), Routed::Dropped);
-
-        // After the hold-off the sink is reset (the pre-reply audio goes) and
-        // only fresh audio is accumulated.
-        assert_eq!(route_frame(&handle, ms(t0, 1_300), &frame(), &mut sink), Routed::DeliveredAfterReset);
-        assert_eq!(sink.resets, 1);
-        assert_eq!(sink.held_at_reset, vec![160]);
-        assert_eq!(sink.samples, 160, "only the frame after reopening");
-        assert_eq!(route_frame(&handle, ms(t0, 1_320), &frame(), &mut sink), Routed::Delivered);
-        assert_eq!(sink.resets, 1);
-        assert_eq!(sink.samples, 320);
-    }
-
-    #[test]
-    fn full_duplex_routes_everything_and_never_resets() {
-        let t0 = Instant::now();
-        let handle = EchoGateHandle::disabled();
-        let mut sink = Recorder::default();
-        handle.with(|g| g.reply_activity(t0));
-        for i in 0..5 {
-            assert_eq!(route_frame(&handle, ms(t0, i), &frame(), &mut sink), Routed::Delivered);
-        }
-        assert_eq!((sink.samples, sink.resets), (800, 0));
     }
 }

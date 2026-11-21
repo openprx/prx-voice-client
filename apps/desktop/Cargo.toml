@@ -17,6 +17,13 @@ path = "src/main.rs"
 name = "call_harness"
 path = "src/bin/call_harness/main.rs"
 
+# The assistant's voice loop on a WAV file with the real providers and the local dialogue server, with
+# a latency report (work package CT-20). A development tool like `call_harness`: it needs the native
+# features and the models installed. It opens no microphone and plays nothing.
+[[bin]]
+name = "assistant_harness"
+path = "src/bin/assistant_harness/main.rs"
+
 # Development helpers for this machine (scripts/dev); not part of the product bundle.
 [[bin]]
 name = "prxvc-dev"
@@ -29,12 +36,10 @@ prxvc-providers = { workspace = true }
 prxvc-models = { workspace = true }
 prxvc-media = { workspace = true }
 prxvc-ports = { workspace = true }
-prxvc-core = { workspace = true }
 prxvc-session = { workspace = true }
 prxvc-desktop-ui = { workspace = true }
 prxvc-config = { workspace = true }
 prxvc-observe = { workspace = true }
-prxvc-protocol = { workspace = true }
 prxvc-storage = { workspace = true }
 prxvc-i18n = { workspace = true }
 directories = { workspace = true }
@@ -45,7 +50,6 @@ url = { workspace = true }
 serde_json = { workspace = true }
 tracing-subscriber = { workspace = true }
 parking_lot = { workspace = true }
-tokio = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 global-hotkey = { workspace = true }
@@ -68,3 +72,5 @@ workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Scriptable fakes of every port: the host's tests run a real session loop on them.
+prxvc-ports = { workspace = true, features = ["fakes"] }

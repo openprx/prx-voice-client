@@ -32,7 +32,7 @@ pub fn builder<S>(size: egui::Vec2, scheme: egui::Theme) -> HarnessBuilder<S> {
 use prxvc_desktop_ui::settings_command::SettingsCommand;
 use prxvc_desktop_ui::settings_data::*;
 use prxvc_desktop_ui::settings_window::{self, BodyArgs, SettingsViewState};
-use prxvc_desktop_ui::{NetworkStatus, SettingsSection, UiSettings, tool_window};
+use prxvc_desktop_ui::{SettingsSection, UiSettings, tool_window};
 
 /// Everything the settings window body reads and changes.
 #[allow(dead_code)]
@@ -42,7 +42,6 @@ pub struct WindowState {
     pub commands: Vec<SettingsCommand>,
     pub view: SettingsViewState,
     pub pending_theme: Option<String>,
-    pub network: NetworkStatus,
 }
 
 #[allow(dead_code)]
@@ -56,7 +55,6 @@ impl WindowState {
             commands: Vec::new(),
             view,
             pending_theme: None,
-            network: NetworkStatus::Connected,
         }
     }
 
@@ -106,7 +104,6 @@ pub fn window_harness_in(
                             view: &mut st.view,
                             current_theme: theme::RF_THEME_NAME,
                             pending_theme: &mut st.pending_theme,
-                            network: &st.network,
                         },
                     );
                 });
@@ -188,6 +185,47 @@ pub fn rich_data() -> SettingsData {
             ],
             leaves_this_computer: true,
             warnings: vec![],
+        },
+        assistant: AssistantData {
+            backends: vec![
+                DialogueChoiceView {
+                    id: "local-llama-server".into(),
+                    name: String::new(),
+                    kind: DialogueKindView::LocalServer,
+                    problem: None,
+                },
+                DialogueChoiceView {
+                    id: "cloud-chat".into(),
+                    name: "Cloud chat".into(),
+                    kind: DialogueKindView::Entry,
+                    problem: None,
+                },
+                DialogueChoiceView {
+                    id: "openprx".into(),
+                    name: "OpenPRX agent".into(),
+                    kind: DialogueKindView::OpenPrx,
+                    problem: Some(PipelineProblem {
+                        subject: Some((PipelineRole::Dialogue, String::new())),
+                        fallback: false,
+                        code: "not_available_yet".into(),
+                        args: vec!["openprx".into(), "OpenPRX agent".into()],
+                    }),
+                },
+            ],
+            chain: PipelineData::Resolved {
+                rows: vec![PipelineRow {
+                    role: PipelineRole::Dialogue,
+                    key: String::new(),
+                    provider: "Local server".into(),
+                    target: "http://127.0.0.1:8080/v1".into(),
+                    data: DataLeavingView::Nothing,
+                    locality: LocalityView::ThisComputer,
+                    host: None,
+                    fallback: None,
+                }],
+                leaves_this_computer: false,
+                warnings: vec![],
+            },
         },
         voice_profile: Some(VoiceProfileView {
             id: "me".into(),

@@ -13,6 +13,8 @@
 //!   [`virtual_mic::VirtualMicSink`] opens the virtual microphone driver's
 //!   hidden sink by UID, checked by [`driver_status::DriverStatus`].
 //!
+//! * [`resampled_source::ResampledSource`] delivers any source at the rate a consumer needs (the
+//!   assistant listens at 16 kHz).
 //! * Mixing: [`mix::Mixer`] combines the translated speech and the original
 //!   voice of one direction into the stream a sink plays.
 //!
@@ -51,7 +53,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub mod audio_loop;
 pub mod buffer;
 pub mod call_activity;
 pub mod call_pump;
@@ -77,7 +78,6 @@ pub mod device_directory;
 pub mod driver_plist;
 pub mod driver_status;
 pub mod echo_gate;
-pub mod endpoint;
 pub mod input_devices;
 pub mod input_policy;
 pub mod input_supervisor;
@@ -92,6 +92,7 @@ pub mod playback_buffer;
 mod playback_buffer_rt;
 pub mod playback_sink;
 pub mod resample;
+pub mod resampled_source;
 pub mod process_filter;
 pub mod routing;
 pub mod stream_sink;
@@ -112,12 +113,8 @@ pub mod tap_pump_source;
 pub mod tap_types;
 pub mod tap_watchdog;
 pub mod tap_zero_watchdog;
-pub mod turn_policy;
 #[cfg(target_os = "macos")]
 pub mod virtual_mic;
-pub mod vad_window;
-#[cfg(feature = "whisper")]
-pub mod whisper_asr;
 
 // ---------------------------------------------------------------------------
 // Audio format & frame types
