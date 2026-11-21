@@ -48,11 +48,11 @@ mod tests {
         assert!(en.enabled);
         assert_eq!(
             en.text,
-            "This call is being translated in real time. You are hearing a synthesized voice."
+            "This call is translated live. You're hearing a synthesized voice."
         );
         assert_eq!(
             disclosure_spec(&config, Lang::Zh).text,
-            "本次通话正在实时翻译，你听到的是合成语音。"
+            "本通话为实时翻译，你听到的是合成语音。"
         );
     }
 
@@ -61,7 +61,7 @@ mod tests {
         let mut config = AppConfig::default();
         config.call.disclosure_text_en = "  Heads up: machine translation.  ".into();
         assert_eq!(disclosure_text(&config, Lang::En), "Heads up: machine translation.");
-        assert!(disclosure_text(&config, Lang::Zh).starts_with("本次通话"));
+        assert!(disclosure_text(&config, Lang::Zh).starts_with("本通话"));
         config.call.disclosure_text_en = "   ".into();
         assert!(disclosure_text(&config, Lang::En).starts_with("This call"));
     }

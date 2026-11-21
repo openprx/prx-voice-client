@@ -3,10 +3,12 @@
 //! The notice never goes through the pipeline: it is not translated, not judged as filler, not
 //! skipped by the backlog or the barge-in rule. It is synthesised once, while the models load, with
 //! the outgoing direction's own synthesiser and voice, and kept in memory. It is queued on the
-//! outgoing translated lane as a clause of its own just before the first translated audio of the
-//! session (the forwarder calls [`Disclosure::before_audio`]), or again on request
-//! ([`Disclosure::play`]); the mixer plays it in order, so the translation is delayed by exactly
-//! the notice's length, once.
+//! outgoing translated lane as a clause of its own as soon as the speaker's first speech of the
+//! session begins (the forwarder calls [`Disclosure::on_speech_start`]), so that it plays while
+//! recognition and translation work; if it was not ready then, just before the first translated
+//! audio ([`Disclosure::before_audio`]); or again on request ([`Disclosure::play`]). The mixer plays
+//! it in order, so the first translation waits only for what is left of the notice when it is
+//! ready, once.
 //!
 //! "Played" means it was audible from its first to its last sample. If the lane was flushed, or
 //! the direction stopped being audible (a pause) while it played, it is counted as interrupted and
@@ -190,6 +192,22 @@ impl Disclosure {
     /// is audible.
     pub(super) fn set_audible(&self, audible: bool) {
         self.shared.audible.store(audible, Ordering::SeqCst);
+    }
+
+    /// The speaker's first speech of the session began: play the notice now when it is owed and
+    /// ready, so that it overlaps the time recognition and translation need and the first
+    /// translated sentence waits only for what is left of it. Never waits: a notice still being
+    /// synthesised plays before the first translated audio instead ([`Self::before_audio`]).
+    pub(super) fn on_speech_start(&self, playout: &dyn Playout) {
+        let mut inner = self.shared.inner.lock();
+        if !inner.auto_pending {
+            return;
+        }
+        if let Prep::Ready(chunks) = &inner.prep {
+            let chunks = Arc::clone(chunks);
+            inner.auto_pending = false;
+            Self::queue(&mut inner, &chunks, playout, self.shared.audible.load(Ordering::SeqCst), false);
+        }
     }
 
     /// The first translated audio of a clause is about to go to `playout`: play the notice first when
@@ -467,6 +485,43 @@ mod tests {
         assert_eq!(lane.chunks.load(Ordering::SeqCst), 2, "the second clause does not repeat it");
         let s = d.snapshot(Some(at(0)));
         assert_eq!((s.state, s.plays, s.last_played_s), (DisclosureState::Played, 1, Some(5)));
+    }
+
+    #[test]
+    fn it_plays_at_the_first_speech_start_and_not_again_before_the_first_translated_audio() {
+        let d = Disclosure::ready(vec![chunk(), chunk()]);
+        d.set_audible(true);
+        let lane = Lane::default();
+        d.on_speech_start(&lane);
+        assert_eq!(*lane.log.lock(), ["push 0", "push 0", "end 0"]);
+        d.on_speech_start(&lane);
+        d.before_audio(&lane);
+        assert_eq!(lane.chunks.load(Ordering::SeqCst), 2, "once per session");
+        started(&d, 0);
+        assert!(finished(&d, 0, 4_000));
+        assert_eq!(d.snapshot(Some(at(0))).plays, 1);
+    }
+
+    #[test]
+    fn a_notice_still_being_prepared_does_not_hold_up_the_speech_start() {
+        let d = Disclosure::start_state(Prep::Preparing);
+        let lane = Lane::default();
+        let began = std::time::Instant::now();
+        d.on_speech_start(&lane);
+        assert!(began.elapsed() < Duration::from_secs(1), "no waiting");
+        assert!(lane.log.lock().is_empty());
+        assert!(d.shared.inner.lock().auto_pending, "it is still owed before the first audio");
+    }
+
+    #[test]
+    fn a_cut_notice_plays_again_at_the_next_speech_start() {
+        let d = Disclosure::ready(vec![chunk()]);
+        d.set_audible(true);
+        let lane = Lane::default();
+        d.on_speech_start(&lane);
+        d.flushed();
+        d.on_speech_start(&lane);
+        assert_eq!(lane.chunks.load(Ordering::SeqCst), 2);
     }
 
     #[test]

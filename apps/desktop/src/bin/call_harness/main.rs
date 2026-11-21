@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -20,6 +20,11 @@
 //!   `config.toml` keeps the values of the release that wrote it).
 //! * `--own-set DIR` takes the rows of `DIR/own.tsv` in the set's language (id, lang, voice, text;
 //!   `DIR/own/<id>.wav`); `--no-barge-in` sets `call.barge_in = false` for the run.
+//! * `--notice speech|audio` plays the spoken notice of the call (the built-in wording of the target
+//!   language, or with `--notice-old-text` the earlier, longer one) on the translated lane, queued as
+//!   the speech begins (`speech`, the product's behaviour) or just before the first translated audio
+//!   (`audio`, the earlier behaviour); every utterance is its own session. It shows in
+//!   "speech START -> first translated audio".
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
@@ -30,6 +35,7 @@
 #[path = "../../call_kit/mod.rs"]
 mod call_kit;
 
+mod notice;
 mod report;
 mod run;
 mod sinks;
@@ -82,6 +88,8 @@ struct Options {
     peer: String,
     vad_profile: bool,
     no_adaptive_preroll: bool,
+    notice: notice::NoticeMode,
+    notice_old_text: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -106,6 +114,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         peer: "en".into(),
         vad_profile: false,
         no_adaptive_preroll: false,
+        notice: notice::NoticeMode::Off,
+        notice_old_text: false,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -155,6 +165,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--no-backlog-skip" => o.no_backlog_skip = true,
             "--vad-profile" => o.vad_profile = true,
             "--no-adaptive-preroll" => o.no_adaptive_preroll = true,
+            "--notice" => o.notice = notice::NoticeMode::parse(&value(arg, &mut it)?)?,
+            "--notice-old-text" => o.notice_old_text = true,
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -393,8 +405,33 @@ fn execute(o: &Options) -> Result<bool, String> {
     } else {
         Output::Wav(out_dir.clone())
     };
+    let notice = if o.notice == notice::NoticeMode::Off {
+        None
+    } else {
+        let text = if o.notice_old_text {
+            match direction_plan.target {
+                Lang::En => "This call is being translated in real time. You are hearing a synthesized voice.".to_owned(),
+                Lang::Zh => "本次通话正在实时翻译，你听到的是合成语音。".to_owned(),
+            }
+        } else {
+            call_kit::disclosure::disclosure_text(&config, direction_plan.target)
+        };
+        let (chunks, seconds) = notice::synthesise(
+            build.providers.tts.as_ref(),
+            o.direction,
+            &text,
+            direction_plan.target,
+            params.voice.clone(),
+        )?;
+        println!("notice ({:?}): {:.1} s of speech", o.notice, seconds);
+        Some(notice::Notice {
+            mode: o.notice,
+            chunks: Arc::new(chunks),
+        })
+    };
     let rig = Rig {
         clock: Arc::new(SystemClock::new()),
+        notice,
         params,
         providers: build.providers.clone(),
         output,

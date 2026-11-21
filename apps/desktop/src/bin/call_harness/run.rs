@@ -53,6 +53,8 @@ pub(crate) struct Rig {
     pub output: Output,
     /// The mixer's settings (jitter buffer, adaptive pre-roll); the mode is set per run.
     pub mixer: MixerConfig,
+    /// The spoken notice, when the run plays one.
+    pub notice: Option<crate::notice::Notice>,
 }
 
 /// Speech start and end in the recording, from the VAD the pipeline uses (probability of at least
@@ -161,6 +163,9 @@ pub(crate) fn run_utterance(
                 }),
             },
             on_playback: Box::new(move |s| match s {
+                // The notice is not a clause of the pipeline.
+                PlaybackSignal::Started { clause, .. } | PlaybackSignal::Finished { clause, .. }
+                    if crate::notice::is_notice(clause) => {}
                 PlaybackSignal::Started { clause, at } => report.playback_started(clause, at),
                 PlaybackSignal::Finished { clause, at } => report.playback_finished(clause, at),
             }),
@@ -170,13 +175,34 @@ pub(crate) fn run_utterance(
 
     // Events: translated audio into the mixer's lane; the rest is only counted.
     let events = started.events;
+    let notice = rig.notice.clone();
+    let notice_clause = crate::notice::notice_clause(rig.params.direction);
     let consumer = std::thread::Builder::new()
         .name("harness-events".into())
         .spawn(move || {
             let mut audio_samples: Vec<(ClauseId, f64)> = Vec::new();
+            let mut notice_owed = notice.is_some();
+            let queue_notice = |feed: &prxvc_audio::call_pump::TranslatedFeed| {
+                if let Some(n) = &notice {
+                    for c in n.chunks.iter() {
+                        feed.push(notice_clause, c);
+                    }
+                    feed.end_clause(notice_clause);
+                }
+            };
             while let Some(event) = events.recv() {
                 match event {
+                    PipelineEvent::SpeechStarted => {
+                        if notice_owed && notice.as_ref().is_some_and(|n| n.mode == crate::notice::NoticeMode::Speech) {
+                            notice_owed = false;
+                            queue_notice(&feed);
+                        }
+                    }
                     PipelineEvent::Audio(a) => {
+                        if notice_owed {
+                            notice_owed = false;
+                            queue_notice(&feed);
+                        }
                         let secs = a.payload.chunk.duration().as_secs_f64();
                         match audio_samples
                             .iter_mut()

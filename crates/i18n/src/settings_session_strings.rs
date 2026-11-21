@@ -88,7 +88,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ),
     (
         "settings.call.disclosure.desc",
-        "Plays a short spoken notice, in their language, before your first translated sentence: the call is translated in real time and they hear a synthesized voice. Applies from the next start; the wording is in the config file.",
+        "Plays a short spoken notice, in their language, when you first speak in a call: the call is translated live and they hear a synthesized voice. It plays while your first sentence is being translated. Applies from the next start; the wording is in the config file.",
     ),
     ("settings.assistant.speak", "Speak replies aloud"),
     ("settings.assistant.language", "Assistant language"),
@@ -304,7 +304,7 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ("settings.call.disclosure", "告知对方通话在翻译"),
     (
         "settings.call.disclosure.desc",
-        "在你的第一句译文之前，用对方的语言播放一段简短的语音提示：通话正在实时翻译，他们听到的是合成语音。下次开始时生效；提示文字可在配置文件中修改。",
+        "在你通话中第一次开口时，用对方的语言播放一段简短的语音提示：通话为实时翻译，他们听到的是合成语音。提示在你的第一句话翻译期间播放。下次开始时生效；提示文字可在配置文件中修改。",
     ),
     ("settings.assistant.speak", "朗读回复"),
     ("settings.assistant.language", "助手语言"),

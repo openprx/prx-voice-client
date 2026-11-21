@@ -75,6 +75,10 @@ pub enum PipelineEvent {
         /// Why.
         reason: SkipReason,
     },
+    /// The speaker's speech began (a segment opened and passed the start gates). It is the earliest
+    /// sign that something will be said: the spoken notice to the other party starts playing now,
+    /// so that it overlaps the time recognition and translation need.
+    SpeechStarted,
     /// A clause failed (the direction may carry on: a runaway synthesis, an overflow).
     ClauseFailed {
         /// The clause.

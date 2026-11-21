@@ -256,7 +256,8 @@ impl Coordinator {
                 tracing::warn!(direction = ?d, ?error, "the pipeline's attached source ended");
             }
             // Handled on the forwarder thread, or shown through the snapshot.
-            PipelineEvent::Audio(_)
+            PipelineEvent::SpeechStarted
+            | PipelineEvent::Audio(_)
             | PipelineEvent::AudioEnd(_)
             | PipelineEvent::Flush(_)
             | PipelineEvent::ClauseSkipped { .. }
@@ -402,6 +403,13 @@ fn forward(
             PipelineEvent::AudioEnd(e) => {
                 if let Some(p) = current() {
                     p.end_clause(e.payload);
+                }
+            }
+            PipelineEvent::SpeechStarted => {
+                // The speaker began: the notice, when owed and ready, starts now instead of
+                // waiting for the first translation.
+                if let (Some(n), Some(p)) = (notice, current()) {
+                    n.on_speech_start(&*p);
                 }
             }
             PipelineEvent::Flush(action) => {

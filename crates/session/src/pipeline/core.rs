@@ -229,6 +229,7 @@ impl Core {
                     .is_some_and(|t| !t.is_cancelled());
                 if live {
                     self.barge_in(segment, onset);
+                    self.emit(PipelineEvent::SpeechStarted);
                 } else {
                     // Cancelled before the book heard of it: the recogniser
                     // abandoned it, so it must not stay open in the book.
