@@ -23,6 +23,11 @@ const WINDOW_S: f32 = 0.022;
 /// Search range on each side of the nominal position, in seconds.
 const SEARCH_S: f32 = 0.006;
 
+/// Candidates skipped by the coarse pass of the search.
+const COARSE_STEP: usize = 4;
+/// Samples skipped when the overlap is compared.
+const SCORE_STRIDE: usize = 2;
+
 /// Streaming WSOLA at one sample rate.
 pub struct TimeScaler {
     win: usize,
@@ -157,20 +162,38 @@ impl TimeScaler {
     }
 
     /// The start in `lo..=hi` whose first `hop` samples best continue the previous frame.
+    ///
+    /// The search is coarse to fine so that the cost stays far below the period of a sink: every
+    /// second sample of the overlap is compared, at every `COARSE_STEP`th candidate first, then at
+    /// every candidate within `COARSE_STEP - 1` of the best one. Speech is smooth at this rate, so
+    /// the joins are as good as with the full search (see the tests) at an eighth of the work.
     fn best_start(&self, prev: usize, lo: usize, hi: usize) -> usize {
-        let hop = self.hop;
-        let template_at = prev + hop;
-        let mut best = (f32::MIN, lo.max(template_at.min(hi)));
-        for c in lo..=hi {
+        let template_at = prev + self.hop;
+        let score = |c: usize| -> f32 {
             let (mut dot, mut norm) = (0.0f32, 1e-9f32);
-            for i in 0..hop {
+            let mut i = 0;
+            while i < self.hop {
                 let x = self.sample(c + i);
                 dot += self.sample(template_at + i) * x;
                 norm += x * x;
+                i += SCORE_STRIDE;
             }
-            let score = dot / norm.sqrt();
-            if score > best.0 {
-                best = (score, c);
+            dot / norm.sqrt()
+        };
+        let mut best = (f32::MIN, lo.max(template_at.min(hi)));
+        let mut c = lo;
+        while c <= hi {
+            let s = score(c);
+            if s > best.0 {
+                best = (s, c);
+            }
+            c += COARSE_STEP;
+        }
+        let (from, to) = (best.1.saturating_sub(COARSE_STEP - 1).max(lo), (best.1 + COARSE_STEP - 1).min(hi));
+        for c in from..=to {
+            let s = score(c);
+            if s > best.0 {
+                best = (s, c);
             }
         }
         best.1
@@ -371,6 +394,30 @@ mod tests {
             s.finish(speed, &mut out);
             assert!(s.is_empty());
             assert!(out.len() <= total + 2_200, "round {round}: {} out of {total}", out.len());
+        }
+    }
+
+    /// Time the processor takes for the block sizes a pump hands it. Run in release:
+    /// `cargo test -p prxvc-audio --release --lib timescale::tests::iteration_time -- --ignored --nocapture`
+    #[test]
+    #[ignore = "a timing measurement for release builds"]
+    fn iteration_time() {
+        for (label, ms) in [("one 10 ms block", 10usize), ("a 100 ms chunk", 100), ("a 1 s chunk", 1000), ("a 4 s chunk", 4000)] {
+            let input = voiced(ms as f32 / 1000.0);
+            let mut worst = std::time::Duration::ZERO;
+            let mut total = std::time::Duration::ZERO;
+            let runs = 20;
+            for _ in 0..runs {
+                let mut s = TimeScaler::new(RATE);
+                let mut out = Vec::new();
+                let t = std::time::Instant::now();
+                s.process(&input, 1.25, &mut out);
+                s.finish(1.25, &mut out);
+                let d = t.elapsed();
+                worst = worst.max(d);
+                total += d;
+            }
+            println!("{label}: mean {:?}, worst {:?}", total / runs, worst);
         }
     }
 }
