@@ -37,7 +37,7 @@ pub(crate) struct TimelineArgs<'a> {
     pub empty: EmptyState,
 }
 
-/// Draw the timeline in the rest of the height of `ui`.
+/// Draw the timeline in the height that is left in `ui`, which the caller bounds.
 pub(crate) fn timeline(ui: &mut egui::Ui, tk: &Tokens, w: &mut CallWindowState, a: &TimelineArgs<'_>) {
     if w.transcript.is_empty() {
         empty_state(ui, tk, &a.empty);
@@ -62,9 +62,14 @@ pub(crate) fn timeline(ui: &mut egui::Ui, tk: &Tokens, w: &mut CallWindowState, 
         heights,
         ..
     } = &mut *w;
+    // Exactly the height the caller gave: the area neither grows past it nor, as an area does by
+    // default, keeps a minimum of its own that would reach into what is below.
+    let height = ui.available_height();
     let out = egui::ScrollArea::vertical()
         .id_salt("call_captions")
         .auto_shrink([false, false])
+        .max_height(height)
+        .min_scrolled_height(height)
         .stick_to_bottom(true)
         .show_viewport(ui, |ui, viewport| {
             ui.spacing_mut().item_spacing.y = space::S4;

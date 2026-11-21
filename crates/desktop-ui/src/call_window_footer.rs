@@ -51,23 +51,47 @@ pub(crate) fn delay_text(panel: &CallPanel) -> String {
     }
 }
 
-/// The slim row: levels, delay, and the Details switch.
+/// The width a text takes in a given size.
+fn text_width(ui: &egui::Ui, text: &str, px: f32) -> f32 {
+    ui.painter()
+        .layout_no_wrap(text.to_owned(), egui::FontId::proportional(px), egui::Color32::PLACEHOLDER)
+        .size()
+        .x
+}
+
+/// The slim row: levels, delay, and the Details switch. The Details button is always there;
+/// the levels and then the delay are shown only while they fit beside it, so the row never
+/// runs over itself in a narrow window.
 pub(crate) fn footer_row(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, w: &mut CallWindowState) {
+    let key = if w.details_open { "callwin.details_hide" } else { "callwin.details" };
+    let label = prxvc_i18n::t(key);
+    let gap = space::S8;
+    let button_w = text_width(ui, &label, size::BUTTON) * 1.1 + 2.0 * layout::BUTTON_PAD_X;
+    let mut room = ui.available_width() - button_w - gap;
+    let running = !matches!(panel.phase, CallPhase::Idle | CallPhase::Stopping);
+    let names = [prxvc_i18n::t("callwin.caption.me"), prxvc_i18n::t("callwin.caption.peer")];
+    let levels_w: f32 = names
+        .iter()
+        .map(|n| text_width(ui, n, size::CAPTION) + METER_WIDTH + 2.0 * gap)
+        .sum();
+    let delay = delay_text(panel);
+    let delay_w = text_width(ui, &delay, size::CAPTION) + gap;
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = space::S8;
-        let running = !matches!(panel.phase, CallPhase::Idle | CallPhase::Stopping);
-        if running {
-            meter(ui, tk, &prxvc_i18n::t("callwin.caption.me"), &panel.outgoing);
-            meter(ui, tk, &prxvc_i18n::t("callwin.caption.peer"), &panel.incoming);
-            ui.label(widgets::text(delay_text(panel), size::CAPTION, tk.secondary));
+        ui.spacing_mut().item_spacing.x = gap;
+        if running && room >= levels_w {
+            meter(ui, tk, &names[0], &panel.outgoing);
+            meter(ui, tk, &names[1], &panel.incoming);
+            room -= levels_w;
+            if room >= delay_w {
+                ui.label(widgets::text(delay, size::CAPTION, tk.secondary));
+            }
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let key = if w.details_open { "callwin.details_hide" } else { "callwin.details" };
             if widgets::button_with(
                 ui,
                 tk,
                 ButtonKind::Text,
-                &prxvc_i18n::t(key),
+                &label,
                 layout::CONTROL_HEIGHT_SMALL,
                 true,
             )

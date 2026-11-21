@@ -151,12 +151,19 @@ fn copy_puts_the_utterance_on_the_clipboard_and_says_so() {
     assert!(copied.is_some_and(|t| !t.is_empty()), "the text went to the clipboard");
 }
 
+/// Open the Options menu of the captions bar.
+fn open_options(h: &mut Harness<'static, DesktopUiState>) {
+    h.get_by_role_and_label(Role::Button, "Options").click();
+    h.run_steps(3);
+}
+
 #[test]
 fn the_text_size_is_a_setting_the_window_changes() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(call_fixtures::live_panel());
     assert_eq!(h.state().settings.call_captions_size, "medium");
+    open_options(&mut h);
     h.get_by_role_and_label(Role::RadioButton, "L").click();
     h.run_steps(3);
     assert_eq!(h.state().settings.call_captions_size, "large");
@@ -171,6 +178,7 @@ fn the_original_line_can_be_hidden() {
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(call_fixtures::live_panel());
     assert!(h.query_all_by_label_contains("Sounds good, three works for me.").next().is_some());
+    open_options(&mut h);
     h.get_by_role_and_label(Role::Switch, "Show original").click();
     h.run_steps(3);
     assert!(!h.state().settings.call_captions_show_source);
@@ -184,7 +192,8 @@ fn clear_empties_the_captions_and_the_empty_state_returns() {
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(call_fixtures::live_panel());
     assert!(!h.state().call_window.transcript.is_empty());
-    h.get_by_role_and_label(Role::Button, "Clear").click();
+    open_options(&mut h);
+    h.get_by_role_and_label(Role::MenuItem, "Clear").click();
     h.run_steps(3);
     assert!(h.state().call_window.transcript.is_empty());
     assert!(h.query_all_by_label_contains("Listening").next().is_some());

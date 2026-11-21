@@ -1,7 +1,5 @@
 //! The head of the Call translation window: the state as a chip in plain words with the call's duration, the language pair with its swap, and the one prominent action with Pause beside it and the Translate switch.
 
-use egui::{Align, Layout};
-
 use crate::call_view::{CallPanel, CallPhase, command};
 use crate::call_window_state::CallWindowState;
 use crate::call_window_view::CallWindowAction;
@@ -73,8 +71,9 @@ pub(crate) fn language_name(code: &str) -> String {
     }
 }
 
-/// The state chip and the duration, the explaining sentence when the state needs one, the
-/// language pair, and the controls.
+/// Row one: the state chip (its words are the state, said once; the longer sentence is its hover
+/// text), the call's duration while one runs, and the language pair with Swap and Edit while
+/// call mode is off. Row two: the controls.
 pub(crate) fn header(
     ui: &mut egui::Ui,
     tk: &Tokens,
@@ -84,48 +83,13 @@ pub(crate) fn header(
     w: &mut CallWindowState,
     actions: &mut Vec<CallWindowAction>,
 ) {
-    ui.horizontal(|ui| {
-        widgets::chip(ui, tk, chip_tone(panel.phase), &chip_text(panel.phase));
-        if panel.phase != CallPhase::Idle {
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(widgets::text(
-                    crate::call_transcript::mmss(w.elapsed_s()),
-                    size::SECONDARY,
-                    tk.secondary,
-                ));
-            });
-        }
-    });
-    // A reduced call explains itself in the issue card; the others say what is going on.
-    let degraded_with_reason = panel.phase == CallPhase::Degraded && !panel.issues.is_empty();
-    if !degraded_with_reason
-        && matches!(
-            panel.phase,
-            CallPhase::Initializing
-                | CallPhase::AudioReady
-                | CallPhase::Paused
-                | CallPhase::Degraded
-                | CallPhase::Recovering
-        )
-    {
-        ui.add_space(space::S4);
-        ui.add(
-            egui::Label::new(widgets::text(
-                crate::call_window_view::state_text(panel),
-                size::SECONDARY,
-                tk.secondary,
-            ))
-            .wrap(),
-        );
-    }
+    status_row(ui, tk, panel, settings, w);
     ui.add_space(space::S8);
-    language_line(ui, tk, panel, settings, w);
-    ui.add_space(space::S12);
     controls(ui, tk, panel, translate, actions);
 }
 
-/// "中文 → English / English → 中文", with Swap and Edit while call mode is off.
-fn language_line(
+/// "[chip] 02:31 中文 ⇄ English  Swap Edit".
+fn status_row(
     ui: &mut egui::Ui,
     tk: &Tokens,
     panel: &CallPanel,
@@ -138,6 +102,15 @@ fn language_line(
         &[&language_name(&own), &language_name(&peer)],
     );
     ui.horizontal_wrapped(|ui| {
+        widgets::chip(ui, tk, chip_tone(panel.phase), &chip_text(panel.phase))
+            .on_hover_text(crate::call_window_view::state_text(panel));
+        if panel.phase != CallPhase::Idle {
+            ui.label(widgets::text(
+                crate::call_transcript::mmss(w.elapsed_s()),
+                size::SECONDARY,
+                tk.secondary,
+            ));
+        }
         ui.label(widgets::text(pair, size::SECONDARY, tk.text));
         if panel.can_start() {
             if widgets::button_with(
@@ -170,7 +143,8 @@ fn language_line(
 }
 
 /// The one primary button (Start, or Stop while a call runs), Pause or Resume, and the Translate
-/// switch. The switch decides what the next start does, so it can only change while call mode is off.
+/// switch. The switch decides what the next start does, so it can only change while call mode is
+/// off; while a call runs it shows what this call does, dimmed, with the reason as its hover text.
 fn controls(
     ui: &mut egui::Ui,
     tk: &Tokens,
@@ -237,7 +211,13 @@ fn controls(
             if panel.can_start() {
                 widgets::switch(ui, tk, translate);
             } else {
-                widgets::switch_with(ui, tk, &mut panel.translate_enabled.clone(), false);
+                widgets::switch_locked(
+                    ui,
+                    tk,
+                    panel.translate_enabled,
+                    &label,
+                    &prxvc_i18n::t("callwin.translate_locked"),
+                );
             }
         });
         ui.label(widgets::text(&label, size::SECONDARY, tk.text));

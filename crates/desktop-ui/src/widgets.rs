@@ -319,6 +319,34 @@ pub fn switch_with(ui: &mut Ui, tk: &Tokens, value: &mut bool, enabled: bool) ->
     response
 }
 
+/// Opacity of a switch that shows a value which cannot be changed right now.
+const LOCKED_OPACITY: f32 = 0.5;
+
+/// A switch that shows its real state but cannot be changed now: the normal on or off colours at
+/// reduced opacity, with `name` as its accessible name and `why` as the hover text. Unlike [`switch_with`] with `enabled = false`
+/// the state stays readable.
+pub fn switch_locked(ui: &mut Ui, tk: &Tokens, on: bool, name: &str, why: &str) -> Response {
+    let (rect, response) = ui.allocate_exact_size(
+        vec2(layout::SWITCH_WIDTH, layout::SWITCH_HEIGHT),
+        Sense::hover(),
+    );
+    response.widget_info(|| WidgetInfo::selected(egui::Role::Switch, false, on, name));
+    if ui.is_rect_visible(rect) {
+        let (track, knob) = if on {
+            (tk.primary, tk.on_primary)
+        } else {
+            (tk.line_strong, tk.surface_white)
+        };
+        let fade = |c: Color32| c.gamma_multiply(LOCKED_OPACITY);
+        ui.painter().rect_filled(rect, pill_radius(rect), fade(track));
+        let inset = (layout::SWITCH_HEIGHT - layout::SWITCH_KNOB) / 2.0;
+        let r = layout::SWITCH_KNOB / 2.0;
+        let cx = if on { rect.right() - inset - r } else { rect.left() + inset + r };
+        ui.painter().circle_filled(pos2(cx, rect.center().y), r, fade(knob));
+    }
+    response.on_hover_text(why)
+}
+
 // ---------------------------------------------------------------------------
 // Segmented control
 // ---------------------------------------------------------------------------

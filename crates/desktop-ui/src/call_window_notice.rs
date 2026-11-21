@@ -8,12 +8,12 @@ use crate::theme::{Tokens, layout, size, space};
 use crate::widgets::{self, ButtonKind};
 
 /// What the line says, and whether "say it again" is offered; `None` when there is nothing to say
-/// (idle with the notice on, a call without translation).
-pub(crate) fn line(panel: &CallPanel, settings: &UiSettings) -> Option<(String, bool)> {
+/// (no call session runs, or a call without translation). Where the notice is switched is the
+/// details; the line is about the running call only.
+pub(crate) fn line(panel: &CallPanel) -> Option<(String, bool)> {
     let running = !matches!(panel.phase, CallPhase::Idle | CallPhase::Stopping);
     if !running {
-        return (!settings.call_disclosure)
-            .then(|| (prxvc_i18n::t("callwin.notice.off"), false));
+        return None;
     }
     if !panel.translate_enabled {
         return None;
@@ -44,10 +44,9 @@ pub(crate) fn notice_line(
     ui: &mut egui::Ui,
     tk: &Tokens,
     panel: &CallPanel,
-    settings: &UiSettings,
     actions: &mut Vec<CallWindowAction>,
 ) {
-    let Some((text, again)) = line(panel, settings) else {
+    let Some((text, again)) = line(panel) else {
         return;
     };
     ui.add_space(space::S8);
@@ -104,35 +103,29 @@ mod tests {
     }
 
     #[test]
-    fn idle_with_the_notice_on_says_nothing_and_off_says_the_other_party_is_not_told() {
-        let on = UiSettings::default();
-        assert!(line(&CallPanel::default(), &on).is_none());
-        let off = UiSettings {
-            call_disclosure: false,
-            ..UiSettings::default()
-        };
-        assert!(line(&CallPanel::default(), &off).is_some());
+    fn the_line_is_about_a_running_call_only() {
+        assert!(line(&CallPanel::default()).is_none());
+        assert!(line(&running(NoticeView::default())).is_some());
     }
 
     #[test]
     fn a_running_call_says_where_the_notice_stands_and_offers_the_repeat_when_it_can() {
-        let s = UiSettings::default();
         let notice = |state, enabled| NoticeView {
             enabled,
             state,
             plays: 0,
             last_played_s: Some(75),
         };
-        assert_eq!(line(&running(notice(NoticeState::Preparing, true)), &s).unwrap().1, false);
-        assert_eq!(line(&running(notice(NoticeState::Ready, true)), &s).unwrap().1, true);
-        let (text, again) = line(&running(notice(NoticeState::Played, true)), &s).unwrap();
+        assert_eq!(line(&running(notice(NoticeState::Preparing, true))).unwrap().1, false);
+        assert_eq!(line(&running(notice(NoticeState::Ready, true))).unwrap().1, true);
+        let (text, again) = line(&running(notice(NoticeState::Played, true))).unwrap();
         assert!(again && text.contains("1:15"), "{text}");
-        assert_eq!(line(&running(notice(NoticeState::Failed, true)), &s).unwrap().1, false);
-        let off = line(&running(notice(NoticeState::Off, false)), &s).unwrap();
+        assert_eq!(line(&running(notice(NoticeState::Failed, true))).unwrap().1, false);
+        let off = line(&running(notice(NoticeState::Off, false))).unwrap();
         assert!(!off.1);
         // A call without translation tells nobody anything.
         let mut audio_only = running(notice(NoticeState::Off, false));
         audio_only.translate_enabled = false;
-        assert!(line(&audio_only, &s).is_none());
+        assert!(line(&audio_only).is_none());
     }
 }

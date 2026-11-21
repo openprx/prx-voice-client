@@ -252,7 +252,7 @@ fn the_languages_swap_while_idle_and_are_edited_in_the_details_and_locked_while_
     st.settings.call_peer_language = "en".into();
     let mut h = app_harness(st, 420.0);
     h.run_steps(3);
-    assert!(has_label(&h, "中文 \u{2192} English / English \u{2192} 中文"));
+    assert!(has_label(&h, "中文 \u{2194} English"));
     h.get_by_role_and_label(Role::Button, "Swap").click();
     h.run_steps(2);
     assert_eq!(h.state().settings.call_self_language, "en");
@@ -282,7 +282,6 @@ fn the_details_hold_the_counters_and_stay_closed_until_asked() {
     let mut h = app_harness(state_with(panel("translating")), 420.0);
     h.run_steps(3);
     assert!(!has_label(&h, "Filler dropped 3"));
-    assert!(has_label(&h, "Delay 2.5 s"), "the delay is a quiet indicator");
     h.get_by_role_and_label(Role::Button, "Details").click();
     h.run_steps(3);
     assert!(has_label(&h, "Filler dropped 3"));
@@ -291,6 +290,21 @@ fn the_details_hold_the_counters_and_stay_closed_until_asked() {
     h.get_by_role_and_label(Role::Button, "Hide details").click();
     h.run_steps(3);
     assert!(!has_label(&h, "Filler dropped 3"));
+}
+
+#[test]
+fn the_footer_shows_the_delay_when_there_is_room_and_drops_it_before_running_over() {
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    for (width, shown) in [(760.0, true), (320.0, false)] {
+        let mut h = common::builder(egui::vec2(width, 600.0), Theme::Light).build_ui_state(
+            |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_call_window(ui, st),
+            state_with(panel("translating")),
+        );
+        h.run_steps(3);
+        assert_eq!(has_label(&h, "Delay 2.5 s"), shown, "{width}");
+        h.get_by_role_and_label(Role::Button, "Details");
+    }
 }
 
 #[test]
@@ -335,7 +349,8 @@ fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
     h.get_by_role_and_label(Role::Switch, "Tell the other party (spoken notice)").click();
     h.run_steps(3);
     assert!(!h.state().settings.call_disclosure);
-    assert!(has_label(&h, "The other party is not being told"));
+    // The line is about a running call; idle, the switch is the only place that says it.
+    assert!(!has_label(&h, "The other party is not being told"));
 }
 
 #[test]
