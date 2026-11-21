@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Recognised units that are only filler ("嗯", "Mm.", "Uh") are no longer translated or spoken
+  (`pipeline.drop_filler`, default on); they are counted and traced. A trailing "嗯。" after real
+  speech was spoken in 10 of 15 Mandarin utterances of the benchmark set.
+- An empty refine result keeps the streaming text and no longer counts towards the
+  `RefineFailing` degradation.
+- Text with nothing to say aloud (punctuation only) is never sent to the synthesiser, and in the
+  live call a short clause is held until it ends inside its generation cap and retried once, so a
+  synthesis runaway is not played.
+- The call coordinator's log line names the real previous state.
+- A second click on the orb while the assistant listens ends the session.
+
+### Added
+- The Call translation window (menu-bar menu and the orb's menu): state, Start and Stop, Pause and
+  Resume, the languages, issues with their actions, live captions of both directions. The Debug
+  window keeps the raw diagnostics and a link to it.
+- "End assistant and start": ends the assistant session that blocks call mode and starts the call
+  with the same options once the microphone is free.
+- `pipeline.min_speech_dbfs` (default -75): a start of speech below this level is not decoded.
+
 ### Changed
 - `prxvc-audio` capture and playback no longer lock or allocate on the device
   callbacks: the microphone callback writes into a preallocated lock-free ring and
