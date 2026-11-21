@@ -23,12 +23,13 @@
 //! * `backlog`: which queued clauses are skipped when a direction lags (3.4.3).
 //!
 //! The direction pipeline that runs these machines on threads is the module
-//! `pipeline`.
+//! `pipeline`. The assistant's voice loop (`assistant`) runs on the pipeline's recognition stage.
 //! * `fault`, `dir_set`, `rejection`: the shared vocabulary.
 //! * `call` (layer L2): the call coordinator that owns these machines, with
 //!   its host seams, snapshot, commands and typed errors.
 
 pub mod adapter;
+pub mod assistant;
 pub mod call;
 pub mod driver;
 pub mod interpret;

@@ -81,6 +81,13 @@ mod translate;
 mod tree;
 mod workers;
 
+// The recognition stage is shared with the assistant's loop (`crate::assistant`).
+pub(crate) use messages::RecognitionEvent;
+pub(crate) use recognition::{RecognitionFault, RecognitionStage};
+pub(crate) use snapshot::Stats;
+pub(crate) use trace::Tracer;
+pub(crate) use tree::TokenTree;
+
 pub use events::{ClauseAudio, PipelineEvent};
 pub use handle::{
     DirectionPipeline, EventReceiver, PipelineError, PipelineProviders, PipelineStats, Started,
