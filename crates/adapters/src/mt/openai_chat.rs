@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use prxvc_ports::{
-    CancellationToken, Egress, MtDelta, MtError, MtRequest, MtStream, ProviderDescriptor,
+    CancellationToken, Egress, MtDelta, MtError, MtFlag, MtRequest, MtStream, ProviderDescriptor,
     StreamingKind, Translator,
 };
 use super::assess::{AssessInput, assess};
@@ -141,6 +141,7 @@ impl Translator for OpenAiChatMt {
             deltas: 0,
             guard: RepetitionGuard::new(),
             suspect: None,
+            flags: Vec::new(),
         }))
     }
 }
@@ -167,11 +168,17 @@ struct ChatStream {
     guard: RepetitionGuard,
     /// Why the request was flagged, once it was (see [`MtStream::suspect`]).
     suspect: Option<String>,
+    /// The quality flags of the finished output (see [`MtStream::flags`]).
+    flags: Vec<MtFlag>,
 }
 
 impl MtStream for ChatStream {
     fn suspect(&self) -> Option<String> {
         self.suspect.clone()
+    }
+
+    fn flags(&self) -> Vec<MtFlag> {
+        self.flags.clone()
     }
 
     fn next(&mut self, cancel: &CancellationToken) -> Option<Result<MtDelta, MtError>> {
@@ -247,6 +254,7 @@ impl ChatStream {
             output: &end.text,
             finish_reason: finish_reason.as_deref(),
         });
+        self.flags = suspects.iter().filter_map(|s| s.as_flag()).collect();
         let done = MtDelta::Done {
             prompt_tokens: prompt_tokens.unwrap_or(0),
             completion_tokens: completion_tokens.unwrap_or(self.deltas),

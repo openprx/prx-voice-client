@@ -273,6 +273,16 @@ pub struct CallConfig {
     /// `"hands_free"` or `"push_to_talk"`.
     pub outgoing_capture: String,
     pub captions_show_source: bool,
+    /// Tell the other party once, in their language, that the call is translated by a machine and
+    /// that they hear a synthetic voice: a spoken notice played before the first translated
+    /// sentence of each call mode session (on by default).
+    pub disclosure: bool,
+    /// The notice in English; empty uses the built-in text.
+    pub disclosure_text_en: String,
+    /// The notice in Simplified Chinese; empty uses the built-in text.
+    pub disclosure_text_zh: String,
+    /// Text size of the Call translation window's captions: `"small"`, `"medium"` or `"large"`.
+    pub captions_size: String,
     pub barge_in: bool,
     /// `"manual"` or `"on_call"`: when call mode starts.
     pub start_mode: String,
@@ -311,6 +321,10 @@ impl Default for CallConfig {
             local_output_mode: "translation".to_owned(),
             outgoing_capture: "hands_free".to_owned(),
             captions_show_source: true,
+            disclosure: true,
+            disclosure_text_en: String::new(),
+            disclosure_text_zh: String::new(),
+            captions_size: "medium".to_owned(),
             barge_in: true,
             start_mode: "manual".to_owned(),
             outgoing_when_paused: "original".to_owned(),
@@ -375,6 +389,14 @@ pub struct PipelineConfig {
     /// hmm, mhm, and punctuation only). A real one-word "嗯" or "Mm." acknowledgement is dropped
     /// with them; content words such as 好, 对, yes, no and ok are never affected.
     pub drop_filler: bool,
+    /// Do not translate or speak a recognised clause that is already in the language the listener
+    /// hears (the other party spoke the listener's language): its original voice is passed through
+    /// and the caption says "not translated: already in <language>".
+    pub skip_source_in_target: bool,
+    /// When a translation starts in the wrong language, ask for it once more with a stricter
+    /// instruction before anything of it is spoken; a second miss fails the clause visibly and the
+    /// direction's `*_on_failure` setting applies.
+    pub retry_wrong_language: bool,
     /// Translate a stable partial ahead of its commit.
     pub speculative_mt: bool,
     /// Previous clauses given to translation as context.
@@ -418,6 +440,8 @@ impl Default for PipelineConfig {
             early_max_wait_ms: 2_500,
             split_target_clauses: false,
             drop_filler: true,
+            skip_source_in_target: true,
+            retry_wrong_language: true,
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,

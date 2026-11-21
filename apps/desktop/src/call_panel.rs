@@ -1,17 +1,20 @@
 //! Maps the coordinator's snapshot into the debug control's view model: enums, stable i18n keys for issues, numbers for levels and counters.
 
 use prxvc_desktop_ui::call_view::{
-    CaptionView, ClauseStatus, CountersView, LatencyView, PartialView,
+    CaptionFlag, CaptionView, ClauseStatus, CountersView, LatencyView, NoticeState, NoticeView,
+    PartialView, SkipView,
 };
 use prxvc_desktop_ui::call_view::IssueAction;
 use prxvc_desktop_ui::{
     ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
 };
 use prxvc_media::Direction;
+use prxvc_ports::MtFlag;
 use prxvc_session::ClauseState;
+use prxvc_session::pipeline::SkipReason;
 use prxvc_session::call::{
-    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot, ProviderIssue,
-    Severity,
+    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot,
+    DisclosureSnapshot, DisclosureState, ProviderIssue, Severity,
 };
 use prxvc_session::{CallState, OutputSource};
 
@@ -57,6 +60,7 @@ pub(crate) fn issue_key(code: CallErrorCode) -> &'static str {
         CallErrorCode::TranslationUnavailable => "call.issue.translation_unavailable",
         CallErrorCode::Provider(issue) => provider_key(issue),
         CallErrorCode::SpeakerOutput => "call.issue.speaker_output",
+        CallErrorCode::DisclosureUnavailable => "call.issue.disclosure_unavailable",
         _ => "call.issue.internal",
     }
 }
@@ -115,6 +119,25 @@ fn clause_status(state: &ClauseState) -> ClauseStatus {
     }
 }
 
+fn caption_flag(flag: MtFlag) -> CaptionFlag {
+    match flag {
+        MtFlag::WrongLanguage => CaptionFlag::WrongLanguage,
+        MtFlag::TooLong => CaptionFlag::TooLong,
+        MtFlag::Truncated => CaptionFlag::Truncated,
+        MtFlag::Refusal => CaptionFlag::Refusal,
+        MtFlag::AnswerLike => CaptionFlag::AnswerLike,
+        MtFlag::ThinkResidue => CaptionFlag::ThinkResidue,
+    }
+}
+
+fn skip_view(skipped: Option<SkipReason>) -> SkipView {
+    match skipped {
+        None => SkipView::None,
+        Some(SkipReason::SourceInTarget) => SkipView::AlreadyInTarget,
+        Some(_) => SkipView::NotSpoken,
+    }
+}
+
 fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
     let mut view = LaneView {
         hears: heard(d.hears),
@@ -137,6 +160,7 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
         view.translating = true;
         view.languages = d.languages.map(|(a, b)| (a.code().to_owned(), b.code().to_owned()));
         view.partial = p.partial.as_ref().map(|x| PartialView {
+            utterance: x.segment.seq(),
             text: x.text.clone(),
             stable_len: x.stable_prefix_len,
         });
@@ -144,6 +168,8 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
             .clauses
             .iter()
             .map(|c| CaptionView {
+                utterance: c.clause.segment().seq(),
+                index: c.clause.index(),
                 source: c.source_text.clone(),
                 translation: c.translation.clone(),
                 status: if c.skipped.is_some() {
@@ -151,6 +177,9 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
                 } else {
                     clause_status(&c.state)
                 },
+                skip: skip_view(c.skipped),
+                flags: c.flags.iter().copied().map(caption_flag).collect(),
+                retried: c.retried,
             })
             .collect();
         let c = &p.counters;
@@ -168,6 +197,9 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
             refine_fallbacks: c.refine_fallbacks,
             filler_dropped: c.filler_dropped,
             unspeakable_dropped: c.unspeakable_dropped,
+            in_target_passed: c.in_target_passed,
+            mt_retries: c.mt_retries,
+            flags: MtFlag::ALL.map(|f| c.flag(f)),
         });
         view.latency = latency.map(|l| LatencyView {
             speech_start_to_first_audio_ms: l.speech_start_to_first_audio_ms,
@@ -216,6 +248,22 @@ fn issue(i: &CallIssue) -> IssueView {
     }
 }
 
+fn notice(d: &DisclosureSnapshot) -> NoticeView {
+    NoticeView {
+        enabled: d.enabled,
+        state: match d.state {
+            DisclosureState::Off => NoticeState::Off,
+            DisclosureState::Preparing => NoticeState::Preparing,
+            DisclosureState::Ready => NoticeState::Ready,
+            DisclosureState::Playing => NoticeState::Playing,
+            DisclosureState::Played => NoticeState::Played,
+            DisclosureState::Failed => NoticeState::Failed,
+        },
+        plays: d.plays,
+        last_played_s: d.last_played_s,
+    }
+}
+
 /// The control's view of a snapshot.
 pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
     let (activity, activity_devices) = match &s.routing.call_activity {
@@ -245,6 +293,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         displaced_to: s.routing.displaced_to.clone().unwrap_or_default(),
         issues: s.issues.iter().map(issue).collect(),
         last_error: s.last_error.as_ref().map(issue),
+        notice: notice(&s.disclosure),
     }
 }
 
@@ -310,6 +359,7 @@ mod tests {
             }],
             last_error: None,
             last_output_change: None,
+            disclosure: DisclosureSnapshot::default(),
         }
     }
 
@@ -376,6 +426,7 @@ mod tests {
             CallErrorCode::AssistantActive,
             CallErrorCode::TranslationUnavailable,
             CallErrorCode::SpeakerOutput,
+            CallErrorCode::DisclosureUnavailable,
             CallErrorCode::Provider(ProviderIssue::ModelNotInstalled),
             CallErrorCode::Provider(ProviderIssue::ModelInstalling),
             CallErrorCode::Provider(ProviderIssue::ModelDamaged),
@@ -419,11 +470,14 @@ mod tests {
                 source_text: "你好".into(),
                 translation: "Hello.".into(),
                 skipped: None,
+                flags: Vec::new(),
+                retried: false,
             }],
             counters: Counters { late_dropped: 4, forced_cuts: 1, ..Counters::default() },
             backlog_ms: 0,
             recent_skips: Vec::new(),
             last_error: None,
+            ledger: Default::default(),
         };
         let mut s = snapshot();
         s.translate_enabled = true;
@@ -435,6 +489,7 @@ mod tests {
         assert_eq!(lane.partial.as_ref().map(|p| p.stable_len), Some(3));
         assert_eq!(lane.clauses[0].translation, "Hello.");
         assert_eq!(lane.clauses[0].status, ClauseStatus::Translated);
+        assert_eq!((lane.clauses[0].utterance, lane.clauses[0].index), (1, 0));
         let c = lane.counters.expect("counters");
         assert_eq!((c.late_dropped, c.forced_cuts), (4, 1));
         assert!(lane.latency.is_none(), "no clause finished yet");

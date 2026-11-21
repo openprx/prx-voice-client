@@ -166,7 +166,7 @@ pub fn assess(input: &AssessInput<'_>) -> Vec<Suspect> {
     if estimate_tokens(output) > max_output_tokens(input.source) {
         out.push(Suspect::TooLong);
     }
-    if wrong_language(output, input.target_lang) {
+    if prxvc_media::script::is_wrong_language_for(output, input.target_lang) {
         out.push(Suspect::WrongLanguage);
     }
     let source_lower = input.source.to_lowercase();
@@ -180,27 +180,6 @@ pub fn assess(input: &AssessInput<'_>) -> Vec<Suspect> {
         out.push(Suspect::AnswerLike);
     }
     out
-}
-
-fn wrong_language(output: &str, target: Lang) -> bool {
-    let (mut cjk, mut latin) = (0usize, 0usize);
-    for c in output.chars() {
-        if is_cjk(c) {
-            cjk += 1;
-        } else if c.is_alphabetic() {
-            latin += 1;
-        }
-    }
-    let letters = cjk + latin;
-    if letters < 4 {
-        return false;
-    }
-    #[allow(clippy::cast_precision_loss, reason = "character counts of one clause")]
-    let cjk_share = cjk as f32 / letters as f32;
-    match target {
-        Lang::Zh => cjk_share < 0.3,
-        Lang::En => cjk_share > 0.2,
-    }
 }
 
 fn opens_with_unexplained(output_lower: &str, source_lower: &str, rules: &[Rule]) -> bool {

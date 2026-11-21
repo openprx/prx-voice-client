@@ -55,7 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A second click on the orb while the assistant listens ends the session.
 
 ### Added
-- The Call translation window (menu-bar menu and the orb's menu): state, Start and Stop, Pause and
+- The Call translation window as a conversation: a status chip, one scrolling timeline of bubbles
+  (the translation first, the original under it, live partials, the clause being played highlighted,
+  skipped clauses struck), follow and jump-to-latest, copy and clear, a remembered text size,
+  empty states, a footer with levels and delay and a details disclosure; Space pauses and resumes.
+  Translate is on by default in the window.
+- Speech already in the listener's language is passed through untranslated
+  (`pipeline.skip_source_in_target`); a translation in the wrong language is retried once
+  (`pipeline.retry_wrong_language`); every assessment flag is counted and shown.
+- One log line per finished utterance and a call summary at stop (figures only, no spoken text);
+  the synthesis engine and the voice log when they finish loading.
+- A spoken notice to the other party, on by default (`call.disclosure`).
+- The Call translation window (first version) (menu-bar menu and the orb's menu): state, Start and Stop, Pause and
   Resume, the languages, issues with their actions, live captions of both directions. The Debug
   window keeps the raw diagnostics and a link to it.
 - "End assistant and start": ends the assistant session that blocks call mode and starts the call

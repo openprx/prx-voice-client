@@ -109,7 +109,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ),
     (
         "settings.privacy.transcripts.desc",
-        "Store what was said, not only that a session happened.",
+        "Store what was said in assistant conversations, not only that a session happened. Off by default. Call translation captions are never stored, whatever this says.",
     ),
     (
         "settings.privacy.transcripts.needs_history",
@@ -309,7 +309,7 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ("settings.privacy.transcripts", "在历史中保留文字记录"),
     (
         "settings.privacy.transcripts.desc",
-        "保存说过的内容，而不只是记录有过会话。",
+        "保存助手对话中说过的内容，而不只是记录有过会话。默认关闭。通话翻译的字幕无论如何都不会被保存。",
     ),
     (
         "settings.privacy.transcripts.needs_history",

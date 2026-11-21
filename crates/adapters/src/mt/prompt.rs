@@ -169,6 +169,9 @@ fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
         })
 }
 
+/// The line added to the instructions of a retry after a reply in the wrong language.
+const STRICT_LANGUAGE: &str = "Your previous reply was not written in {target_language}. Reply again with the {target_language} translation only, written entirely in {target_language}. Do not copy the message, do not answer it and do not explain.";
+
 /// The messages of one request: the system message and the clause.
 pub fn render_messages(
     template: PromptTemplate,
@@ -184,6 +187,10 @@ pub fn render_messages(
     ];
 
     let mut system = fill(&sections.system, &languages);
+    if req.strict_language {
+        system.push_str("\n\n");
+        system.push_str(&fill(STRICT_LANGUAGE, &languages));
+    }
     if let Some(terms) = glossary_lines(req, limits, &sections) {
         system.push_str("\n\n");
         system.push_str(&fill(&sections.glossary, &[("{terms}", &terms)]));
@@ -266,7 +273,20 @@ mod tests {
             text: text.into(),
             context: Vec::new(),
             glossary: Vec::new(),
+            strict_language: false,
         }
+    }
+
+    #[test]
+    fn a_retry_adds_the_strict_language_line_and_nothing_else() {
+        let mut req = request(Lang::Zh, Lang::En, "你好");
+        let plain = render_messages(PromptTemplate::Generic, &req, &PromptLimits::default());
+        req.strict_language = true;
+        let strict = render_messages(PromptTemplate::Generic, &req, &PromptLimits::default());
+        assert!(strict[0].content.starts_with(&plain[0].content));
+        assert!(strict[0].content.contains("not written in English"));
+        assert!(!plain[0].content.contains("not written in"));
+        assert_eq!(strict[1], plain[1]);
     }
 
     fn pair(a: &str, b: &str) -> (String, String) {

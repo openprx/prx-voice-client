@@ -76,6 +76,11 @@ impl Running {
         self.languages
     }
 
+    /// The lane the direction's translated audio goes to, once the path is linked.
+    pub(super) fn playout(&self) -> Option<Arc<dyn Playout>> {
+        self.playout.lock().clone()
+    }
+
     pub(super) fn pause(&self) {
         self.pipeline.pause();
     }
@@ -119,6 +124,9 @@ impl Coordinator {
         let d = build.params.direction;
         let tap_rate = vad_rate(&build);
         let languages = (build.params.source, build.params.target);
+        if d == Direction::Outgoing {
+            self.start_disclosure(&build);
+        }
         let Started {
             pipeline,
             events,
@@ -134,7 +142,8 @@ impl Coordinator {
         let pipeline = Arc::new(pipeline);
         let playout: Arc<Mutex<Option<Arc<dyn Playout>>>> = Arc::default();
         let (tx, rx) = sync_channel(FORWARD_CAPACITY);
-        let forwarder = spawn_forwarder(d, events, Arc::clone(&playout), tx)?;
+        let notice = (d == Direction::Outgoing).then(|| self.disclosure.clone()).flatten();
+        let forwarder = spawn_forwarder(d, events, Arc::clone(&playout), tx, notice)?;
         self.lanes[slot(d)].running = Some(Running {
             pipeline,
             events: rx,
@@ -169,9 +178,19 @@ impl Coordinator {
         let input = running.pipeline.audio();
         let on_playback = {
             let pipeline = Arc::clone(&running.pipeline);
-            Box::new(move |report: PlaybackReport| match report {
-                PlaybackReport::Started { clause, at } => pipeline.playback_started(clause, at),
-                PlaybackReport::Finished { clause, at } => pipeline.playback_finished(clause, at),
+            let notice = (d == Direction::Outgoing).then(|| self.disclosure.clone()).flatten();
+            let now = Arc::clone(&clock);
+            Box::new(move |report: PlaybackReport| {
+                // The spoken notice is the coordinator's, not a clause of the pipeline.
+                if notice.as_ref().is_some_and(|n| n.report(report, now.now())) {
+                    return;
+                }
+                match report {
+                    PlaybackReport::Started { clause, at } => pipeline.playback_started(clause, at),
+                    PlaybackReport::Finished { clause, at } => {
+                        pipeline.playback_finished(clause, at);
+                    }
+                }
             })
         };
         let playout = path.connect(PathLink {
@@ -214,6 +233,7 @@ impl Coordinator {
                 }
             }
             PipelineEvent::Output { from, to, cause } => self.announce_output(d, from, to, cause),
+            PipelineEvent::Passthrough { on } => self.on_passthrough(d, on),
             PipelineEvent::Degraded(reason) => {
                 self.mark_problem(d);
                 self.feed(CallEvent::DirectionDegraded {
@@ -285,6 +305,7 @@ impl Coordinator {
             let _ = handle.join();
         }
         self.collect_translation();
+        self.capture_totals(d);
         let lane = &mut self.lanes[slot(d)];
         if let Some(path) = lane.path.as_mut() {
             path.disconnect();
@@ -342,10 +363,11 @@ fn spawn_forwarder(
     events: crate::pipeline::EventReceiver,
     playout: Arc<Mutex<Option<Arc<dyn Playout>>>>,
     tx: SyncSender<PipelineEvent>,
+    notice: Option<Arc<super::disclosure::Disclosure>>,
 ) -> Result<JoinHandle<()>, HostFault> {
     std::thread::Builder::new()
         .name(format!("prxvc-call-fwd-{d:?}").to_lowercase())
-        .spawn(move || forward(&events, &playout, &tx))
+        .spawn(move || forward(&events, &playout, &tx, notice.as_deref()))
         .map_err(|e| {
             HostFault::new(
                 CallErrorCode::Internal,
@@ -359,14 +381,23 @@ fn forward(
     events: &crate::pipeline::EventReceiver,
     playout: &Mutex<Option<Arc<dyn Playout>>>,
     tx: &SyncSender<PipelineEvent>,
+    notice: Option<&super::disclosure::Disclosure>,
 ) {
     let current = || playout.lock().clone();
+    let mut last_clause = None;
     while let Some(event) = events.recv() {
         match event {
             PipelineEvent::Audio(a) => {
                 if let Some(p) = current() {
+                    // The first audio of a clause: the notice, when owed, goes in the lane first.
+                    if let Some(n) = notice
+                        && last_clause != Some(a.payload.clause)
+                    {
+                        n.before_audio(&*p);
+                    }
                     p.push(a.payload.clause, &a.payload.chunk);
                 }
+                last_clause = Some(a.payload.clause);
             }
             PipelineEvent::AudioEnd(e) => {
                 if let Some(p) = current() {
@@ -379,6 +410,9 @@ fn forward(
                     && let Some(p) = current()
                 {
                     p.flush();
+                    if let Some(n) = notice {
+                        n.flushed();
+                    }
                 }
             }
             other => match tx.try_send(other) {

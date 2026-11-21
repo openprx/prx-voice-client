@@ -37,6 +37,8 @@ enum Ended {
     Done,
     Cancelled,
     Failed,
+    /// The translation started in the wrong language and nothing of it was spoken yet.
+    WrongLanguage,
 }
 
 impl MtStage {
@@ -68,14 +70,6 @@ impl MtStage {
             Stats::add(&self.stats.late_dropped, 1);
             return;
         }
-        let request = MtRequest {
-            clause,
-            source: self.p.source,
-            target: self.p.target,
-            text: text.clone(),
-            context: history.iter().cloned().collect(),
-            glossary: self.p.glossary.clone(),
-        };
         self.tracer.mark(clause, TraceStage::MtRequestSent);
         if !self
             .outbox
@@ -83,26 +77,62 @@ impl MtStage {
         {
             return;
         }
-        let stream = match self.mt.translate(request) {
-            Ok(s) => s,
-            Err(e) => {
-                self.fail_open(clause, meta, &token, &e);
-                return;
+        // A reply in the wrong language is caught before any of it is spoken and asked for once
+        // more with the strict instruction (`pipeline.retry_wrong_language`).
+        let mut strict = false;
+        loop {
+            let request = MtRequest {
+                clause,
+                source: self.p.source,
+                target: self.p.target,
+                text: text.clone(),
+                context: history.iter().cloned().collect(),
+                glossary: self.p.glossary.clone(),
+                strict_language: strict,
+            };
+            let stream = match self.mt.translate(request) {
+                Ok(s) => s,
+                Err(e) => {
+                    self.fail_open(clause, meta, &token, &e);
+                    return;
+                }
+            };
+            let mut run = Run {
+                stage: self,
+                clause,
+                meta,
+                token: &token,
+                splitter: PieceSplitter::new(self.p.commit, self.p.target),
+                full: String::new(),
+                spoken: false,
+            };
+            match run.drive(stream) {
+                (Ended::Done, translated) => {
+                    history.push_back((text, translated));
+                    while history.len() > self.p.mt_context_clauses {
+                        history.pop_front();
+                    }
+                }
+                (Ended::WrongLanguage, _) if !strict => {
+                    Stats::add(&self.stats.mt_retries, 1);
+                    if !run.event(StageEvent::MtRetry { clause }) {
+                        return;
+                    }
+                    strict = true;
+                    continue;
+                }
+                (Ended::WrongLanguage, _) => {
+                    run.fail(
+                        StageFailure::new(
+                            FaultKind::Rejected,
+                            "suspect translation: wrong language after a retry",
+                        ),
+                        true,
+                    );
+                }
+                _ => {}
             }
-        };
-        let mut run = Run {
-            stage: self,
-            clause,
-            meta,
-            token: &token,
-            splitter: PieceSplitter::new(self.p.commit, self.p.target),
-            full: String::new(),
-        };
-        if let (Ended::Done, translated) = run.drive(stream) {
-            history.push_back((text, translated));
-            while history.len() > self.p.mt_context_clauses {
-                history.pop_front();
-            }
+            return;
         }
     }
 
@@ -133,6 +163,7 @@ impl MtStage {
             text: self.p.probe_text.clone(),
             context: Vec::new(),
             glossary: Vec::new(),
+            strict_language: false,
         };
         let result = self
             .mt
@@ -171,6 +202,8 @@ struct Run<'a> {
     token: &'a CancellationToken,
     splitter: PieceSplitter,
     full: String,
+    /// A piece has been handed to synthesis: from then on the text is committed to being spoken.
+    spoken: bool,
 }
 
 impl Run<'_> {
@@ -197,6 +230,14 @@ impl Run<'_> {
             Stats::add(&self.stage.stats.unspeakable_dropped, 1);
         }
         ok
+    }
+
+    /// Whether the translation so far is in the wrong language and nothing of it has been spoken, so
+    /// that it can still be asked for again.
+    fn wrong_language_unspoken(&self) -> bool {
+        self.stage.p.retry_wrong_language
+            && !self.spoken
+            && prxvc_media::script::is_wrong_language_for(&self.full, self.stage.p.target)
     }
 
     fn piece(&self, text: String, end: bool) -> bool {
@@ -245,7 +286,11 @@ impl Run<'_> {
                     }) {
                         return (Ended::Cancelled, String::new());
                     }
+                    if !pieces.is_empty() && self.wrong_language_unspoken() {
+                        return (Ended::WrongLanguage, String::new());
+                    }
                     for p in pieces {
+                        self.spoken = true;
                         if !self.speakable(&p) {
                             continue;
                         }
@@ -254,7 +299,13 @@ impl Run<'_> {
                         }
                     }
                 }
-                Some(Ok(MtDelta::Done { .. })) => return (self.finish(), self.full.clone()),
+                Some(Ok(MtDelta::Done { .. })) => {
+                    let ended = self.finish();
+                    if matches!(ended, Ended::Done) {
+                        self.report_flags(stream.as_ref());
+                    }
+                    return (ended, self.full.clone());
+                }
                 Some(Err(e)) if e.is_cancelled() || self.token.is_cancelled() => {
                     return (Ended::Cancelled, String::new());
                 }
@@ -274,6 +325,21 @@ impl Run<'_> {
         }
     }
 
+    /// Report the quality flags of the finished translation (it was spoken regardless).
+    fn report_flags(&self, stream: &dyn MtStream) {
+        let flags = stream.flags();
+        if flags.is_empty() {
+            return;
+        }
+        for flag in &flags {
+            self.stage.stats.add_flag(*flag);
+        }
+        self.event(StageEvent::MtFlagged {
+            clause: self.clause,
+            flags,
+        });
+    }
+
     fn suspect(&self, reason: &str) -> Ended {
         self.fail(
             StageFailure::new(
@@ -291,6 +357,10 @@ impl Run<'_> {
         if !has_speakable_content(&self.full) {
             return self.suspect("nothing to say aloud");
         }
+        let last = self.splitter.finish();
+        if self.wrong_language_unspoken() {
+            return Ended::WrongLanguage;
+        }
         let full = &self.full;
         self.stage
             .tracer
@@ -298,7 +368,6 @@ impl Run<'_> {
         let sent = self.event(StageEvent::MtDone {
             clause: self.clause,
         });
-        let last = self.splitter.finish();
         let ok = sent
             && last.is_none_or(|p| !self.speakable(&p) || self.piece(p, false))
             && self.piece(String::new(), true);

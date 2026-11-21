@@ -1,17 +1,23 @@
-//! The Call translation window: everything needed to run a translated call in one narrow column (about 420 px, growing): the state in plain words, Start and Stop, Pause and Resume, the Translate switch, the languages, what each side hears, the issues with their actions, and the live captions of both directions.
+//! The Call translation window: a compact head (state chip, duration, language pair, Start or Stop, Pause, the Translate switch), issues only when there is something to do, the captions as a conversation taking the remaining height, and a slim footer with the levels and the delay and the details behind a disclosure.
 //!
-//! The view model is the one the debug control used ([`CallPanel`]) and the commands are the same
-//! strings; the window adds no logic of its own beyond which button to show. Clicks are collected
-//! as [`CallWindowAction`]s and applied by the caller after the frame.
+//! The view model is [`CallPanel`] and the commands are the strings of the engine's queue; the
+//! window adds no logic of its own beyond which button to show and how the captions scroll.
+//! Clicks are collected as [`CallWindowAction`]s and applied by the caller after the frame.
 
-use crate::call_view::{
-    CallPanel, CallPhase, CountersView, Heard, IssueAction, IssueSeverity, IssueView, LaneView,
-    command,
-};
+use egui::{Align, Layout};
+
+use crate::call_captions_bar;
+use crate::call_timeline_view::{self, EmptyState, TimelineArgs};
+use crate::call_view::{CallPanel, CallPhase, IssueSeverity, command};
+use crate::call_window_details;
+use crate::call_window_footer;
+use crate::call_window_header::{self, language_codes, language_name};
+use crate::call_window_issues;
+use crate::call_window_notice;
+use crate::call_window_state::{CallWindowState, CaptionSize};
 use crate::settings_section::SettingsSection;
 use crate::state::UiSettings;
-use crate::theme::{Tokens, layout, radius, size, space};
-use crate::widgets::{self, ButtonKind, Tone};
+use crate::theme::{Tokens, border, hairline, space};
 
 /// What a click in the window asks for; the caller applies it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,37 +26,6 @@ pub(crate) enum CallWindowAction {
     Command(&'static str),
     /// Open the settings window at a page.
     OpenSettings(SettingsSection),
-}
-
-/// Values of the language selects: empty follows the interface language.
-const LANGUAGES: [&str; 3] = ["", "zh", "en"];
-
-/// Draw the window's content; clicks are appended to `actions`.
-pub(crate) fn body(
-    ui: &mut egui::Ui,
-    tk: &Tokens,
-    panel: &CallPanel,
-    translate: &mut bool,
-    settings: &mut UiSettings,
-    actions: &mut Vec<CallWindowAction>,
-) {
-    state_line(ui, tk, panel);
-    ui.add_space(space::S8);
-    controls(ui, tk, panel, translate, actions);
-    ui.add_space(space::S12);
-    languages(ui, tk, panel, settings);
-    ui.add_space(space::S12);
-    issues(ui, tk, panel, actions);
-    ui.add_space(space::S12);
-    lane(
-        ui,
-        tk,
-        "callwin.lane.out",
-        "call.they_hear",
-        &panel.outgoing,
-    );
-    ui.add_space(space::S12);
-    lane(ui, tk, "callwin.lane.in", "call.you_hear", &panel.incoming);
 }
 
 /// The state of the call in plain words, with the reason when it is reduced.
@@ -79,326 +54,103 @@ fn reason(panel: &CallPanel) -> Option<&str> {
         .map(|i| i.key.as_str())
 }
 
-fn state_line(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel) {
-    let tone = match panel.phase {
-        CallPhase::Degraded | CallPhase::Recovering => tk.warning,
-        CallPhase::Translating => tk.success,
-        _ => tk.text,
+/// What the empty captions say for the state of the call.
+fn empty_state(panel: &CallPanel) -> EmptyState {
+    let t = prxvc_i18n::t;
+    let (title, body) = match panel.phase {
+        CallPhase::Idle | CallPhase::Stopping => ("callwin.empty.idle.title", "callwin.empty.idle.body"),
+        CallPhase::Initializing => ("callwin.empty.loading.title", "callwin.empty.loading.body"),
+        CallPhase::AudioReady if !panel.translate_enabled => {
+            ("callwin.empty.audio.title", "callwin.empty.audio.body")
+        }
+        CallPhase::AudioReady => ("callwin.empty.loading.title", "callwin.empty.loading.body"),
+        CallPhase::Paused => ("callwin.empty.paused.title", "callwin.empty.paused.body"),
+        CallPhase::Translating | CallPhase::Degraded | CallPhase::Recovering => {
+            ("callwin.empty.listening.title", "callwin.empty.listening.body")
+        }
     };
-    ui.add(egui::Label::new(widgets::text(state_text(panel), size::SUBHEADING, tone)).wrap());
+    EmptyState {
+        title: t(title),
+        body: t(body),
+    }
 }
 
-/// The one primary button (Start, or Stop while a call runs), Pause or Resume, and the Translate switch.
-fn controls(
+/// Space toggles Pause and Resume while this window has the keyboard and nothing in it has focus
+/// (a focused button would take the key itself).
+fn handle_keys(ctx: &egui::Context, panel: &CallPanel, actions: &mut Vec<CallWindowAction>) {
+    let focused = ctx.input(|i| i.viewport().focused != Some(false));
+    if !focused || ctx.egui_wants_keyboard_input() || ctx.memory(|m| m.focused().is_some()) {
+        return;
+    }
+    if !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space)) {
+        return;
+    }
+    if panel.can_resume() {
+        actions.push(CallWindowAction::Command(command::RESUME));
+    } else if panel.can_pause() {
+        actions.push(CallWindowAction::Command(command::PAUSE));
+    }
+}
+
+/// Draw the window's content; clicks are appended to `actions`.
+pub(crate) fn body(
     ui: &mut egui::Ui,
     tk: &Tokens,
     panel: &CallPanel,
     translate: &mut bool,
+    settings: &mut UiSettings,
+    w: &mut CallWindowState,
     actions: &mut Vec<CallWindowAction>,
 ) {
-    let running = panel.phase != CallPhase::Idle;
-    let start = if *translate {
-        command::START_TRANSLATED
-    } else {
-        command::START_AUDIO_ONLY
-    };
-    ui.horizontal_wrapped(|ui| {
-        let (label, cmd, enabled) = if running {
-            ("callwin.stop", command::STOP, panel.can_stop())
-        } else {
-            ("callwin.start", start, panel.can_start())
-        };
-        if widgets::button_with(
-            ui,
-            tk,
-            ButtonKind::Primary,
-            &prxvc_i18n::t(label),
-            layout::CONTROL_HEIGHT,
-            enabled,
-        )
-        .clicked()
-        {
-            actions.push(CallWindowAction::Command(cmd));
-        }
-        let (label, cmd, enabled) = if panel.can_resume() {
-            ("call.resume", command::RESUME, true)
-        } else {
-            ("call.pause", command::PAUSE, panel.can_pause())
-        };
-        if widgets::button_with(
-            ui,
-            tk,
-            ButtonKind::Secondary,
-            &prxvc_i18n::t(label),
-            layout::CONTROL_HEIGHT,
-            enabled,
-        )
-        .clicked()
-        {
-            actions.push(CallWindowAction::Command(cmd));
-        }
-        if panel.can_reapply()
-            && widgets::button_with(
+    w.sync(panel);
+    handle_keys(ui.ctx(), panel, actions);
+    // The footer is laid out first, from the bottom; the rest takes the height that is left.
+    ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+        footer(ui, tk, panel, settings, w);
+        ui.with_layout(Layout::top_down(Align::Min), |ui| {
+            call_window_header::header(ui, tk, panel, translate, settings, w, actions);
+            call_window_notice::notice_line(ui, tk, panel, settings, actions);
+            call_window_issues::issues(ui, tk, panel, actions);
+            ui.add_space(space::S12);
+            let (own, peer) = language_codes(panel, settings);
+            let names = [prxvc_i18n::t("callwin.caption.me"), prxvc_i18n::t("callwin.caption.peer")];
+            call_captions_bar::bar(ui, tk, w, settings, [&names[0], &names[1]]);
+            ui.add_space(space::S8);
+            // The remote party hears the user's translation (into the peer's language), the user
+            // hears the peer's (into their own).
+            let targets = [language_name(&peer), language_name(&own)];
+            call_timeline_view::timeline(
                 ui,
                 tk,
-                ButtonKind::Secondary,
-                &prxvc_i18n::t("call.reapply"),
-                layout::CONTROL_HEIGHT,
-                true,
-            )
-            .clicked()
-        {
-            actions.push(CallWindowAction::Command(command::REAPPLY_MICROPHONE));
-        }
-    });
-    ui.add_space(space::S8);
-    // The switch decides what the next start does; it can only change while call mode is off.
-    let label = prxvc_i18n::t("call.translate");
-    ui.horizontal(|ui| {
-        ui.name_inputs(&label, |ui| {
-            if panel.can_start() {
-                widgets::switch(ui, tk, translate);
-            } else {
-                widgets::switch_with(ui, tk, &mut panel.translate_enabled.clone(), false);
-            }
-        });
-        ui.label(widgets::text(&label, size::SECONDARY, tk.text));
-    });
-}
-
-/// The two languages of the call (`call.self_language`, `call.peer_language`). They are the
-/// settings rows, so a change here is a change there; they can change while call mode is off.
-fn languages(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut UiSettings) {
-    ui.label(widgets::text(
-        prxvc_i18n::t("callwin.languages"),
-        size::SECONDARY,
-        tk.secondary,
-    ));
-    let options: Vec<String> = [
-        "settings.call.lang.follow",
-        "settings.call.lang.zh",
-        "settings.call.lang.en",
-    ]
-    .iter()
-    .map(|k| prxvc_i18n::t(k))
-    .collect();
-    let editable = panel.can_start();
-    let (own, peer) = (
-        settings.call_self_language.clone(),
-        settings.call_peer_language.clone(),
-    );
-    let pick = |ui: &mut egui::Ui, salt: &str, label_key: &str, current: &str, other: &str| {
-        let selected = LANGUAGES.iter().position(|l| *l == current).unwrap_or(0);
-        let label = prxvc_i18n::t(label_key);
-        let mut chosen = None;
-        ui.label(widgets::text(&label, size::SECONDARY, tk.text));
-        if editable {
-            // The two languages must differ; a clash is refused.
-            let width = ui.available_width().min(layout::FIELD_WIDTH);
-            let picked = widgets::select_named(
-                ui,
-                tk,
-                salt,
-                width,
-                &label,
-                &options[selected],
-                &options,
-                selected,
+                w,
+                &TimelineArgs {
+                    size: CaptionSize::from_setting(&settings.call_captions_size),
+                    show_source: settings.call_captions_show_source,
+                    targets: [&targets[0], &targets[1]],
+                    empty: empty_state(panel),
+                },
             );
-            chosen = picked
-                .map(|i| LANGUAGES[i])
-                .filter(|l| l.is_empty() || *l != other);
-        } else {
-            ui.label(widgets::text(
-                &options[selected],
-                size::SECONDARY,
-                tk.secondary,
-            ));
-        }
-        chosen.map(str::to_owned)
-    };
-    if let Some(v) = pick(ui, "callwin_own", "callwin.own_language", &own, &peer) {
-        settings.call_self_language = v;
-    }
-    if let Some(v) = pick(ui, "callwin_peer", "callwin.peer_language", &peer, &own) {
-        settings.call_peer_language = v;
-    }
-    if !editable {
-        ui.label(widgets::text(
-            prxvc_i18n::t("callwin.language_locked"),
-            size::META,
-            tk.secondary,
-        ));
-    }
-}
-
-fn issues(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, actions: &mut Vec<CallWindowAction>) {
-    ui.label(widgets::text(
-        prxvc_i18n::t("callwin.issues.title"),
-        size::SECONDARY,
-        tk.secondary,
-    ));
-    if panel.issues.is_empty() && panel.last_error.is_none() {
-        ui.label(widgets::text(
-            prxvc_i18n::t("callwin.issues.none"),
-            size::META,
-            tk.secondary,
-        ));
-    }
-    ui.spacing_mut().item_spacing.y = space::S4;
-    for (i, issue) in panel.issues.iter().enumerate() {
-        ui.push_id(("issue", i), |ui| issue_row(ui, tk, issue, actions));
-    }
-    if let Some(error) = &panel.last_error {
-        ui.push_id("last_error", |ui| issue_row(ui, tk, error, actions));
-    }
-}
-
-/// The message key of the button label of an action, and what a click does.
-fn action_of(action: IssueAction) -> Option<(&'static str, CallWindowAction)> {
-    match action {
-        IssueAction::None => None,
-        IssueAction::EndAssistantAndStart => Some((
-            "callwin.action.end_assistant_and_start",
-            CallWindowAction::Command(command::END_ASSISTANT_AND_START),
-        )),
-        IssueAction::OpenPermissions => Some((
-            "callwin.action.open_permissions",
-            CallWindowAction::OpenSettings(SettingsSection::Permissions),
-        )),
-        IssueAction::OpenSpeechSettings => Some((
-            "callwin.action.open_speech",
-            CallWindowAction::OpenSettings(SettingsSection::SpeechPipeline),
-        )),
-        IssueAction::OpenAudioSettings => Some((
-            "callwin.action.open_audio",
-            CallWindowAction::OpenSettings(SettingsSection::Audio),
-        )),
-        IssueAction::OpenAssistantSettings => Some((
-            "assistant.action.open_assistant",
-            CallWindowAction::OpenSettings(SettingsSection::Assistant),
-        )),
-    }
-}
-
-fn issue_row(
-    ui: &mut egui::Ui,
-    tk: &Tokens,
-    issue: &IssueView,
-    actions: &mut Vec<CallWindowAction>,
-) {
-    let tone = match issue.severity {
-        IssueSeverity::Blocking => Tone::Danger,
-        IssueSeverity::Degraded => Tone::Warning,
-        IssueSeverity::Info => Tone::Neutral,
-    };
-    ui.vertical(|ui| {
-        tip_wrapped(ui, tk, tone, &prxvc_i18n::t(&issue.key));
-        if !issue.detail.is_empty() {
-            ui.add(
-                egui::Label::new(widgets::text(&issue.detail, size::CAPTION, tk.secondary)).wrap(),
-            );
-        }
-        if let Some((key, action)) = action_of(issue.action)
-            && widgets::button_with(
-                ui,
-                tk,
-                ButtonKind::Secondary,
-                &prxvc_i18n::t(key),
-                layout::CONTROL_HEIGHT_SMALL,
-                true,
-            )
-            .clicked()
-        {
-            actions.push(action);
-        }
+        });
     });
 }
 
-/// A tip bar whose message wraps (the window is narrow): soft fill, radius `card`, padding 8 / 12.
-fn tip_wrapped(ui: &mut egui::Ui, tk: &Tokens, tone: Tone, message: &str) {
-    let fill = match tone {
-        Tone::Neutral => tk.surface,
-        Tone::Success => tk.success_bg,
-        Tone::Warning => tk.warning_bg,
-        Tone::Danger => tk.danger_bg,
-    };
-    egui::Frame::NONE
-        .fill(fill)
-        .corner_radius(egui::CornerRadius::same(radius::CARD))
-        .inner_margin(egui::Margin::symmetric(12, 8))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(widgets::text(message, size::SECONDARY, tk.text)).wrap());
-        });
-}
-
-fn heard_text(you: bool, hears: Heard) -> String {
-    match hears {
-        Heard::Translation => prxvc_i18n::t("call.hears.translation"),
-        Heard::Original if you => prxvc_i18n::t("call.hears.original_by_app"),
-        Heard::Original => prxvc_i18n::t("call.hears.original"),
-        Heard::Nothing => prxvc_i18n::t("call.hears.nothing"),
+/// The slim row with the details above it when they are open.
+fn footer(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut UiSettings, w: &mut CallWindowState) {
+    call_window_footer::footer_row(ui, tk, panel, w);
+    if w.details_open {
+        let max = (ui.ctx().content_rect().height() * 0.45).clamp(120.0, 360.0);
+        egui::ScrollArea::vertical()
+            .id_salt("call_details")
+            .max_height(max)
+            .auto_shrink([false, true])
+            .show(ui, |ui| call_window_details::details(ui, tk, panel, settings));
     }
-}
-
-/// One direction: what its listener hears, the level, the captions, the notes and the last latency.
-fn lane(ui: &mut egui::Ui, tk: &Tokens, title_key: &str, hear_key: &str, lane: &LaneView) {
-    ui.label(widgets::text(
-        prxvc_i18n::t(title_key),
-        size::SECONDARY,
-        tk.text,
-    ));
-    if !lane.running && !lane.translating {
-        ui.label(widgets::text(
-            prxvc_i18n::t("callwin.lane.off"),
-            size::META,
-            tk.secondary,
-        ));
-        return;
-    }
-    ui.add(
-        egui::Label::new(widgets::text(
-            format!(
-                "{}: {}",
-                prxvc_i18n::t(hear_key),
-                heard_text(hear_key == "call.you_hear", lane.hears)
-            ),
-            size::META,
-            tk.text,
-        ))
-        .wrap(),
+    // A hairline between the captions and the footer.
+    let used = ui.min_rect();
+    ui.painter().hline(
+        used.x_range(),
+        used.top() - space::S4,
+        hairline(tk.line),
     );
-    ui.label(widgets::text(
-        prxvc_i18n::t_with("callwin.level", &[&crate::call_debug_view::db(lane.rms)]),
-        size::META,
-        tk.secondary,
-    ));
-    if !lane.translating {
-        return;
-    }
-    crate::call_captions_view::captions(ui, tk, lane);
-    if let Some(c) = &lane.counters {
-        notes(ui, tk, c);
-    }
-    crate::call_captions_view::latency_line(ui, tk, lane.latency.as_ref());
-}
-
-/// What the pipeline left out on purpose: filler it dropped and clauses it skipped to keep up.
-fn notes(ui: &mut egui::Ui, tk: &Tokens, c: &CountersView) {
-    let skipped = c.backlog_skips + c.stale_skips;
-    if c.filler_dropped == 0 && skipped == 0 {
-        return;
-    }
-    ui.add(
-        egui::Label::new(widgets::text(
-            prxvc_i18n::t_with(
-                "callwin.notes",
-                &[&c.filler_dropped.to_string(), &skipped.to_string()],
-            ),
-            size::META,
-            tk.secondary,
-        ))
-        .wrap(),
-    );
+    ui.add_space(space::S8 + border::DEFAULT);
 }

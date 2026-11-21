@@ -153,3 +153,65 @@ fn a_stopped_call_ignores_stale_path_events() {
     rig.tick_after(1);
     assert_eq!(rig.last().state, CallState::Idle);
 }
+
+#[test]
+fn nothing_reaches_a_translated_lane_after_the_stop_flushed_it() {
+    use super::kit::Played;
+    use super::translation::{script_one_utterance, speak, translating_both};
+    for _ in 0..20 {
+        let mut rig = Rig::new();
+        script_one_utterance(&rig);
+        rig.start_translating();
+        translating_both(&mut rig);
+        speak(&rig, "outgoing", 55);
+        rig.until_world("translated audio is in the lane", |w| {
+            w.played("outgoing")
+                .iter()
+                .any(|p| matches!(p, Played::Chunk(..)))
+        });
+        rig.stop();
+        let played = rig.world.played("outgoing");
+        let last_flush = played
+            .iter()
+            .rposition(|p| *p == Played::Flush)
+            .expect("the lane was flushed");
+        assert!(
+            played[last_flush..].iter().all(|p| *p == Played::Flush),
+            "audio reached the lane after the last flush: {played:?}"
+        );
+    }
+}
+
+#[test]
+fn a_translated_start_after_an_audio_only_call_carries_nothing_over() {
+    use crate::output::OutputSource;
+    let mut rig = Rig::new();
+    // First call: audio only, with a problem shown and a restored microphone on record.
+    rig.start();
+    rig.world.push_path_event(
+        "outgoing",
+        PathEvent::NoSignal("silent tap (left over)".into()),
+    );
+    rig.tick_after(1);
+    assert!(!rig.last().issues.is_empty());
+    rig.stop();
+    assert_stopped_cleanly(&rig);
+    // Second call, translated.
+    rig.start_translating();
+    super::translation::translating_both(&mut rig);
+    let s = rig.last();
+    assert_eq!(s.state, CallState::Translating);
+    assert!(s.issues.is_empty(), "issues of the first call are gone: {:?}", s.issues);
+    assert!(s.last_error.is_none());
+    assert!(s
+        .last_output_change
+        .as_ref()
+        .is_some_and(|c| c.cause == crate::output::OutputCause::TranslationStarted));
+    for d in [Direction::Outgoing, Direction::Incoming] {
+        let dir = s.direction(d);
+        assert_eq!(dir.hears, OutputSource::Translation);
+        let pipeline = dir.pipeline.as_ref().expect("a pipeline of this call");
+        assert_eq!(pipeline.counters.clauses_committed, 0, "counters start at zero");
+        assert!(pipeline.clauses.is_empty());
+    }
+}

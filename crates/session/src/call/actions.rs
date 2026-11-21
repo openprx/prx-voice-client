@@ -137,6 +137,11 @@ impl Coordinator {
         // The feeder (outgoing) goes last: the incoming path stops first.
         for d in [Direction::Incoming, Direction::Outgoing] {
             let lane = &mut self.lanes[slot(d)];
+            if lane.totals.pipeline.is_none()
+                && let Some(x) = lane.stats.as_ref()
+            {
+                lane.totals.underruns = x.underruns + x.translated_underruns;
+            }
             lane.stats = None;
             if let Some(mut path) = lane.path.take()
                 && let Err(fault) = path.stop()

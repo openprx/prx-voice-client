@@ -69,6 +69,16 @@ pub(crate) enum StageEvent {
     MtDone {
         clause: ClauseId,
     },
+    /// The translation came back in the wrong language before any of it was spoken and is being
+    /// requested again: the text so far is void.
+    MtRetry {
+        clause: ClauseId,
+    },
+    /// The finished translation carries quality flags; it was spoken all the same.
+    MtFlagged {
+        clause: ClauseId,
+        flags: Vec<prxvc_ports::MtFlag>,
+    },
     /// Translation failed or was flagged; `suspect` marks the latter.
     MtFailed {
         clause: ClauseId,

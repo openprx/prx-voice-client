@@ -82,6 +82,14 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "settings.call.captions_source.desc",
         "Show what was said next to its translation.",
     ),
+    (
+        "settings.call.disclosure",
+        "Tell the other party the call is translated",
+    ),
+    (
+        "settings.call.disclosure.desc",
+        "Plays a short spoken notice, in their language, before your first translated sentence: the call is translated in real time and they hear a synthesized voice. Applies from the next start; the wording is in the config file.",
+    ),
     ("settings.assistant.speak", "Speak replies aloud"),
     ("settings.assistant.language", "Assistant language"),
     (
@@ -292,6 +300,11 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "settings.call.captions_source.desc",
         "在译文旁边显示说话的原文。",
+    ),
+    ("settings.call.disclosure", "告知对方通话在翻译"),
+    (
+        "settings.call.disclosure.desc",
+        "在你的第一句译文之前，用对方的语言播放一段简短的语音提示：通话正在实时翻译，他们听到的是合成语音。下次开始时生效；提示文字可在配置文件中修改。",
     ),
     ("settings.assistant.speak", "朗读回复"),
     ("settings.assistant.language", "助手语言"),

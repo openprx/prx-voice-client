@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use prxvc_media::ClauseId;
-use prxvc_ports::MtError;
+use prxvc_ports::{MtError, MtFlag};
 
 /// Why a request failed, in the adapter's own terms.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -102,6 +102,22 @@ pub enum Suspect {
     /// The model looped: the output was one short unit repeated many times in a row, or cycled
     /// with a short period. The request was aborted as soon as the guard saw it.
     Repetition,
+}
+
+impl Suspect {
+    /// The flag the pipeline counts and shows, for the kinds that do not stop a clause; `None`
+    /// for an empty output and a loop, which are failures.
+    pub const fn as_flag(self) -> Option<MtFlag> {
+        match self {
+            Self::WrongLanguage => Some(MtFlag::WrongLanguage),
+            Self::TooLong => Some(MtFlag::TooLong),
+            Self::Truncated => Some(MtFlag::Truncated),
+            Self::Refusal => Some(MtFlag::Refusal),
+            Self::AnswerLike => Some(MtFlag::AnswerLike),
+            Self::ThinkResidue => Some(MtFlag::ThinkResidue),
+            Self::Empty | Self::Repetition => None,
+        }
+    }
 }
 
 /// A harmless wrapper that was removed from the output.

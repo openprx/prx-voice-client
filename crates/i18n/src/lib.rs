@@ -5,6 +5,7 @@
 
 mod assistant_strings;
 mod call_strings;
+mod call_captions_strings;
 mod call_window_strings;
 mod settings_permission_strings;
 mod settings_pipeline_strings;
@@ -126,6 +127,19 @@ pub fn t(key: &str) -> String {
     }
     // Last resort: return the key itself.
     key.to_owned()
+}
+
+/// Translate `key` into `locale`, whatever the active locale is (the spoken notice to the other
+/// party is in their language, not the interface's). Falls back to English, then to the key.
+pub fn t_in(locale: Locale, key: &str) -> String {
+    let store = STORE.read();
+    store
+        .translations
+        .get(&locale)
+        .and_then(|m| m.get(key))
+        .or_else(|| store.translations.get(&Locale::En).and_then(|m| m.get(key)))
+        .cloned()
+        .unwrap_or_else(|| key.to_owned())
 }
 
 /// Translate `key` and substitute positional parameters.
@@ -325,6 +339,7 @@ fn build_en_translations() -> HashMap<String, String> {
         .chain(assistant_strings::EN)
         .chain(call_strings::EN)
         .chain(call_window_strings::EN)
+        .chain(call_captions_strings::EN)
         .chain(translation_strings::EN)
         .chain(settings_strings::EN)
         .chain(settings_session_strings::EN)
@@ -554,6 +569,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         .chain(assistant_strings::ZH_CN)
         .chain(call_strings::ZH_CN)
         .chain(call_window_strings::ZH_CN)
+        .chain(call_captions_strings::ZH_CN)
         .chain(translation_strings::ZH_CN)
         .chain(settings_strings::ZH_CN)
         .chain(settings_session_strings::ZH_CN)

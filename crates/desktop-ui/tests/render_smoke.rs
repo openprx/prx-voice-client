@@ -594,6 +594,7 @@ fn call_control_renders_in_both_languages_with_issues() {
             detail: String::new(),
             ..IssueView::default()
         }),
+        ..CallPanel::default()
     };
     // A translating call: captions with a stable prefix, counters, latency, level and the gate.
     let lane = LaneView {
@@ -603,10 +604,10 @@ fn call_control_renders_in_both_languages_with_issues() {
         hears: Heard::Translation,
         device: "Built-in Mic".into(),
         frames: 500,
-        partial: Some(PartialView { text: "今天天气很好我们去".into(), stable_len: 18 }),
+        partial: Some(PartialView { utterance: 3, text: "今天天气很好我们去".into(), stable_len: 18 }),
         clauses: vec![
-            CaptionView { source: "你好".into(), translation: "Hello.".into(), status: ClauseStatus::Played },
-            CaptionView { source: "我们开会".into(), translation: String::new(), status: ClauseStatus::Translating },
+            CaptionView { source: "你好".into(), translation: "Hello.".into(), status: ClauseStatus::Played, ..CaptionView::default() },
+            CaptionView { source: "我们开会".into(), translation: String::new(), status: ClauseStatus::Translating, ..CaptionView::default() },
         ],
         counters: Some(CountersView { late_dropped: 1, underruns: 2, ..CountersView::default() }),
         latency: Some(LatencyView {

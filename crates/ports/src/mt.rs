@@ -79,6 +79,52 @@ pub struct MtRequest {
     pub context: Vec<(String, String)>,
     /// Required term translations as `(source, target)` pairs.
     pub glossary: Vec<(String, String)>,
+    /// A retry after a reply in the wrong language: the request carries a stricter instruction
+    /// that the reply must be written in `target` and nothing else.
+    pub strict_language: bool,
+}
+
+/// A way in which a finished translation does not look like a translation, reported next to the
+/// text and never acted on by the adapter. The pipeline counts and shows each kind. Empty output
+/// and a looping model are failures, not flags (see [`MtStream::suspect`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum MtFlag {
+    /// The output is mostly in the wrong script for the target language.
+    WrongLanguage,
+    /// The output is much longer than a translation of the input can be.
+    TooLong,
+    /// The provider stopped at its token limit.
+    Truncated,
+    /// The output reads as a refusal or an assistant apology.
+    Refusal,
+    /// The output reads as an answer or a chat opener, not a translation.
+    AnswerLike,
+    /// A thinking tag is still in the output.
+    ThinkResidue,
+}
+
+impl MtFlag {
+    /// Every kind, in a fixed order.
+    pub const ALL: [Self; 6] = [
+        Self::WrongLanguage,
+        Self::TooLong,
+        Self::Truncated,
+        Self::Refusal,
+        Self::AnswerLike,
+        Self::ThinkResidue,
+    ];
+
+    /// A stable name for logs and counters.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WrongLanguage => "wrong_language",
+            Self::TooLong => "too_long",
+            Self::Truncated => "truncated",
+            Self::Refusal => "refusal",
+            Self::AnswerLike => "answer_like",
+            Self::ThinkResidue => "think_residue",
+        }
+    }
 }
 
 /// One step of a translation stream.
@@ -112,6 +158,14 @@ pub trait MtStream: Send {
     /// flagged", so adapters that cannot assess their output compile unchanged.
     fn suspect(&self) -> Option<String> {
         None
+    }
+
+    /// The quality flags of the finished translation, empty until [`MtDelta::Done`] was
+    /// delivered. Unlike [`MtStream::suspect`] these do not stop the clause: its text may already
+    /// be speaking when they are known. The pipeline counts them and shows them in the captions.
+    /// The default is "no flags".
+    fn flags(&self) -> Vec<MtFlag> {
+        Vec::new()
     }
 }
 

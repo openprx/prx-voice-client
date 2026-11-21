@@ -82,6 +82,25 @@ pub struct SharedSynth {
     pub(crate) lease: Lease<QwenTts>,
 }
 
+impl Drop for SharedSynth {
+    /// The last handle on a synthesis engine says what it did for the call, just before it is freed.
+    fn drop(&mut self) {
+        if self.lease.is_last() {
+            let s = self.lease.engine().stats();
+            tracing::info!(
+                requests = s.requests,
+                completed = s.completed,
+                cancelled = s.cancelled,
+                failed = s.failed,
+                runaways = s.runaways,
+                retries = s.retries,
+                overruns = s.overruns,
+                "synthesis engine totals"
+            );
+        }
+    }
+}
+
 impl SharedSynth {
     /// The lease, to compare engines or retire the engine.
     pub fn lease(&self) -> &Lease<QwenTts> {

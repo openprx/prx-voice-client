@@ -120,6 +120,8 @@ plain_fields! {
     call_local_output_mode => call.local_output_mode,
     call_outgoing_capture => call.outgoing_capture,
     call_captions_show_source => call.captions_show_source,
+    call_captions_size => call.captions_size,
+    call_disclosure => call.disclosure,
     call_barge_in => call.barge_in,
     assistant_language => assistant.language,
     assistant_voice => assistant.voice,
@@ -310,6 +312,8 @@ mod tests {
         c.call.local_output_mode = "both".to_owned();
         c.call.outgoing_capture = "push_to_talk".to_owned();
         c.call.captions_show_source = false;
+        c.call.captions_size = "large".to_owned();
+        c.call.disclosure = false;
         c.call.barge_in = false;
         c.voice.self_profile_id = "me".to_owned();
         c.voice.use_clone_outgoing = false;
@@ -431,6 +435,8 @@ mod tests {
             call_local_output_mode => call.local_output_mode : "original".to_owned(),
             call_outgoing_capture => call.outgoing_capture : "hands_free".to_owned(),
             call_captions_show_source => call.captions_show_source : true,
+            call_captions_size => call.captions_size : "small".to_owned(),
+            call_disclosure => call.disclosure : true,
             call_barge_in => call.barge_in : true,
             assistant_language => assistant.language : "zh-CN".to_owned(),
             assistant_voice => assistant.voice : "preset".to_owned(),
@@ -713,6 +719,7 @@ mod tests {
         ("call.original_gain_db.", "call behaviour beyond the design's rows"),
         ("call.barge_in_max_lag_ms.", "call behaviour beyond the design's rows"),
         ("call.translate.", "set by the call start command"),
+        ("call.disclosure_text_", "the notice's wording: edited in the config file; the built-in text is the default"),
         ("call.output_gain_db.", "call behaviour beyond the design's rows"),
         ("debug.call_trace.", "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE"),
         ("debug.call_trace_text.", "diagnostic switch that adds spoken text to the trace; config file only, off by default"),

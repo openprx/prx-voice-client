@@ -327,6 +327,10 @@ pub mod radius {
     pub const MENU: u8 = 12;
     /// `dialog`: dialogs.
     pub const DIALOG: u8 = 12;
+    /// `bubble`: message bubble.
+    pub const BUBBLE: u8 = 12;
+    /// `bubble-joined`: the corner of a grouped bubble that touches its neighbour.
+    pub const BUBBLE_JOINED: u8 = 4;
     /// `full`: switch and radio (use as a pill; clamp to half the side).
     pub const FULL: u8 = 255;
 }
@@ -398,6 +402,12 @@ pub mod layout {
     pub const FIELD_WIDTH: f32 = 320.0;
     /// Dialog padding.
     pub const DIALOG_PADDING: f32 = 24.0;
+    /// `bubble-max`: widest message bubble.
+    pub const BUBBLE_MAX: f32 = 600.0;
+    /// Bubble padding, vertical (the standard's 8 / 12).
+    pub const BUBBLE_PAD_Y: i8 = 8;
+    /// Bubble padding, horizontal.
+    pub const BUBBLE_PAD_X: i8 = 12;
 }
 
 /// `shadow-overlay`: 0 8px 24px in the `shadow` colour.

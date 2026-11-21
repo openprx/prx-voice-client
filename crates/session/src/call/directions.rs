@@ -99,7 +99,13 @@ impl Coordinator {
         cause: OutputCause,
     ) {
         let at = self.now();
+        if direction == Direction::Outgoing
+            && let Some(d) = &self.disclosure
+        {
+            d.set_audible(to == OutputSource::Translation);
+        }
         let lane = &mut self.lanes[slot(direction)];
+        lane.passthrough = false;
         lane.hears = to;
         if let Some(path) = lane.path.as_mut() {
             path.set_listener_hears(to);
@@ -118,6 +124,40 @@ impl Coordinator {
             cause,
             at,
         });
+    }
+
+    /// A pipeline's utterance is already in the listener's language: its original voice is heard
+    /// while it lasts (`on`), then the listener returns to what the direction machine says. Not a
+    /// change of the machine's output, so the machine is not told; any announced change ends it.
+    pub(super) fn on_passthrough(&mut self, direction: Direction, on: bool) {
+        let lane = &mut self.lanes[slot(direction)];
+        let to = if on {
+            if lane.hears != OutputSource::Translation {
+                return;
+            }
+            lane.passthrough = true;
+            OutputSource::Original
+        } else if lane.passthrough {
+            lane.passthrough = false;
+            lane.machine.output(&lane.cfg.policy)
+        } else {
+            return;
+        };
+        let from = std::mem::replace(&mut lane.hears, to);
+        if let Some(path) = lane.path.as_mut() {
+            path.set_listener_hears(to);
+        }
+        if direction == Direction::Outgoing
+            && let Some(d) = &self.disclosure
+        {
+            d.set_audible(to == OutputSource::Translation);
+        }
+        tracing::info!(
+            ?direction,
+            ?from,
+            ?to,
+            "an utterance already in the listener's language passes through"
+        );
     }
 
     /// `RestoreTranslatedOutput`: a failed direction tries again (a pipeline recovers by itself).

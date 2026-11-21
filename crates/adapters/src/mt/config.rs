@@ -224,6 +224,7 @@ mod tests {
             } else {
                 vec![("Prometheus".into(), "普罗米修斯".into())]
             },
+            strict_language: false,
         }
     }
 

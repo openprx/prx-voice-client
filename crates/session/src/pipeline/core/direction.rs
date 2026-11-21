@@ -77,6 +77,8 @@ impl Core {
             DirectionAction::ChangeOutput {
                 from, to, cause, ..
             } => {
+                // The machine decided what is heard; a passthrough ends with it.
+                self.passthrough = None;
                 self.emit(PipelineEvent::Output { from, to, cause });
             }
         }

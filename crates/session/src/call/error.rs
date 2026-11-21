@@ -95,6 +95,8 @@ pub enum CallErrorCode {
     /// The local output is the built-in loudspeaker: the incoming translation would be heard by
     /// the microphone and translated back. Headphones are required (design section 6).
     SpeakerOutput,
+    /// The spoken notice to the other party could not be prepared; the translation runs without it.
+    DisclosureUnavailable,
     /// A failure with no better code.
     Internal,
 }

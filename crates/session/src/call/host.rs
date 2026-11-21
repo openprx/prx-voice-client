@@ -371,6 +371,9 @@ pub struct DirectionBuild {
     pub params: PipelineParams,
     /// The providers.
     pub providers: PipelineProviders,
+    /// The spoken notice to the other party; `None` for a direction that does not carry it (only
+    /// the outgoing direction does).
+    pub disclosure: Option<super::DisclosureSpec>,
 }
 
 /// The directions to translate with their providers, and where their trace goes.

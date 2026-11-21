@@ -83,6 +83,10 @@ pub struct UiSettings {
     pub call_outgoing_capture: String,
     /// `call.captions_show_source`.
     pub call_captions_show_source: bool,
+    /// `call.disclosure`: tell the other party, by a spoken notice, that the call is translated.
+    pub call_disclosure: bool,
+    /// `call.captions_size`: `"small"`, `"medium"` or `"large"`.
+    pub call_captions_size: String,
     /// `call.barge_in`.
     pub call_barge_in: bool,
     /// `assistant.language`: the language the assistant listens and answers in; empty follows the
@@ -171,6 +175,8 @@ impl Default for UiSettings {
             call_local_output_mode: "translation".to_owned(),
             call_outgoing_capture: "hands_free".to_owned(),
             call_captions_show_source: true,
+            call_disclosure: true,
+            call_captions_size: "medium".to_owned(),
             call_barge_in: true,
             assistant_language: String::new(),
             assistant_voice: "preset".to_owned(),
@@ -295,8 +301,11 @@ pub struct DesktopUiState {
     pub status_message: Option<String>,
     /// Call mode as the temporary debug control shows it.
     pub call: crate::call_view::CallPanel,
-    /// The call control's "translate" switch: the next start translates.
+    /// The call window's "translate" switch: the next start translates (on by default: the
+    /// window's purpose; audio only is the switch turned off).
     pub call_translate: bool,
+    /// The Call translation window's memory: the conversation of this session and the view state.
+    pub call_window: crate::call_window_state::CallWindowState,
     /// Internal animation time tracker.
     pub(crate) anim_time: f64,
     /// The idle orb breathes (and the app repaints for it). Tests turn it off
@@ -342,7 +351,8 @@ impl DesktopUiState {
             input_device: String::new(),
             status_message: None,
             call: crate::call_view::CallPanel::default(),
-            call_translate: false,
+            call_translate: true,
+            call_window: crate::call_window_state::CallWindowState::default(),
             anim_time: 0.0,
             idle_animation: true,
             windows: tool_window::ToolWindows::default(),

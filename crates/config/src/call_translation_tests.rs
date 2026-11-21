@@ -78,6 +78,30 @@ fn pipeline_section_defaults_to_the_design_values() {
     // Filler and quiet-sound gates of the first translated call.
     assert!(p.drop_filler);
     assert_eq!(p.min_speech_dbfs, -75.0);
+    // The language rules default on.
+    assert!(p.skip_source_in_target && p.retry_wrong_language);
+}
+
+#[test]
+fn the_spoken_notice_is_on_by_default_in_every_file_and_its_texts_are_empty() {
+    let c = AppConfig::default();
+    assert!(c.call.disclosure);
+    assert!(c.call.disclosure_text_en.is_empty() && c.call.disclosure_text_zh.is_empty());
+    let old: AppConfig = toml::from_str("[call]\nself_language = \"zh\"\n").unwrap();
+    assert!(old.call.disclosure, "a file written before the key existed gets it on");
+    let off: AppConfig = toml::from_str("[call]\ndisclosure = false\n").unwrap();
+    assert!(!off.call.disclosure);
+}
+
+#[test]
+fn the_language_rules_default_on_in_an_old_file_and_can_be_switched_off() {
+    let c: AppConfig = toml::from_str("[pipeline]\nmax_segment_s = 20\n").unwrap();
+    assert!(c.pipeline.skip_source_in_target && c.pipeline.retry_wrong_language);
+    let c: AppConfig = toml::from_str(
+        "[pipeline]\nskip_source_in_target = false\nretry_wrong_language = false\n",
+    )
+    .unwrap();
+    assert!(!c.pipeline.skip_source_in_target && !c.pipeline.retry_wrong_language);
 }
 
 #[test]

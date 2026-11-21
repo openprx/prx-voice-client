@@ -54,10 +54,6 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Stop",
     ),
     (
-        "callwin.languages",
-        "Languages",
-    ),
-    (
         "callwin.own_language",
         "You speak",
     ),
@@ -82,10 +78,6 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Not running",
     ),
     (
-        "callwin.notes",
-        "Dropped filler: {0}. Skipped to keep up: {1}.",
-    ),
-    (
         "callwin.level",
         "Level {0} dBFS",
     ),
@@ -94,16 +86,8 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Last clause: first translated audio {0} ms after the speech started",
     ),
     (
-        "callwin.latency.none",
-        "No clause has finished yet.",
-    ),
-    (
         "callwin.issues.title",
         "Notes",
-    ),
-    (
-        "callwin.issues.none",
-        "Nothing needs your attention.",
     ),
     (
         "callwin.action.end_assistant_and_start",
@@ -178,10 +162,6 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "\u{505c}\u{6b62}",
     ),
     (
-        "callwin.languages",
-        "\u{8bed}\u{8a00}",
-    ),
-    (
         "callwin.own_language",
         "\u{4f60}\u{8bf4}",
     ),
@@ -206,10 +186,6 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "\u{672a}\u{8fd0}\u{884c}",
     ),
     (
-        "callwin.notes",
-        "\u{5df2}\u{4e22}\u{5f03}\u{8bed}\u{6c14}\u{8bcd} {0} \u{6761}\u{ff0c}\u{4e3a}\u{8ddf}\u{4e0a}\u{8bed}\u{901f}\u{8df3}\u{8fc7} {1} \u{6761}\u{3002}",
-    ),
-    (
         "callwin.level",
         "\u{7535}\u{5e73} {0} dBFS",
     ),
@@ -218,16 +194,8 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "\u{6700}\u{8fd1}\u{4e00}\u{53e5}\u{ff1a}\u{5f00}\u{53e3}\u{540e} {0} \u{6beb}\u{79d2}\u{51fa}\u{73b0}\u{8bd1}\u{97f3}",
     ),
     (
-        "callwin.latency.none",
-        "\u{8fd8}\u{6ca1}\u{6709}\u{5b8c}\u{6210}\u{7684}\u{53e5}\u{5b50}\u{3002}",
-    ),
-    (
         "callwin.issues.title",
         "\u{63d0}\u{793a}",
-    ),
-    (
-        "callwin.issues.none",
-        "\u{6ca1}\u{6709}\u{9700}\u{8981}\u{5904}\u{7406}\u{7684}\u{4e8b}\u{9879}\u{3002}",
     ),
     (
         "callwin.action.end_assistant_and_start",
