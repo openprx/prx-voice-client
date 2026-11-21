@@ -7,13 +7,29 @@
 //! live here so the pipeline and the translation adapter share one reading of "in language X"
 //! (placement as for `speakable`).
 //!
-//! Text with fewer than [`MIN_LETTERS`] letters is never judged: a short answer such as "OK" or "好"
-//! is as likely in one language as the other.
+//! Text with fewer than [`MIN_LETTERS`] letters is never judged as a translation: a short answer
+//! such as "OK" or "好" is as likely in one language as the other.
+//!
+//! Skipping the translation (passing the original voice through) loses the translated voice and,
+//! if the judgement is wrong, the whole utterance, so it asks for more evidence than the other
+//! rules: the majority script must be the target's with at least [`PASS_MIN_CJK`] Chinese
+//! characters or [`PASS_MIN_LATIN`] Latin letters, and the other script must be almost absent
+//! (English) or a minority (Chinese, with Latin words such as names allowed). Anything smaller or
+//! mixed is undecided and is translated: "OK", "yes yes", "bye", "好的", "嗯好", "拜拜", "Zoom会议"
+//! and numbers alone are all translated.
 
 use crate::Lang;
 
-/// The fewest letters (Chinese characters plus Latin letters) a text needs before it is judged.
+/// The fewest letters (Chinese characters plus Latin letters) a text needs before a translation is
+/// judged.
 pub const MIN_LETTERS: usize = 4;
+
+/// The fewest Chinese characters a text needs before it may be passed through as Chinese.
+pub const PASS_MIN_CJK: usize = 4;
+
+/// The fewest Latin letters a text needs before it may be passed through as English ("thank you"
+/// is enough, "yes yes" and "OK" are not).
+pub const PASS_MIN_LATIN: usize = 8;
 
 /// The share of Chinese characters among Chinese and Latin letters at which a source text counts as
 /// Chinese.
@@ -32,9 +48,9 @@ fn is_cjk(c: char) -> bool {
     matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}')
 }
 
-/// The share of Chinese characters among the Chinese and Latin letters of `text`, or `None` when it
-/// has fewer than [`MIN_LETTERS`] of them.
-pub fn cjk_share(text: &str) -> Option<f32> {
+/// The number of Chinese characters and of other letters in `text` (digits and punctuation are
+/// neither).
+fn letter_counts(text: &str) -> (usize, usize) {
     let (mut cjk, mut latin) = (0usize, 0usize);
     for c in text.chars() {
         if is_cjk(c) {
@@ -43,6 +59,13 @@ pub fn cjk_share(text: &str) -> Option<f32> {
             latin += 1;
         }
     }
+    (cjk, latin)
+}
+
+/// The share of Chinese characters among the Chinese and Latin letters of `text`, or `None` when it
+/// has fewer than [`MIN_LETTERS`] of them.
+pub fn cjk_share(text: &str) -> Option<f32> {
+    let (cjk, latin) = letter_counts(text);
     let letters = cjk + latin;
     if letters < MIN_LETTERS {
         return None;
@@ -52,12 +75,19 @@ pub fn cjk_share(text: &str) -> Option<f32> {
 }
 
 /// Whether `text` is clearly written in `lang` (and so needs no translation into it). `false` when
-/// it is in the other language, mixed, or too short to tell.
+/// it is in the other language, mixed, or without enough evidence (see the module docs): then it
+/// is translated.
 pub fn is_written_in(text: &str, lang: Lang) -> bool {
-    match (cjk_share(text), lang) {
-        (Some(share), Lang::Zh) => share >= SOURCE_IS_CHINESE_FROM,
-        (Some(share), Lang::En) => share <= SOURCE_IS_ENGLISH_UP_TO,
-        (None, _) => false,
+    let (cjk, latin) = letter_counts(text);
+    let letters = cjk + latin;
+    if letters == 0 {
+        return false;
+    }
+    #[allow(clippy::cast_precision_loss, reason = "character counts of one clause")]
+    let share = cjk as f32 / letters as f32;
+    match lang {
+        Lang::Zh => cjk >= PASS_MIN_CJK && share >= SOURCE_IS_CHINESE_FROM,
+        Lang::En => latin >= PASS_MIN_LATIN && share <= SOURCE_IS_ENGLISH_UP_TO,
     }
 }
 
@@ -81,6 +111,26 @@ mod tests {
         assert!(!is_written_in("我们三点半在机场见面", Lang::En));
         assert!(is_written_in("See you at the airport", Lang::En));
         assert!(!is_written_in("See you at the airport", Lang::Zh));
+    }
+
+    #[test]
+    fn short_and_loanword_inputs_are_translated_not_passed_through() {
+        // The other language's script is never "in the target".
+        for text in ["OK", "yes yes", "bye", "Okay", "hello", "Zoom会议", "123", "12 34 56", "1.5", ""] {
+            assert!(!is_written_in(text, Lang::En), "{text:?} as English");
+        }
+        for text in ["OK", "好的", "嗯好", "拜拜", "好", "Zoom会议", "ok好的", "123", ""] {
+            assert!(!is_written_in(text, Lang::Zh), "{text:?} as Chinese");
+        }
+        // With enough evidence they are passed through.
+        for text in ["thank you", "See you tomorrow", "okay okay okay", "No problem."] {
+            assert!(is_written_in(text, Lang::En), "{text:?}");
+        }
+        for text in ["好的好的", "谢谢你的帮助", "我们明天见", "好的，我们用Zoom开会"] {
+            assert!(is_written_in(text, Lang::Zh), "{text:?}");
+        }
+        // A sentence with Chinese in it is not English, however long its English part.
+        assert!(!is_written_in("please send the 会议 notes tomorrow", Lang::En));
     }
 
     #[test]

@@ -130,6 +130,9 @@ pub(crate) struct Core {
     /// The segment whose original voice is passed through because it is already in the target
     /// language (`pipeline.skip_source_in_target`).
     passthrough: Option<prxvc_media::SegmentId>,
+    /// The newest segment whose original voice was passed through, even after it ended: a final
+    /// text that arrives late must neither pass it through again nor translate it a second time.
+    passed: Option<prxvc_media::SegmentId>,
     /// What happened to the clauses of the open segments, for the utterance log line.
     tallies: BTreeMap<prxvc_media::SegmentId, SegmentTally>,
     /// The figures of the finished utterances.
@@ -164,6 +167,7 @@ impl Core {
             skip_reason: None,
             skipping: false,
             passthrough: None,
+            passed: None,
             tallies: BTreeMap::new(),
             ledger: LedgerBook::default(),
             refine_failures: 0,

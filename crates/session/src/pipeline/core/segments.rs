@@ -6,7 +6,7 @@ use crate::pipeline::events::PipelineEvent;
 use crate::pipeline::messages::{MtItem, TtsItem};
 use crate::pipeline::queue::Pushed;
 use crate::pipeline::snapshot::{ClauseSnapshot, SkipReason};
-use crate::segment::{ClauseEventKind, ClauseState};
+use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
 use crate::direction_state::DirectionState;
 use crate::pipeline::utterance::{Ms, Utterance, notes, skip_name};
 use crate::segment_book::{SegmentAction, SegmentEvent};
@@ -161,10 +161,23 @@ impl Core {
         }
     }
 
+    /// Whether the clause of `segment` may be skipped as already in the listener's language: the
+    /// speaker is still going (the original voice passes through now) or the original was passed
+    /// through while the segment was open. A final that arrives after the segment ended with the
+    /// original never passed would be lost entirely, so it is translated instead; and it never
+    /// switches the direction to the original again, which nothing would switch back.
+    fn can_pass_through(&self, segment: prxvc_media::SegmentId) -> bool {
+        self.book.segment_state(segment) == Some(SegmentState::Open)
+            || self.passed == Some(segment)
+    }
+
     /// Record and announce that the original voice passes through (`Some`) or no longer does.
     pub(super) fn set_passthrough(&mut self, segment: Option<prxvc_media::SegmentId>) {
         let was = self.passthrough.is_some();
         self.passthrough = segment;
+        if segment.is_some() {
+            self.passed = segment;
+        }
         if was != segment.is_some() {
             self.emit(PipelineEvent::Passthrough {
                 on: segment.is_some(),
@@ -197,17 +210,20 @@ impl Core {
         }
         if self.p.skip_source_in_target
             && prxvc_media::script::is_written_in(&text, self.p.target)
+            && self.can_pass_through(clause.segment())
         {
             // Already in the language the listener hears: nothing to translate or speak; the
             // original voice is heard for as long as the speaker goes on.
-            self.set_passthrough(Some(clause.segment()));
+            if self.book.segment_state(clause.segment()) == Some(SegmentState::Open) {
+                self.set_passthrough(Some(clause.segment()));
+            }
             self.cancel_with(
                 CancelAction::CancelClause(clause),
                 SkipReason::SourceInTarget,
             );
             return;
         }
-        if self.passthrough.is_some() {
+        if self.passthrough == Some(clause.segment()) {
             self.set_passthrough(None);
         }
         let Some(job) = self.live_clause_job(clause, text) else {
