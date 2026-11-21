@@ -167,8 +167,25 @@ impl ConfigManager {
                     // copy of the file first.
                     atomic::copy_aside(&self.config_path(), "secrets")?;
                 }
-                if !outcome.moved.is_empty() && outcome.kept.is_empty() {
+                let clean = outcome.kept.is_empty() && outcome.stray_kept.is_empty();
+                if let Some(from) = migrated_from.filter(|_| clean) {
+                    // Persist the migration once, so that the next load finds a current file and
+                    // says nothing: the original is kept next to it first.
+                    match atomic::copy_aside(&self.config_path(), &format!("bak-schema{from}"))
+                        .map_err(ConfigError::from)
+                        .and_then(|_| self.write(&config))
+                    {
+                        Ok(()) => tracing::debug!(from, "the migrated settings file was written"),
+                        Err(e) => tracing::warn!(
+                            from,
+                            error = %e,
+                            "the migrated settings file could not be written; it is migrated in memory again at the next load"
+                        ),
+                    }
+                } else if !outcome.moved.is_empty() && outcome.kept.is_empty() {
                     self.write(&config)?;
+                }
+                if !outcome.moved.is_empty() && outcome.kept.is_empty() {
                     notices.push(LoadNotice::SecretsMoved { entry_ids: outcome.moved });
                 }
                 Ok(LoadReport { config: *config, notices })

@@ -172,8 +172,14 @@ fn real_world_file_keeps_every_value_and_migrates() {
     // New sections are defaults.
     assert_eq!(c.hotkeys, HotkeysConfig::default());
     assert_eq!(c.models, ModelsConfig::default());
-    // Loading does not write.
-    assert_eq!(read_config(&dir), REAL_WORLD);
+    // The migration is written once; the original stays beside it.
+    assert_ne!(read_config(&dir), REAL_WORLD);
+    let backup = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-schema0-"))
+        .expect("a backup of the original");
+    assert_eq!(std::fs::read_to_string(backup.path()).unwrap(), REAL_WORLD);
 }
 
 #[test]

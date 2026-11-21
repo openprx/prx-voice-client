@@ -177,11 +177,14 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     assert_eq!(c.call.original_gain_db, -12.0);
     assert_eq!(c.call.barge_in_max_lag_ms, 3_000);
     assert_eq!(c.pipeline, PipelineConfig::default());
-    assert_eq!(
-        fs::read_to_string(dir.path().join("config.toml")).unwrap(),
-        V1_FILE,
-        "loading does not write"
-    );
+    // The migration is written once; the original stays beside it.
+    assert!(fs::read_to_string(dir.path().join("config.toml")).unwrap().contains("schema_version = 4"));
+    let backup = fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-schema1-"))
+        .expect("a backup of the original");
+    assert_eq!(fs::read_to_string(backup.path()).unwrap(), V1_FILE);
 }
 
 #[test]
@@ -296,3 +299,29 @@ fn the_old_two_pass_default_becomes_single_pass_and_a_later_choice_of_two_pass_i
     assert_eq!(report.config.pipeline.recognition_mode, "two_pass");
 }
 
+
+#[test]
+fn a_migration_is_written_once_with_a_backup_and_the_next_load_is_silent() {
+    let dir = TempDir::new("ct_persist_migration");
+    let original = "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n";
+    write_config(&dir, original);
+    let m = mgr(&dir);
+    let first = m.load_report().unwrap();
+    assert_eq!(first.notices, vec![LoadNotice::Migrated { from: 3, to: 4 }]);
+
+    // The file on disk is current now, and the original is kept beside it.
+    let text = fs::read_to_string(dir.path().join("config.toml")).unwrap();
+    assert!(text.contains("schema_version = 4"), "{text}");
+    let backups: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-schema3-"))
+        .collect();
+    assert_eq!(backups.len(), 1);
+    assert_eq!(fs::read_to_string(backups[0].path()).unwrap(), original);
+
+    // The second load has nothing to report and the same configuration.
+    let second = m.load_report().unwrap();
+    assert!(second.notices.is_empty(), "{:?}", second.notices);
+    assert_eq!(second.config, first.config);
+}
