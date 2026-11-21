@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The voice assistant runs on the call translation's pieces: the microphone through Silero VAD and
+  Qwen3-ASR (streaming partials in the transcript, the filler filter), a dialogue port with an
+  OpenAI-compatible chat adapter (the local `llama-server`, Gemma 4 E4B, thinking off, a
+  per-session history bounded by turns and tokens, a short system prompt for a spoken assistant),
+  the clause splitter and Qwen3-TTS in a preset voice or the owner's, played through the existing
+  output with the echo gate. It is a small explicit state machine (idle, listening, thinking,
+  speaking); speaking over the reply or a click cuts it, a second click ends the session.
+- Every problem of the assistant (a model not installed, a runtime not built in, a server that does
+  not answer, a missing voice, a refused microphone) is a plain-language issue under the orb with a
+  button to the settings page that fixes it, in English and Simplified Chinese. Nothing falls back
+  to a stand-in.
+- Configuration schema version 3: `[assistant]` (language, voice, preset, end-of-turn silence,
+  history bounds), `providers.active.dialogue`, and the dialogue backends in the settings.
+  `network.language` and `audio.end_silence_ms` move into `[assistant]`; `[network]` (server
+  address, demo mode, reconnect settings, server provider names), `audio.merge_window_ms`,
+  `audio.min_speech_ms` and selections of the retired models are dropped on the next save.
+- The assistant's entry for the future OpenPRX agent is listed in the settings and resolves to a
+  "not available yet" problem.
+
+### Removed
+- Whisper completely: `whisper-cpp-plus`, the Whisper recogniser, the whisper VAD, the `whisper`
+  feature of `prxvc-audio`, the catalogue entries `whisper-small` and `silero-vad-5.1.2`, the
+  incremental VAD window, the legacy audio loop, endpointing and turn policy, and the examples that
+  used them.
+- The built-in demo backend: the application never builds `MockGateway` (it is a test double behind
+  the feature `test-double`), `network.use_mock` is gone, and the prx-voice server transports
+  (`prx_voice_transport`, `ws_transport`) with their tests and dependencies. The assistant path no
+  longer uses the engine of `prxvc-core`, which only the mobile skeleton (`prxvc-ffi`) and the test
+  kit still need.
+
+### Added
+- `scripts/dev/assistant-harness.sh`: the assistant's loop on recorded speech with the real
+  providers and a latency report, without a microphone or speakers.
+
 ### Fixed
 - Recognised units that are only filler ("嗯", "Mm.", "Uh") are no longer translated or spoken
   (`pipeline.drop_filler`, default on); they are counted and traced. A trailing "嗯。" after real

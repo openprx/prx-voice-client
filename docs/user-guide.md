@@ -104,12 +104,12 @@ You can export a diagnostics bundle from the debug page for troubleshooting. The
 3. Ensure the microphone is not in use by another application.
 4. On Linux, confirm ALSA is installed and your user has audio group membership.
 
-### Connection issues
+### The assistant does not answer
 
-- The app automatically attempts to reconnect up to 5 times with exponential backoff.
-- While reconnecting, the network indicator in the navigation bar shows an orange icon.
-- If all reconnect attempts fail, a red error banner appears. Click **Retry** to manually attempt reconnection.
-- Check your network connectivity if the problem persists.
+- A card under the orb says what is wrong in plain words and has a button that opens the settings page where it is fixed. Close it with **Close**, then click the orb to try again.
+- "The assistant's server is not answering": the dialogue backend (by default the local `llama-server` on `http://127.0.0.1:8080/v1`) is not running. Start it, or choose another backend on the **Assistant** page.
+- "That dialogue backend is not available yet": the OpenPRX agent is listed but cannot answer yet. Choose another backend on the **Assistant** page.
+- A missing or damaged speech model, a missing voice or a blocked server also show a card; **Speech pipeline** lists every step the assistant uses and what is wrong with it.
 
 ### Session stuck in a state
 

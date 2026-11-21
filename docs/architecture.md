@@ -5,7 +5,7 @@
 1. **Session-centric** -- The core object is the `Session`, not individual messages. All state, turns, and transcripts are scoped to a session.
 2. **Real-time priority** -- Audio capture and playback happen on dedicated threads with minimal latency. The UI never blocks audio.
 3. **Observable** -- Every state change emits an event. The debug page and diagnostics bundle expose full system introspection.
-4. **Transport-agnostic** -- The protocol layer defines abstract commands and events. Transports (mock, WebSocket) are interchangeable.
+4. **Ports and adapters** -- Providers (voice activity, recognition, dialogue, translation, synthesis) and audio endpoints sit behind the traits of `prxvc-ports`; the provider registry builds them from configuration and never substitutes a stand-in. The protocol layer's command/event contract and `Transport` trait remain for the mobile skeleton (`prxvc-ffi`), which runs on the in-memory `MockGateway` (feature `test-double`) until it gets a transport of its own.
 5. **Platform-native shells** -- Each platform (desktop, iOS, Android) has a thin native shell. Shared logic lives in Rust crates.
 6. **Graceful degradation** -- Missing permissions, unavailable storage, or failed hotkey registration degrade features without crashing.
 
@@ -42,11 +42,11 @@
                                 |
                                 v
 +---------------------------------------------------------------+
-|                     Transport Adapters                         |
-|  +------------------+  +------------------------------------+ |
-|  | MockGateway      |  | WsTransport (WebSocket JSON)       | |
-|  | (dev/test)       |  | (production)                       | |
-|  +------------------+  +------------------------------------+ |
+|            Transport (mobile skeleton only)                    |
+|  +------------------+                                          |
+|  | MockGateway      |  (feature `test-double`; never built      |
+|  | (tests, FFI)     |   by the desktop application)             |
+|  +------------------+                                          |
 +---------------------------------------------------------------+
 ```
 
@@ -54,8 +54,8 @@
 
 | Crate | Package Name | Purpose | Key Types |
 |-------|-------------|---------|-----------|
-| `crates/core` | `prxvc-core` | App context, lifecycle, engine orchestration | `AppContext`, `AppState`, `Engine`, `PrxvcError` |
-| `crates/session` | `prxvc-session` | Session + interpreting state machines, turns, driver | `Session`, `SessionState`, `InterpretSession`, `InterpretDriver`, `Turn` |
+| `crates/core` | `prxvc-core` | App context, lifecycle, the engine of the mobile skeleton (not used by the desktop assistant) | `AppContext`, `AppState`, `Engine`, `PrxvcError` |
+| `crates/session` | `prxvc-session` | Session + interpreting state machines, turns, the call pipeline and the assistant's voice loop | `Session`, `SessionState`, `assistant::start`, `AssistantState`, `Turn` |
 | `crates/audio` | `prxvc-audio` | Audio I/O, per-app capture, resampling, VAD, routing | `AudioFrame`, `AudioPipeline`, `CoreAudioTapSource`, `MonoResampler16k`, `AppAudioSource` |
 | `crates/protocol` | `prxvc-protocol` | Command/event contracts, transport trait | `Command`, `Event`, `Transport`, `ContractVersion` |
 | `crates/config` | `prxvc-config` | Configuration model, TOML persistence | `AppConfig`, `ConfigManager`, `AppConfigManager` |
@@ -67,9 +67,39 @@
 | `crates/i18n` | `prxvc-i18n` | Internationalization (EN, ZH-CN) | `Locale`, `t()`, `t_with()` |
 | `crates/adapters` | `prxvc-adapters` | MT/TTS adapters (translation, speech synthesis) | `Translator`, `Synthesizer`, `OpenAiTranslator`, `SineToneSynthesizer` |
 | `crates/testkit` | `prxvc-testkit` | Test utilities and mocks | `MockAudioSource`, test factory functions |
-| `apps/desktop` | `prxvc-desktop` | Desktop binary (egui + tokio) | `PrxVoiceApp`, `main()` |
+| `apps/desktop` | `prxvc-desktop` | Desktop binary (egui), the assistant's host and call composition | `PrxVoiceApp`, `AssistantHost`, `main()` |
 
-## Data Flow
+## Voice assistant (desktop)
+
+```
+Orb click -> UI thread: command string -> SharedAppState
+    |
+    v
+Assistant host thread (apps/desktop/src/assistant): claims the microphone (refused while a call runs),
+reads the configuration, prepares the providers from the registry (every problem is an issue with an
+action), starts the session loop
+    |
+    v
+Session loop (prxvc-session/src/assistant)   idle -> listening -> thinking -> speaking
+  microphone (16 kHz) -> Silero VAD -> Qwen3-ASR (partials, final at the end of speech, filler dropped)
+  -> dialogue port (streamed text; the local llama-server by default) -> clause splitter
+  -> Qwen3-TTS (a preset voice or the owner's) -> reply output + half-duplex echo gate
+  speech while it speaks, or a click, cuts the reply; a second click ends the session
+    |
+    v
+Host: events -> SharedAppState (orb state, transcript, issue card), session record -> History
+```
+
+Recognition, voice activity and synthesis are the call pipeline's own providers and, for recognition,
+its own stage; the dialogue is a port (`DialogueBackend`) with one adapter today (OpenAI-compatible
+chat completions, SSE) and a registered placeholder for the future OpenPRX agent that resolves to a
+typed "not available yet" problem. `scripts/dev/assistant-harness.sh` runs the loop on recorded speech
+without a microphone or speakers and reports latencies.
+
+## Data Flow (mobile skeleton)
+
+The flow below is the engine of `prxvc-core`, which the mobile skeleton (`prxvc-ffi`) still uses. The
+desktop assistant does not go through it.
 
 ```
 User Action (click / hotkey / tray)
@@ -83,7 +113,7 @@ Engine Thread: take_commands() -> parse -> Command enum
     v
 Engine::process_command()
     |-- Update SessionManager (state machine transition)
-    |-- Forward to Transport (MockGateway / WsTransport)
+    |-- Forward to Transport (MockGateway)
     |-- Broadcast resulting Event via EventBroadcaster
     |
     v
@@ -212,7 +242,7 @@ Key FFI functions:
 ## Storage
 
 - **SQLite** (`prxvc-storage`) -- persists session records (id, state, created_at, duration, turn count, transcript). Located in the platform data directory.
-- **TOML** (`prxvc-config`) -- persists user configuration (audio, UI, network, privacy, debug settings). Located in the platform config directory.
+- **TOML** (`prxvc-config`) -- persists user configuration (audio, UI, assistant, call, pipeline, providers, privacy, debug settings). Located in the platform config directory.
 - **Platform paths** resolved via the `directories` crate:
   - macOS: `~/Library/Application Support/com.prx.prx-voice-client/`
   - Linux: `~/.config/prx/prx-voice-client/` (config), `~/.local/share/prx/prx-voice-client/` (data)
