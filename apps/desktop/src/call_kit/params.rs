@@ -7,7 +7,9 @@ use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 use prxvc_providers::RecognitionMode as PlannedMode;
 use prxvc_session::pipeline::{PipelineParams, RecognitionMode};
-use prxvc_session::{BacklogParams, CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough};
+use prxvc_session::{
+    BacklogParams, CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough,
+};
 
 fn ms(n: u32) -> Duration {
     Duration::from_millis(u64::from(n))
@@ -100,7 +102,9 @@ pub(crate) fn pipeline_params(
     params.recognition_mode = recognition_mode(mode);
     params.vad_threshold = p.vad_threshold;
     params.min_speech = ms(p.min_speech_ms);
+    params.min_speech_dbfs = p.min_speech_dbfs;
     params.pad = ms(p.pad_ms);
+    params.drop_filler = p.drop_filler;
     params.mt_context_clauses = p.mt_context_clauses as usize;
     params.backlog = BacklogParams {
         enabled: p.backlog_skipping,
@@ -142,6 +146,31 @@ mod tests {
         assert_eq!((params.source, params.target), (Lang::Zh, Lang::En));
         assert_eq!(params.jitter_buffer, Duration::from_millis(150));
         assert_eq!(params.backlog, BacklogParams::default());
+    }
+
+    #[test]
+    fn the_filler_and_level_gates_are_on_by_default_and_read_from_the_keys() {
+        let params = pipeline_params(
+            &AppConfig::default(),
+            Direction::Outgoing,
+            (Lang::Zh, Lang::En),
+            voice(),
+            PlannedMode::TwoPass,
+        );
+        assert!(params.drop_filler);
+        assert_eq!(params.min_speech_dbfs, -75.0);
+        let mut config = AppConfig::default();
+        config.pipeline.drop_filler = false;
+        config.pipeline.min_speech_dbfs = -100.0;
+        let params = pipeline_params(
+            &config,
+            Direction::Incoming,
+            (Lang::En, Lang::Zh),
+            voice(),
+            PlannedMode::TwoPass,
+        );
+        assert!(!params.drop_filler);
+        assert_eq!(params.min_speech_dbfs, -100.0);
     }
 
     #[test]

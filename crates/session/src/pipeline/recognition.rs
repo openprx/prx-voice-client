@@ -21,6 +21,7 @@ use crate::commit_policy::{
     decide_recognition_commit, is_clause_sized,
 };
 use crate::fault::Stage;
+use crate::filler::is_pure_filler;
 use crate::pipeline::snapshot::Stats;
 
 /// Stands in for the unknown text of a clause when the recogniser gives finals only: it makes the pause rule fire once speech has been heard.
@@ -157,6 +158,7 @@ impl RecognitionStage {
                 p.vad_release_threshold,
                 p.min_speech,
                 p.pad,
+                p.min_speech_dbfs,
             ),
             preroll_span: p.min_speech + p.pad + frame_span * 2,
             p: p.clone(),
@@ -254,7 +256,9 @@ impl RecognitionStage {
                     stage: Stage::Vad,
                     failure: vad_failure(&e, true),
                 })?;
-            if let Some(o) = self.segmenter.update(p, f.ts, dur) {
+            let power =
+                f.samples.iter().map(|s| s * s).sum::<f32>() / f.samples.len().max(1) as f32;
+            if let Some(o) = self.segmenter.update(p, power, f.ts, dur) {
                 onset = Some(o);
             }
         }
@@ -560,7 +564,9 @@ impl RecognitionStage {
             }
             return Ok(());
         }
-        if !ending && !is_clause_sized(&self.p.commit, &text) {
+        // A filler never waits as a carry for the next clause: it is dropped in `emit_commit`.
+        let filler = self.p.drop_filler && is_pure_filler(self.p.source, &text);
+        if !ending && !filler && !is_clause_sized(&self.p.commit, &text) {
             open.carry = text;
             return Ok(());
         }
@@ -569,7 +575,13 @@ impl RecognitionStage {
     }
 
     /// Emit a committed clause. With `refinable` and a refine pass configured, its audio goes along.
+    /// A unit that is only filler is not emitted: it is counted and traced, and the stage moves on
+    /// as if it had been committed, so that it is not decoded again.
     fn emit_commit(&mut self, text: String, end: MonoTime, refinable: bool, out: &mut Out) {
+        if self.p.drop_filler && is_pure_filler(self.p.source, &text) {
+            self.drop_filler(&text, end);
+            return;
+        }
         let two_pass = self.p.refines() && refinable;
         let pad = self.p.pad;
         let rate = self.reframer.rate;
@@ -591,17 +603,20 @@ impl RecognitionStage {
             }),
         ));
         open.clause_index = open.clause_index.saturating_add(1);
-        open.last_commit_ts = end;
-        open.carry.clear();
-        open.first_partial_traced = false;
-        let keep_from = end.as_nanos().saturating_sub(duration_nanos(pad));
-        while open
-            .clips
-            .front()
-            .is_some_and(|(ts, _)| ts.as_nanos() < keep_from)
-        {
-            open.clips.pop_front();
-        }
+        advance_past(open, end, pad);
+    }
+
+    /// Count and trace a unit that was only filler. The clause index stays: the next real unit
+    /// takes the place the filler would have had.
+    fn drop_filler(&mut self, text: &str, end: MonoTime) {
+        let pad = self.p.pad;
+        let Some(open) = self.open.as_mut() else {
+            return;
+        };
+        Stats::add(&self.stats.filler_dropped, 1);
+        self.tracer
+            .mark_text(open.clause(), TraceStage::FillerDropped, || text.to_owned());
+        advance_past(open, end.max(open.last_commit_ts), pad);
     }
 
     /// The segment-end pause or the length limit: commit what is left and close the segment.
@@ -626,6 +641,22 @@ impl RecognitionStage {
         self.asr.reset();
         self.segmenter.abandon();
         self.open = None;
+    }
+}
+
+/// The segment's position after a unit that ended at `end` (committed or dropped): what follows
+/// starts there, and the audio before it is no longer kept for the refine pass.
+fn advance_past(open: &mut OpenSegment, end: MonoTime, pad: Duration) {
+    open.last_commit_ts = end;
+    open.carry.clear();
+    open.first_partial_traced = false;
+    let keep_from = end.as_nanos().saturating_sub(duration_nanos(pad));
+    while open
+        .clips
+        .front()
+        .is_some_and(|(ts, _)| ts.as_nanos() < keep_from)
+    {
+        open.clips.pop_front();
     }
 }
 

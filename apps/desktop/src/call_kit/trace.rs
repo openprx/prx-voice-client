@@ -73,6 +73,7 @@ pub(crate) const fn stage_name(stage: TraceStage) -> &'static str {
         TraceStage::ClauseCommitted => "clause_committed",
         TraceStage::FinalDisagrees => "final_disagrees",
         TraceStage::SegmentCut => "segment_cut",
+        TraceStage::FillerDropped => "filler_dropped",
         TraceStage::RefineDone => "refine_done",
         TraceStage::MtRequestSent => "mt_request_sent",
         TraceStage::MtFirstToken => "mt_first_token",
@@ -127,6 +128,7 @@ impl ClauseTimeline {
             (TraceStage::Failed, "failed"),
             (TraceStage::Cancelled, "cancelled"),
             (TraceStage::Skipped, "skipped"),
+            (TraceStage::FillerDropped, "filler dropped"),
         ]
         .into_iter()
         .find(|(s, _)| self.at(*s).is_some())
@@ -403,6 +405,7 @@ impl TraceSink for CallTrace {
                 | TraceStage::Cancelled
                 | TraceStage::Skipped
                 | TraceStage::Failed
+                | TraceStage::FillerDropped
         );
         if terminal && let Some(done) = s.open.remove(&ev.clause) {
             self.finish(&mut s, done);

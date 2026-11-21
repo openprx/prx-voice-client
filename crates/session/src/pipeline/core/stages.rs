@@ -6,6 +6,7 @@ use prxvc_ports::VoiceSelection;
 use super::Core;
 use crate::direction_state::DirectionEvent;
 use crate::fault::{DegradeReason, Stage};
+use crate::filler::is_pure_filler;
 use crate::pipeline::messages::{StageEvent, StageFailure};
 use crate::pipeline::snapshot::{ErrorSnapshot, Stats};
 use crate::segment::{ClauseEventKind, ClauseState};
@@ -61,6 +62,26 @@ impl Core {
             return;
         }
         let text = match result {
+            // The second pass heard nothing, or only a hum where the streaming text had words: the
+            // streaming text stands. That is not a failure of the pass (nothing broke, the clip
+            // simply holds no speech, as with the pad-only clip of a trailing fragment), so it does
+            // not count towards `RefineFailing`. A streaming text that is itself filler never gets
+            // here when the filter is on: the recognition stage drops it.
+            Ok(text)
+                if text.trim().is_empty()
+                    || (self.p.drop_filler
+                        && is_pure_filler(self.p.source, &text)
+                        && self
+                            .clauses
+                            .get(&clause)
+                            .is_some_and(|i| !is_pure_filler(self.p.source, &i.source_text))) =>
+            {
+                Stats::add(&self.w.stats.refine_fallbacks, 1);
+                self.clauses
+                    .get(&clause)
+                    .map(|i| i.source_text.clone())
+                    .unwrap_or_default()
+            }
             Ok(text) => {
                 self.refine_failures = 0;
                 self.set_reason(DegradeReason::RefineFailing, false);

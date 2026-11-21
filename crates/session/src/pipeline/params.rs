@@ -104,8 +104,13 @@ pub struct PipelineParams {
     pub vad_release_threshold: f32,
     /// `pipeline.min_speech_ms`.
     pub min_speech: Duration,
+    /// `pipeline.min_speech_dbfs`: the least mean level, in dBFS, of the frames that start a
+    /// segment; -100 or less is off.
+    pub min_speech_dbfs: f32,
     /// `pipeline.pad_ms`: audio kept before the detected onset.
     pub pad: Duration,
+    /// `pipeline.drop_filler`: a recognised unit that is only filler is not translated or spoken.
+    pub drop_filler: bool,
     /// `pipeline.mt_context_clauses`: previous source/target pairs sent as context.
     pub mt_context_clauses: usize,
     /// `pipeline.backlog_skipping`, `max_backlog_ms` and `max_lag_ms`.
@@ -151,7 +156,9 @@ impl PipelineParams {
             vad_threshold: 0.4,
             vad_release_threshold: 0.25,
             min_speech: Duration::from_millis(160),
+            min_speech_dbfs: -75.0,
             pad: Duration::from_millis(200),
+            drop_filler: true,
             mt_context_clauses: 4,
             backlog: BacklogParams::default(),
             jitter_buffer: Duration::from_millis(150),

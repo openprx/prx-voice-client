@@ -85,6 +85,24 @@ pub enum IssueSeverity {
     Info,
 }
 
+/// What the user can do about an issue, right next to it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IssueAction {
+    /// Nothing beyond reading it.
+    #[default]
+    None,
+    /// End the assistant session that holds the microphone and start call mode again with the same
+    /// options (`AssistantActive`).
+    EndAssistantAndStart,
+    /// Open the Permissions page of the settings (a missing or unavailable consent).
+    OpenPermissions,
+    /// Open the Speech pipeline page of the settings (a provider, model or translation server
+    /// problem).
+    OpenSpeechSettings,
+    /// Open the Audio page of the settings (headphones, devices, the driver).
+    OpenAudioSettings,
+}
+
 /// One condition to show.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IssueView {
@@ -94,6 +112,8 @@ pub struct IssueView {
     pub severity: IssueSeverity,
     /// English detail from the coordinator, shown in small type.
     pub detail: String,
+    /// What the user can do about it.
+    pub action: IssueAction,
 }
 
 /// Where a committed clause is in its life, as the captions show it.
@@ -183,6 +203,10 @@ pub struct CountersView {
     pub underruns: u64,
     /// Clauses that fell back to the streaming text.
     pub refine_fallbacks: u64,
+    /// Recognised units that were only filler and were neither translated nor spoken.
+    pub filler_dropped: u64,
+    /// Translated pieces with nothing to say aloud that never reached the synthesiser.
+    pub unspeakable_dropped: u64,
 }
 
 /// The last finished clause's latency figures.
@@ -313,6 +337,9 @@ pub mod command {
     pub const RESUME: &str = "CallResume";
     /// Make our microphone the default input again.
     pub const REAPPLY_MICROPHONE: &str = "CallReapplyMicrophone";
+    /// End the assistant session and, once it has let go of the microphone, start call mode with
+    /// the options of the start that was refused.
+    pub const END_ASSISTANT_AND_START: &str = "CallEndAssistantAndStart";
 }
 
 #[cfg(test)]

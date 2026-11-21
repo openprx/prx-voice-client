@@ -75,6 +75,20 @@ fn pipeline_section_defaults_to_the_design_values() {
         (400, 480)
     );
     assert_eq!((p.asr_stable_agreement, p.asr_stable_tail_guard), (4, 6));
+    // Filler and quiet-sound gates of the first translated call.
+    assert!(p.drop_filler);
+    assert_eq!(p.min_speech_dbfs, -75.0);
+}
+
+#[test]
+fn a_file_without_the_filler_keys_gets_the_gates_on_and_can_switch_them_off() {
+    let c: AppConfig = toml::from_str("[pipeline]\nmax_segment_s = 20\n").unwrap();
+    assert!(c.pipeline.drop_filler);
+    assert_eq!(c.pipeline.min_speech_dbfs, -75.0);
+    let c: AppConfig =
+        toml::from_str("[pipeline]\ndrop_filler = false\nmin_speech_dbfs = -100.0\n").unwrap();
+    assert!(!c.pipeline.drop_filler);
+    assert_eq!(c.pipeline.min_speech_dbfs, -100.0);
 }
 
 #[test]

@@ -373,6 +373,11 @@ pub struct PipelineConfig {
     pub vad_threshold: f32,
     /// Speech shorter than this does not start a segment, in milliseconds.
     pub min_speech_ms: u32,
+    /// Frames the VAD calls speech but whose mean level is below this (dBFS) do not start a
+    /// segment and are never decoded. The level cannot tell a hum from speech (measured: hums
+    /// -19 to -28 dBFS, benchmark speech down to -65 dBFS), so the floor only removes sounds at
+    /// the level of dither, 10 dB below the quietest speech measured; -100 or less turns it off.
+    pub min_speech_dbfs: f32,
     /// Audio kept before and after speech, in milliseconds.
     pub pad_ms: u32,
     /// When translatable units are committed from the recogniser's stable prefix, before the
@@ -388,6 +393,10 @@ pub struct PipelineConfig {
     pub early_max_wait_ms: u32,
     /// Send the first target sentence to synthesis before the clause is complete.
     pub split_target_clauses: bool,
+    /// Do not translate or speak a recognised unit that is only filler (嗯, 呃, 啊, um, uh, mm,
+    /// hmm, mhm, and punctuation only). A real one-word "嗯" or "Mm." acknowledgement is dropped
+    /// with them; content words such as 好, 对, yes, no and ok are never affected.
+    pub drop_filler: bool,
     /// Translate a stable partial ahead of its commit.
     pub speculative_mt: bool,
     /// Previous clauses given to translation as context.
@@ -423,12 +432,14 @@ impl Default for PipelineConfig {
             max_segment_s: 25,
             vad_threshold: 0.4,
             min_speech_ms: 160,
+            min_speech_dbfs: -75.0,
             pad_ms: 200,
             early_commit: "chunk".to_owned(),
             early_chunk_chars: 8,
             early_chunk_words: 6,
             early_max_wait_ms: 2_500,
             split_target_clauses: false,
+            drop_filler: true,
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,

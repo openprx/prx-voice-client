@@ -605,3 +605,56 @@ fn a_refine_failure_falls_back_to_the_streaming_text_and_three_in_a_row_degrade(
     );
     assert_eq!(h.late(), before + 1);
 }
+
+/// Commit `text` with refine audio as the `i`th clause of segment 1 and answer the refine job with `result`.
+fn refine_with(h: &mut Harness, i: u16, text: &str, result: Result<String, StageFailure>) {
+    let c = Commit {
+        text: text.to_owned(),
+        source_start: MonoTime::from_millis(100 + u64::from(i) * 500),
+        source_end: MonoTime::from_millis(600 + u64::from(i) * 500),
+        audio: Some(Arc::new(ClauseSamples {
+            samples: vec![0.0; 160],
+            rate: SampleRate::HZ_16000,
+        })),
+    };
+    let e = Envelope::new(
+        seg(1),
+        1,
+        MonoTime::from_millis(100),
+        RecognitionEvent::Commit(c),
+    );
+    h.core.handle(Inbound::Recognition(e));
+    let id = cl(1, i);
+    h.stage(id, StageEvent::Refined { clause: id, result });
+}
+
+#[test]
+fn a_refine_pass_that_hears_nothing_keeps_the_streaming_text_and_is_not_a_failure() {
+    let mut h = harness(|p| p.recognition_mode = crate::pipeline::params::RecognitionMode::TwoPass);
+    h.speech(1);
+    for i in 0u16..5 {
+        refine_with(&mut h, i, "第一句话很长很长", Ok(String::new()));
+        assert_eq!(
+            h.snapshot().clauses.last().map(|c| c.source_text.clone()),
+            Some("第一句话很长很长".to_owned())
+        );
+    }
+    let snap = h.snapshot();
+    assert_eq!(snap.counters.refine_fallbacks, 5);
+    assert!(
+        !snap.reasons.contains(&DegradeReason::RefineFailing),
+        "an empty result is not three failures in a row"
+    );
+}
+
+#[test]
+fn a_refine_pass_that_hears_only_a_hum_does_not_replace_the_words_of_the_streaming_text() {
+    let mut h = harness(|p| p.recognition_mode = crate::pipeline::params::RecognitionMode::TwoPass);
+    h.speech(1);
+    refine_with(&mut h, 0, "我们明天见面", Ok("嗯。".to_owned()));
+    assert_eq!(
+        h.snapshot().clauses.last().map(|c| c.source_text.clone()),
+        Some("我们明天见面".to_owned())
+    );
+    assert_eq!(h.snapshot().counters.refine_fallbacks, 1);
+}

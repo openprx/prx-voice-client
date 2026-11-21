@@ -3,6 +3,7 @@
 use prxvc_desktop_ui::call_view::{
     CaptionView, ClauseStatus, CountersView, LatencyView, PartialView,
 };
+use prxvc_desktop_ui::call_view::IssueAction;
 use prxvc_desktop_ui::{
     ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
 };
@@ -165,6 +166,8 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
             capture_overruns: c.capture_overruns,
             underruns,
             refine_fallbacks: c.refine_fallbacks,
+            filler_dropped: c.filler_dropped,
+            unspeakable_dropped: c.unspeakable_dropped,
         });
         view.latency = latency.map(|l| LatencyView {
             speech_start_to_first_audio_ms: l.speech_start_to_first_audio_ms,
@@ -175,8 +178,34 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
     view
 }
 
+/// What the call window offers next to an issue.
+fn action_of(code: CallErrorCode) -> IssueAction {
+    match code {
+        CallErrorCode::AssistantActive => IssueAction::EndAssistantAndStart,
+        CallErrorCode::MicrophoneConsentDenied
+        | CallErrorCode::MicrophoneConsentUnavailable
+        | CallErrorCode::CaptureConsentDenied
+        | CallErrorCode::CaptureConsentUnavailable
+        | CallErrorCode::DriverMissing
+        | CallErrorCode::DriverNotLoaded
+        | CallErrorCode::DriverStale
+        | CallErrorCode::DriverWrongVariant
+        | CallErrorCode::DriverUnusable => IssueAction::OpenPermissions,
+        CallErrorCode::SpeakerOutput
+        | CallErrorCode::NoMicrophone
+        | CallErrorCode::MicrophoneUnavailable
+        | CallErrorCode::MicrophoneChanged
+        | CallErrorCode::LocalOutputUnavailable => IssueAction::OpenAudioSettings,
+        CallErrorCode::TranslationUnavailable | CallErrorCode::Provider(_) => {
+            IssueAction::OpenSpeechSettings
+        }
+        _ => IssueAction::None,
+    }
+}
+
 fn issue(i: &CallIssue) -> IssueView {
     IssueView {
+        action: action_of(i.code),
         key: issue_key(i.code).to_owned(),
         severity: match i.severity {
             Severity::Blocking => IssueSeverity::Blocking,

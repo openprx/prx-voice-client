@@ -565,7 +565,7 @@ fn chinese_and_latin_text_render_in_every_style() {
     assert!(text.contains("quick brown fox"));
 }
 
-/// The call-mode control inside the debug window, in both languages, light and dark,
+/// The raw call diagnostics inside the debug window, in both languages, light and dark,
 /// with an idle panel and with a running panel that carries issues.
 #[test]
 fn call_control_renders_in_both_languages_with_issues() {
@@ -593,11 +593,13 @@ fn call_control_renders_in_both_languages_with_issues() {
             key: "call.issue.default_input_displaced".into(),
             severity: IssueSeverity::Degraded,
             detail: "the default input is now AirPods".into(),
+            ..IssueView::default()
         }],
         last_error: Some(IssueView {
             key: "call.issue.driver_missing".into(),
             severity: IssueSeverity::Blocking,
             detail: String::new(),
+            ..IssueView::default()
         }),
     };
     // A translating call: captions with a stable prefix, counters, latency, level and the gate.
@@ -635,6 +637,7 @@ fn call_control_renders_in_both_languages_with_issues() {
             key: "call.issue.speaker_output".into(),
             severity: IssueSeverity::Degraded,
             detail: "local output: MacBook Pro Speakers".into(),
+            ..IssueView::default()
         }],
         ..CallPanel::default()
     };
@@ -651,7 +654,7 @@ fn call_control_renders_in_both_languages_with_issues() {
                 });
                 assert!(shapes > 0);
                 assert!(text.contains(&prxvc_i18n::t("call.title")), "{text}");
-                assert!(text.contains(&prxvc_i18n::t("call.start")));
+                assert!(text.contains(&prxvc_i18n::t("callwin.debug_link")));
             }
         }
     }

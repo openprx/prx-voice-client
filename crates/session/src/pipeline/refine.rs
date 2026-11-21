@@ -6,11 +6,10 @@ use prxvc_media::Lang;
 use prxvc_ports::{AsrContext, RefineAsr, TraceStage};
 
 use super::faults::asr_failure;
-use super::messages::{RefineJob, StageEvent, StageFailure};
+use super::messages::{RefineJob, StageEvent};
 use super::outbox::{Meta, Outbox};
 use super::queue::{BoundedQueue, Popped, Wait};
 use super::trace::Tracer;
-use crate::fault::FaultKind;
 use prxvc_media::Envelope;
 
 /// Everything the refine thread uses.
@@ -60,15 +59,16 @@ impl RefineStage {
             .refine
             .transcribe(&audio.samples, audio.rate, self.lang, &ctx, &token);
         let result = match result {
-            Ok(h) if !h.text.trim().is_empty() => {
-                self.tracer.mark(clause, TraceStage::RefineDone);
-                *previous = Some(h.text.trim().to_owned());
-                Ok(h.text.trim().to_owned())
+            // An empty text is a result, not a failure: the clip holds no speech. The control
+            // thread keeps the streaming text and does not count it against the refine pass.
+            Ok(h) => {
+                let text = h.text.trim().to_owned();
+                if !text.is_empty() {
+                    self.tracer.mark(clause, TraceStage::RefineDone);
+                    *previous = Some(text.clone());
+                }
+                Ok(text)
             }
-            Ok(_) => Err(StageFailure::new(
-                FaultKind::Crashed,
-                "refine returned no text",
-            )),
             Err(e) if e.is_cancelled() || token.is_cancelled() => return,
             Err(e) => Err(asr_failure(&e, true)),
         };

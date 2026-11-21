@@ -122,6 +122,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "suspect translations {0}, runaway synthesis {1}, capture overruns {2}, underruns {3}, refine fallbacks {4}",
     ),
     (
+        "call.counters.line3",
+        "filler dropped {0}, unspeakable pieces dropped {1}",
+    ),
+    (
         "call.latency.none",
         "No clause has finished yet.",
     ),
@@ -264,6 +268,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     (
         "call.counters.line2",
         "\u{53ef}\u{7591}\u{8bd1}\u{6587} {0}\u{ff0c}\u{5408}\u{6210}\u{5931}\u{63a7} {1}\u{ff0c}\u{91c7}\u{96c6}\u{6ea2}\u{51fa} {2}\u{ff0c}\u{6b20}\u{8f7d} {3}\u{ff0c}\u{7cbe}\u{4fee}\u{56de}\u{9000} {4}",
+    ),
+    (
+        "call.counters.line3",
+        "\u{5df2}\u{4e22}\u{5f03}\u{8bed}\u{6c14}\u{8bcd} {0}\u{ff0c}\u{5df2}\u{4e22}\u{5f03}\u{65e0}\u{53ef}\u{8bfb}\u{5185}\u{5bb9}\u{7684}\u{7247}\u{6bb5} {1}",
     ),
     (
         "call.latency.none",

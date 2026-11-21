@@ -24,6 +24,9 @@ pub enum TraceStage {
     /// segment. Recorded against the clause the cut committed (or the first clause of the segment
     /// that was cut when it committed none).
     SegmentCut,
+    /// A recognised unit that was only filler ("嗯", "Mm.") was dropped: not translated, not
+    /// spoken. Recorded against the clause the unit would have been; with text, the unit.
+    FillerDropped,
     /// The refine pass finished.
     RefineDone,
     /// The translation request was sent.

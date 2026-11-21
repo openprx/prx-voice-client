@@ -43,6 +43,7 @@ mod direction_state;
 mod error;
 mod event;
 mod fault;
+mod filler;
 mod ids;
 mod interrupt;
 mod manager;
@@ -74,6 +75,7 @@ pub use direction_state::{
 pub use error::SessionError;
 pub use event::SessionEvent;
 pub use fault::{Blocker, DegradeReason, Endpoint, FaultKind, ProviderRole, Stage};
+pub use filler::is_pure_filler;
 pub use ids::{SessionId, TurnId};
 pub use interrupt::{CancelAction, InterruptParams, InterruptTrigger, decide_interrupt};
 pub use manager::SessionManager;
