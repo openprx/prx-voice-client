@@ -553,7 +553,7 @@ impl SpeechSynth for QwenTts {
     }
 
     fn synthesize(&self, req: TtsRequest) -> Result<Box<dyn TtsStream>, TtsError> {
-        if req.text.trim().is_empty() {
+        if !prxvc_media::has_speakable_content(&req.text) {
             return Err(TtsError::Rejected { status: 400 });
         }
         if req.text.contains('\0') || req.text.chars().count() > cap::MAX_TEXT_CHARS {

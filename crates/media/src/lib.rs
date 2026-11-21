@@ -11,6 +11,7 @@
 //! * `lang`: [`Lang`], the languages the pipeline translates between.
 //! * `ids`: [`Direction`], [`SegmentId`] and [`ClauseId`].
 //! * `clause_split`: the incremental splitter from translated text to clauses.
+//! * `speakable`: whether a text has anything to say aloud.
 //! * `text_units`: the comparison units of a transcript (one per CJK character, one per other word).
 //! * `envelope`: [`Envelope`] and the [`RevisionTracker`] that drops late results.
 
@@ -20,6 +21,7 @@ pub mod envelope;
 pub mod ids;
 pub mod lang;
 pub mod rate;
+pub mod speakable;
 pub mod text_units;
 pub mod time;
 
@@ -31,4 +33,5 @@ pub use envelope::{Envelope, EnvelopeKey, RevisionTracker};
 pub use ids::{ClauseId, Direction, SegmentId};
 pub use lang::{Lang, UnknownLang};
 pub use rate::{InvalidSampleRate, SampleRate};
+pub use speakable::has_speakable_content;
 pub use time::{Clock, ManualClock, MonoTime, SystemClock};

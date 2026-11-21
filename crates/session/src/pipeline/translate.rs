@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use prxvc_media::{ClauseId, Envelope, SegmentId};
+use prxvc_media::{ClauseId, Envelope, SegmentId, has_speakable_content};
 use prxvc_ports::{
     CancellationToken, MtDelta, MtError, MtRequest, MtStream, TraceStage, Translator,
 };
@@ -189,6 +189,16 @@ impl Run<'_> {
         Ended::Failed
     }
 
+    /// Whether `piece` has anything to say aloud. One that has not (a lone mark between two
+    /// clauses) is counted and never sent to the synthesiser.
+    fn speakable(&self, piece: &str) -> bool {
+        let ok = has_speakable_content(piece);
+        if !ok {
+            Stats::add(&self.stage.stats.unspeakable_dropped, 1);
+        }
+        ok
+    }
+
     fn piece(&self, text: String, end: bool) -> bool {
         let job = Envelope::new(
             self.clause.segment(),
@@ -236,6 +246,9 @@ impl Run<'_> {
                         return (Ended::Cancelled, String::new());
                     }
                     for p in pieces {
+                        if !self.speakable(&p) {
+                            continue;
+                        }
                         if !self.piece(p, false) {
                             return (Ended::Cancelled, String::new());
                         }
@@ -275,6 +288,9 @@ impl Run<'_> {
         if self.full.trim().is_empty() {
             return self.suspect("empty");
         }
+        if !has_speakable_content(&self.full) {
+            return self.suspect("nothing to say aloud");
+        }
         let full = &self.full;
         self.stage
             .tracer
@@ -283,8 +299,9 @@ impl Run<'_> {
             clause: self.clause,
         });
         let last = self.splitter.finish();
-        let ok =
-            sent && last.is_none_or(|p| self.piece(p, false)) && self.piece(String::new(), true);
+        let ok = sent
+            && last.is_none_or(|p| !self.speakable(&p) || self.piece(p, false))
+            && self.piece(String::new(), true);
         if ok { Ended::Done } else { Ended::Cancelled }
     }
 }

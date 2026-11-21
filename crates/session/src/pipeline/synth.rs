@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use prxvc_media::{ClauseId, Envelope, SegmentId};
+use prxvc_media::{ClauseId, Envelope, SegmentId, has_speakable_content};
 use prxvc_ports::{
     CancellationToken, SpeechSynth, TraceStage, TtsError, TtsItem as PortItem, TtsRequest,
     TtsStream,
@@ -78,6 +78,14 @@ impl TtsStage {
         } = job.payload;
         if token.is_cancelled() {
             Stats::add(&self.stats.late_dropped, 1);
+            return;
+        }
+        if !has_speakable_content(&text) {
+            // The translation stage never sends such a piece; this is the last line of defence
+            // against a text the synthesiser would only fail or run away on.
+            Stats::add(&self.stats.unspeakable_dropped, 1);
+            let failure = StageFailure::new(FaultKind::Rejected, "nothing to say aloud");
+            self.send_failure(clause, meta, &token, failure, false);
             return;
         }
         if progress.announced != Some(clause) {

@@ -121,6 +121,12 @@ pub struct Counters {
     pub clauses_played: u64,
     /// Clauses that ended failed.
     pub clauses_failed: u64,
+    /// Recognised units that were only filler ("嗯", "Mm.") and were neither translated nor spoken
+    /// (`pipeline.drop_filler`).
+    pub filler_dropped: u64,
+    /// Translated pieces with nothing to say aloud (punctuation or symbols only) that were never
+    /// sent to the synthesiser.
+    pub unspeakable_dropped: u64,
 }
 
 /// Everything the UI shows of one direction, published on change.
@@ -174,6 +180,8 @@ pub(crate) struct Stats {
     pub(crate) clauses_committed: AtomicU64,
     pub(crate) clauses_played: AtomicU64,
     pub(crate) clauses_failed: AtomicU64,
+    pub(crate) filler_dropped: AtomicU64,
+    pub(crate) unspeakable_dropped: AtomicU64,
     /// Frames the recogniser consumed; tests use it to pace their input.
     pub(crate) frames_consumed: AtomicU64,
 }
@@ -204,6 +212,8 @@ impl Stats {
             clauses_committed: get(&self.clauses_committed),
             clauses_played: get(&self.clauses_played),
             clauses_failed: get(&self.clauses_failed),
+            filler_dropped: get(&self.filler_dropped),
+            unspeakable_dropped: get(&self.unspeakable_dropped),
         }
     }
 }
