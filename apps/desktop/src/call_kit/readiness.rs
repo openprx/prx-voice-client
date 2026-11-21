@@ -14,7 +14,7 @@ use prxvc_media::Direction;
 use prxvc_session::call::{CallErrorCode, OutputRoute, ProviderIssue};
 
 use super::problems::problem_fault;
-use super::providers::{ProviderHost, probe_server};
+use super::providers::ProviderHost;
 use super::route::{classify, output_entry};
 
 /// How a line reads.
@@ -37,7 +37,7 @@ pub(crate) struct Line {
 }
 
 impl Line {
-    fn new(status: Status, label: &str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(status: Status, label: &str, detail: impl Into<String>) -> Self {
         Self {
             status,
             label: label.to_owned(),
@@ -161,6 +161,7 @@ pub(crate) fn provider_lines(config: &AppConfig) -> Vec<Line> {
                     plan.directions[1].target
                 ),
             ));
+            lines.push(super::engine_report::selected_line(config));
             lines.push(Line::new(
                 Status::Ok,
                 "voice activity",
@@ -184,14 +185,7 @@ pub(crate) fn provider_lines(config: &AppConfig) -> Vec<Line> {
                     "voice",
                     format!("{:?}: {:?}", d.direction, d.tts.primary.voice.selection()),
                 ));
-                match probe_server(&d.mt.primary) {
-                    Ok(()) => lines.push(Line::new(Status::Ok, "translation server", format!("{:?}: {} answers", d.direction, d.mt.primary.base_url))),
-                    Err(reason) => lines.push(Line::new(
-                        Status::Missing,
-                        "translation server",
-                        format!("{:?}: {} does not answer ({reason}): start it (scripts/dev/llama-server.sh start)", d.direction, d.mt.primary.base_url),
-                    )),
-                }
+                lines.extend(super::engine_report::lines_of(config, d.direction, &d.mt.primary));
             }
         }
         Err(problems) => {

@@ -234,11 +234,15 @@ mod tests {
                 } else {
                     "{\"data\":[{\"id\":\"alias-x\"}]}"
                 };
-                let _ = write!(
-                    s,
+                // One write, then an orderly close: a reply in pieces followed by a reset would
+                // truncate what the client reads.
+                let reply = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
+                let _ = s.write_all(reply.as_bytes());
+                let _ = s.flush();
+                let _ = s.shutdown(std::net::Shutdown::Write);
             }
         });
         assert_eq!(HttpProbe.probe(port, "alias-x"), PortState::Compatible);

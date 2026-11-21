@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--engine system|llm] [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -20,6 +20,8 @@
 //!   `config.toml` keeps the values of the release that wrote it).
 //! * `--own-set DIR` takes the rows of `DIR/own.tsv` in the set's language (id, lang, voice, text;
 //!   `DIR/own/<id>.wav`); `--no-barge-in` sets `call.barge_in = false` for the run.
+//! * `--engine system|llm` sets `call.translation_engine` for the run (system translation needs the
+//!   `apple-translation` feature and the language packs; the language model needs a server on port 8080).
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
@@ -80,6 +82,7 @@ struct Options {
     own: String,
     peer: String,
     vad_profile: bool,
+    engine: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -103,6 +106,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         own: "zh".into(),
         peer: "en".into(),
         vad_profile: false,
+        engine: None,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -151,6 +155,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--subset" => o.subset = Some(value(arg, &mut it)?),
             "--no-backlog-skip" => o.no_backlog_skip = true,
             "--vad-profile" => o.vad_profile = true,
+            "--engine" => {
+                let engine = value(arg, &mut it)?;
+                if prxvc_config::TranslationEngine::parse(&engine).is_none() {
+                    return Err(format!("unknown engine {engine} (system or llm)"));
+                }
+                o.engine = Some(engine);
+            }
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -279,6 +290,9 @@ fn execute(o: &Options) -> Result<bool, String> {
     if o.no_barge_in {
         config.call.barge_in = false;
     }
+    if let Some(engine) = &o.engine {
+        config.call.translation_engine.clone_from(engine);
+    }
     if o.no_backlog_skip {
         config.pipeline.backlog_skipping = false;
     }
@@ -307,10 +321,12 @@ fn execute(o: &Options) -> Result<bool, String> {
     }
     println!("== {} ==", o.tag);
     println!(
-        "direction {:?}: {} to {}, recognition {:?}, commit {}, output {}",
+        "direction {:?}: {} to {}, translation engine {} ({}), recognition {:?}, commit {}, output {}",
         o.direction,
         direction_plan.source,
         direction_plan.target,
+        config.call.translation_engine,
+        direction_plan.mt.primary.model,
         plan.recognition,
         config.pipeline.early_commit,
         if o.vmic {
@@ -524,7 +540,8 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match execute(&options) {
+    // System translation needs the main thread's run loop: the run happens on a second thread.
+    match call_kit::main_loop::with_main_loop(|| execute(&options)) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(1),
         Err(e) => {

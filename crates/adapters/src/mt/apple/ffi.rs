@@ -215,3 +215,31 @@ pub fn runtime_version() -> String {
     };
     format!("bridge abi {abi}, {os}")
 }
+
+/// Run `work` on a second thread while the calling thread, which must be the main thread, runs
+/// the main run loop the framework needs, and return the result. For command-line tools and test
+/// binaries (an application's own main thread already runs its loop). The loop stops when `work`
+/// returns, also when it panics (the panic is then resumed here).
+pub fn run_with_main_loop<T: Send>(work: impl FnOnce() -> T + Send) -> T {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let exited = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+            // A stop that arrives before the loop has started is forgotten, so repeat it.
+            while !exited.load(Ordering::Acquire) {
+                // SAFETY: `prxat_stop_main_loop` may be called from any thread at any time.
+                unsafe { sys::prxat_stop_main_loop() };
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            result
+        });
+        // SAFETY: the caller is the main thread; the call returns when the worker stops the loop.
+        unsafe { sys::prxat_run_main_loop() };
+        exited.store(true, Ordering::Release);
+        match worker.join().expect("the worker thread") {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    })
+}

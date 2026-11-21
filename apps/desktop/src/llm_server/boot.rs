@@ -7,37 +7,21 @@ use parking_lot::Mutex;
 use prxvc_config::AppConfig;
 use prxvc_config::paths::AppPaths;
 use prxvc_models::{Catalogue, ModelId};
-use prxvc_providers::{DEFAULT_MT_PROVIDER, ModelSource};
+use prxvc_providers::ModelSource;
 
 use super::core::{Core, Demand, Deps, Settings};
 use super::handle::LlmServer;
-use super::locate::{find_binary, is_executable_file};
 use super::problem::ServerProblem;
 use super::real::{HttpProbe, RealLauncher, RealProcesses, SystemClock};
 use super::record::{Sweep, sweep};
 use crate::call_kit::models::StoreModels;
+use crate::call_kit::server_locate::{find_binary, is_executable_file};
 
 /// The model the server serves, and the name it answers to (`--alias`): the catalogue id of the
 /// default translation model.
 pub(crate) const MODEL_ID: &str = "gemma-4-e4b-it-qat-q4-0";
 
-/// Whether `provider` at `base_url` is the server this manager runs: the built-in
-/// `local-llama-server` on this computer.
-pub(crate) fn manages(provider: &str, base_url: &str) -> Option<u16> {
-    if provider != DEFAULT_MT_PROVIDER {
-        return None;
-    }
-    let url = url::Url::parse(base_url).ok()?;
-    let local = matches!(
-        url.host_str(),
-        Some("127.0.0.1" | "localhost" | "[::1]" | "::1")
-    );
-    if local {
-        url.port_or_known_default()
-    } else {
-        None
-    }
-}
+pub(crate) use crate::call_kit::model_server::manages;
 
 /// The settings of the real server: the arguments of `scripts/dev/llama-server.sh` (two parallel
 /// slots, 8192 tokens of context, all layers on the GPU), port 8080.
@@ -63,7 +47,8 @@ pub(crate) fn settings(config: &AppConfig, paths: &AppPaths) -> Settings {
 fn resolver(configured: String, models_dir: std::path::PathBuf) -> super::core::Resolve {
     Box::new(move || {
         let path_var = std::env::var("PATH").ok();
-        let binary = find_binary(&configured, path_var.as_deref(), &is_executable_file)?;
+        let binary = find_binary(&configured, path_var.as_deref(), &is_executable_file)
+            .map_err(|searched| ServerProblem::BinaryMissing { searched })?;
         let catalogue = Arc::new(Catalogue::embedded());
         let missing = |detail: String| ServerProblem::ModelMissing { detail };
         let store = StoreModels::open(models_dir.clone(), catalogue)

@@ -7,11 +7,11 @@ What this test shows: you press **Start** with **Translate** on, make a WhatsApp
 
 ## What the build does
 
-- **Outgoing** (you speak Mandarin, the other person hears English): microphone, voice detection, recognition (a streaming draft, then a second decode of each clause), translation by the local server, synthesis in your cloned voice (embedding-only mode), the mixer, the virtual microphone. What the other person hears is decided by the direction's state machine and announced in the Call translation window: the translation, your own voice (while paused or after a failure, the default), or nothing.
+- **Outgoing** (you speak Mandarin, the other person hears English): microphone, voice detection, recognition (a streaming draft, then a second decode of each clause), translation by the selected engine (system translation by default, or the local language model), synthesis in your cloned voice (embedding-only mode), the mixer, the virtual microphone. What the other person hears is decided by the direction's state machine and announced in the Call translation window: the translation, your own voice (while paused or after a failure, the default), or nothing.
 - **Incoming** (the other person speaks English, you hear Chinese): the client taps WhatsApp **muted while tapped**, so you do not hear the original twice and WhatsApp comes back by itself if the client dies. The client plays to your output through its own mixer: first the original (so you are never left in silence), then the translation per `call.local_output_mode` (default `translation`: translation only; `both`: the original lowered by `call.original_gain_db`, -12 dB, under the translation; `original`: the original only). The voice is the preset named in `voice.incoming_preset`.
 - **Audio only** (the Translate switch off) is unchanged: unmuted tap, nothing played by the client.
 - **Headphones are required.** On the built-in speakers the client shows a warning (the output is the built-in speaker) and, with `audio.echo_mode = auto`, closes the microphone while it plays ("Paused while you listen", PD-6.3).
-- **The translation server is yours to start** (decision D-P6).
+- **Translation engine** (`call.translation_engine`, Settings, Call translation): **system translation** is the default on macOS 26 and later (Apple's on-device Translation framework: fast, light, translates each sentence on its own, no context); the **language model** (Gemma 4 E4B on a local `llama-server`) is the alternative. **No server needs to be started by hand any more**: selecting the language model makes the application start the local server (status in the settings: starting, ready, failed with the reason); selecting system translation stops it; the assistant starts it on demand and it stops again 60 s after the last use (`llm_server.idle_stop_s`). A server you started yourself on port 8080 is used as it is and never stopped by the application.
 - **The Skip command exists in the coordinator but has no button yet**; Pause and Resume pause both directions.
 - **Filler is not translated.** A recognised unit that is only a hum or hesitation (嗯, 呃, 啊, 哦, 唔, um, uh, mm, hmm, mhm, and punctuation only) is dropped before translation: it is counted ("Dropped filler" in the window, `filler_dropped` in the counters) and never spoken. Real answers are kept (好, 对, 是, yes, no, ok, 嗯嗯好的). A one-word "嗯" or "Mm." meant as an acknowledgement is dropped too, by design; `pipeline.drop_filler = false` turns the rule off.
 
@@ -26,11 +26,7 @@ What this test shows: you press **Start** with **Translate** on, make a WhatsApp
    ```
 
    The preset `dev-standin` is a **stand-in made with the system synthesizer**, not a product voice and not your voice.
-3. Start the translation server and leave it running:
-
-   ```bash
-   scripts/dev/llama-server.sh start      # Gemma 4 E4B on http://127.0.0.1:8080/v1, two slots
-   ```
+3. Translation engine. With the default (system translation) nothing has to be started; the Chinese and English language packs must be installed (System Settings, General, Language & Region, Translation Languages: download Chinese (Simplified) and English; `scripts/dev/preflight.sh` and the settings page say when one is missing). For the language-model engine choose it in the settings: the application starts the server itself. `scripts/dev/llama-server.sh start` still works for a server of your own, which the application then adopts.
 
 4. Build the bundle with both native runtimes, signed with the development identity, without opening it, and check everything:
 
@@ -98,7 +94,7 @@ Expected: the translation keeps numbers, dates, names and negations (the prototy
 
 ## Item 5: failure announced, the original plays
 
-1. Stop the translation server (`scripts/dev/llama-server.sh stop`) in the middle of a call, then speak. Expected: after a failed clause the other person hears your original voice, the lane says "the other person hears: your own voice", a failure shows in the issues, and the translation returns by itself a few seconds after `scripts/dev/llama-server.sh start`.
+1. With the language-model engine, stop the model server in the middle of a call (`kill` the `llama-server` process the application started, or `scripts/dev/llama-server.sh stop` for your own), then speak. Expected: after a failed clause the other person hears your original voice, the lane says "the other person hears: your own voice", a failure shows in the issues, and the translation returns by itself: the application restarts a server it started (up to three times in five minutes, with a growing delay). With system translation there is no server to stop; to see its problem path, remove a language pack in System Settings and start a call: the issue says the pack is missing and offers "Open translation languages" and "Switch to the language model".
 2. Switch the default input away and back as in item 5 of the M1 checklist.
 
 ## Item 6: WhatsApp quits, sleep, stop, crash
@@ -134,7 +130,7 @@ Set `debug.call_trace = true` (and, if you accept the texts in a file on your di
 - Press **Stop** (or quit from the tray menu): the default input is restored first, then the paths close, and WhatsApp plays by itself again.
 - If the app dies: relaunch it; it restores the default input before anything else (you can also set it in System Settings, Sound, Input). While the client is dead and WhatsApp is silent, quit WhatsApp's call or relaunch the client: a tap that is gone gives WhatsApp's sound back.
 - If you hear nothing from WhatsApp while the client runs: the issue list says whether the local output could not be opened (then the tap stays unmuted and WhatsApp plays itself) or whether the tap lost signal.
-- Stop the server when you are done: `scripts/dev/llama-server.sh stop`.
+- The application stops the model server it started when it quits (and after a crash, the next start stops the one it left behind). A server you started yourself is yours to stop.
 
 ## What to report
 

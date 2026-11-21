@@ -309,7 +309,7 @@ Threading contract (also in the header and in the `-sys` crate docs):
 - The framework delivers its work through the **main dispatch queue**. The process's main thread must run
   its run loop: the application does (winit/AppKit); a command-line tool or test binary calls
   `prxat_run_main_loop` on its main thread and works on another thread (`crates/adapters/tests/apple_translation_live.rs`,
-  `call_harness`). Without it the framework never answers; the bridge detects this in about one second and
+  `call_harness`, `prxvc-dev`, the bundle's `--check-call`: all through `prxvc_adapters::mt::apple::ffi::run_with_main_loop`). Without it the framework never answers; the bridge detects this in about one second and
   returns `PRXAT_NO_MAIN_LOOP`.
 - After a timeout the bridge replaces its internal framework session, so the next call starts clean.
 - Errors are codes plus a message; strings returned by the library are freed with `prxat_free`.

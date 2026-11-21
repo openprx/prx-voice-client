@@ -1,8 +1,6 @@
-//! Finding the `llama-server` binary and the model file.
+//! Finding the `llama-server` binary (shared by the application's server manager and the readiness report).
 
 use std::path::{Path, PathBuf};
-
-use super::problem::ServerProblem;
 
 /// The directories searched before `PATH`.
 pub(crate) const DEFAULT_DIRS: [&str; 2] = ["/opt/homebrew/bin", "/usr/local/bin"];
@@ -11,19 +9,19 @@ pub(crate) const DEFAULT_DIRS: [&str; 2] = ["/opt/homebrew/bin", "/usr/local/bin
 /// default directories, then in `PATH`.
 ///
 /// # Errors
-/// `BinaryMissing`, naming every place that was looked at.
+/// Every place that was looked at.
 pub(crate) fn find_binary(
     configured: &str,
     path_var: Option<&str>,
     is_executable: &dyn Fn(&Path) -> bool,
-) -> Result<PathBuf, ServerProblem> {
+) -> Result<PathBuf, Vec<PathBuf>> {
     let configured = configured.trim();
     if !configured.is_empty() {
         let p = PathBuf::from(configured);
         return if is_executable(&p) {
             Ok(p)
         } else {
-            Err(ServerProblem::BinaryMissing { searched: vec![p] })
+            Err(vec![p])
         };
     }
     let mut searched: Vec<PathBuf> = DEFAULT_DIRS
@@ -42,7 +40,7 @@ pub(crate) fn find_binary(
         .iter()
         .find(|p| is_executable(p))
         .cloned()
-        .ok_or(ServerProblem::BinaryMissing { searched })
+        .ok_or(searched)
 }
 
 /// Whether `path` is a regular file with an execute bit.
@@ -59,12 +57,7 @@ mod tests {
     fn a_configured_path_is_the_only_place_looked_at() {
         let exists = |p: &Path| p == Path::new("/opt/homebrew/bin/llama-server");
         let err = find_binary("/nope/llama-server", None, &exists).unwrap_err();
-        assert_eq!(
-            err,
-            ServerProblem::BinaryMissing {
-                searched: vec![PathBuf::from("/nope/llama-server")]
-            }
-        );
+        assert_eq!(err, vec![PathBuf::from("/nope/llama-server")]);
         assert_eq!(
             find_binary("/opt/homebrew/bin/llama-server", None, &exists).unwrap(),
             PathBuf::from("/opt/homebrew/bin/llama-server")
@@ -84,9 +77,7 @@ mod tests {
             PathBuf::from("/x/bin/llama-server")
         );
         let none = |_: &Path| false;
-        let Err(ServerProblem::BinaryMissing { searched }) =
-            find_binary("", Some("/x/bin:/opt/homebrew/bin"), &none)
-        else {
+        let Err(searched) = find_binary("", Some("/x/bin:/opt/homebrew/bin"), &none) else {
             panic!("expected a missing binary");
         };
         assert_eq!(searched.len(), 3, "no place twice: {searched:?}");

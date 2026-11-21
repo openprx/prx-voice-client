@@ -67,7 +67,7 @@ fn main() -> eframe::Result<()> {
         }
         cli::Mode::CheckCall => {
             println!("{}", cli::check_report(bundle::current()));
-            println!("{}", check_call_report());
+            println!("{}", call_kit::main_loop::with_main_loop(check_call_report));
             return Ok(());
         }
         cli::Mode::Unknown => {

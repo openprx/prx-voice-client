@@ -12,7 +12,7 @@ dev_bin() {
     return
   fi
   (cd "$root" && cargo build --release -q -p prxvc-desktop --bin prxvc-dev \
-    --features "qwentts transcribe") >&2
+    --features "qwentts transcribe apple-translation") >&2
   printf '%s\n' "$root/target/release/prxvc-dev"
 }
 

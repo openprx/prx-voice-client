@@ -19,7 +19,6 @@ mod core;
 mod handle;
 #[cfg(test)]
 mod live_tests;
-mod locate;
 mod ports;
 mod problem;
 mod real;
