@@ -460,6 +460,57 @@ mod tests {
         TranscriptLine { role: role.into(), text: text.into(), is_final: true }
     }
 
+    #[test]
+    fn call_captions_never_reach_the_transcript_that_history_is_saved_from() {
+        use crate::call_view::{CaptionView, ClauseStatus, LaneView};
+        let shared = SharedAppState::new();
+        let panel = CallPanel {
+            outgoing: LaneView {
+                clauses: vec![CaptionView {
+                    utterance: 1,
+                    source: "你好".into(),
+                    translation: "Hello.".into(),
+                    status: ClauseStatus::Played,
+                    ..CaptionView::default()
+                }],
+                ..LaneView::default()
+            },
+            ..CallPanel::default()
+        };
+        shared.set_call_panel(panel);
+        let snap = shared.snapshot_for_ui();
+        assert!(snap.transcript_lines.is_empty(), "the session transcript stays the assistant's");
+        assert_eq!(snap.call.outgoing.clauses.len(), 1, "the window still gets the captions");
+    }
+
+    #[test]
+    fn the_call_window_modules_have_no_way_to_write_anything() {
+        // The captions live in memory for the session. This guard reads the sources of every
+        // module that holds or draws them and fails if one gains a route to storage or files.
+        let sources = [
+            include_str!("call_transcript.rs"),
+            include_str!("call_window_state.rs"),
+            include_str!("call_timeline_view.rs"),
+            include_str!("call_bubble.rs"),
+            include_str!("call_captions_bar.rs"),
+        ];
+        // Written as concatenations so that this test's own text is not what it finds.
+        let forbidden = [
+            concat!("std::", "fs"),
+            concat!("File::", "create"),
+            concat!("prxvc_", "storage"),
+            concat!("serde_", "json"),
+            concat!("toml::", "to_string"),
+            concat!("OpenOptions"),
+            concat!("rusqlite"),
+        ];
+        for (i, src) in sources.iter().enumerate() {
+            for needle in forbidden {
+                assert!(!src.contains(needle), "module {i} mentions {needle}");
+            }
+        }
+    }
+
     fn entry() -> HistoryEntry {
         HistoryEntry {
             session_id: "s".into(),
