@@ -355,7 +355,7 @@ fn a_queue_overflow_fails_the_request_visibly_after_the_audio_that_was_kept() {
     let items = drain(stream.as_mut());
     assert_eq!(
         chunk_values(&items).len(),
-        queue_capacity(SHORT_CAP),
+        queue_capacity(crate::tts::qwentts::cap::attempt_cap_frames(SHORT_CAP, 2, 2)),
         "everything queued is delivered"
     );
     assert!(

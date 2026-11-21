@@ -50,6 +50,43 @@ fn the_live_policy_retries_every_clause_it_holds_not_only_the_shortest() {
 }
 
 #[test]
+fn slow_speech_cut_by_the_cap_twice_is_accepted_at_twice_the_cap_and_a_real_runaway_still_fails() {
+    // A rare name read slowly: 40 frames (3.2 s) of speech for a text whose cap is 32 frames. The
+    // first two attempts are cut by the cap; the last one has room and the engine stops by itself.
+    let calls: Arc<Mutex<Vec<u32>>> = Arc::default();
+    let seen = Arc::clone(&calls);
+    let script: Script = Box::new(move |call, ctl| {
+        seen.lock().push(call.max_new_tokens);
+        let natural = 40u32;
+        for _ in 0..natural.min(call.max_new_tokens) {
+            if ctl.should_abort() {
+                return Ok(CallEnd::Aborted);
+            }
+            ctl.on_chunk(&vec![0.1; FRAME]);
+        }
+        Ok(CallEnd::Completed)
+    });
+    let mut c = cfg();
+    c.runaway_retry = RunawayRetry::ShortOnce;
+    let (tts, _p) = ready(script, c);
+    let items = drain(open(&tts, Direction::Outgoing, "hello there").as_mut());
+    assert!(matches!(items.last(), Some(Ok(TtsItem::Done { .. }))), "{items:?}");
+    assert_eq!(chunk_values(&items).len(), 40, "the whole slow clause is spoken once");
+    let caps = calls.lock().clone();
+    assert_eq!(caps.len(), 3, "{caps:?}");
+    assert_eq!(caps[0], caps[1]);
+    assert!(caps[2] >= 2 * caps[0], "{caps:?}");
+    assert_eq!((tts.stats().runaways, tts.stats().retries), (2, 2));
+
+    // Audio that does not stop even at twice the cap fails the clause, with no audio heard.
+    let mut c = cfg();
+    c.runaway_retry = RunawayRetry::ShortOnce;
+    let (tts, _p) = ready(runaway_script(), c);
+    let items = drain(open(&tts, Direction::Outgoing, "hello there").as_mut());
+    assert!(matches!(items.as_slice(), [Err(TtsError::Runaway { .. })]), "{items:?}");
+}
+
+#[test]
 fn the_live_policy_streams_a_long_clause_without_a_retry() {
     let (script, attempts) = runaway_once_then_fine();
     let mut c = cfg();

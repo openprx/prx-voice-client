@@ -25,6 +25,20 @@ pub const SAFETY_FACTOR: f64 = 3.0;
 pub const HEADROOM_SECS: f64 = 2.0;
 /// Codec frames per second of audio (one frame is 80 ms).
 pub const FRAMES_PER_SEC: f64 = 12.5;
+/// The cap of attempt `attempt` (counting from 0) of a call with `retries` extra attempts allowed:
+/// the text's cap, and for the last of two retries a doubled one, at least [`HOLD_CAP_FRAMES`]
+/// but never past [`ENGINE_DEFAULT_CAP_FRAMES`].
+pub fn attempt_cap_frames(cap_frames: u32, attempt: u32, retries: u32) -> u32 {
+    if retries >= 2 && attempt >= 2 {
+        cap_frames
+            .saturating_mul(2)
+            .max(HOLD_CAP_FRAMES.min(cap_frames.saturating_mul(4)))
+            .min(ENGINE_DEFAULT_CAP_FRAMES)
+    } else {
+        cap_frames
+    }
+}
+
 /// Samples in one codec frame at the engine's 24 kHz output rate.
 pub const SAMPLES_PER_FRAME: usize = 1920;
 /// The cap of a very short text, in frames (1.6 s).
@@ -53,7 +67,10 @@ pub enum RunawayRetry {
     /// first chunk therefore arrives when the attempt ends. For uses that are not live (enrolment
     /// samples, long-form synthesis).
     Once,
-    /// As `Once`, but only for a text whose cap is at most [`HOLD_CAP_FRAMES`] (8 s: a clause of up
+    /// As `Once` for the first retry, with a third and last attempt at twice the cap (at least up
+    /// to [`HOLD_CAP_FRAMES`]) before the clause is failed: speech that is simply slow (a rare name,
+    /// 3.3 s for four words was measured) is cut by the cap exactly as a runaway is, and only a
+    /// call that does not stop at twice the cap is one. Only for a text whose cap is at most [`HOLD_CAP_FRAMES`] (8 s: a clause of up
     /// to about nine words, the kind a call translates). Such a clause is held back until it ends
     /// inside its cap, so a runaway is never heard, and retried once with another seed; the delay
     /// is a fraction of a second. Longer clauses stream as `Off` does. The live call uses this.
@@ -68,7 +85,7 @@ impl RunawayRetry {
             Self::Once => 1,
             Self::ShortOnce => {
                 if cap_frames <= HOLD_CAP_FRAMES {
-                    1
+                    2
                 } else {
                     0
                 }
@@ -287,8 +304,12 @@ mod tests {
         assert!(short < 40);
         assert!(mid > short && mid <= HOLD_CAP_FRAMES);
         assert!(long > HOLD_CAP_FRAMES);
-        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(mid), 1);
-        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 1);
+        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(mid), 2, "a retry and a last attempt at twice the cap");
+        assert_eq!(attempt_cap_frames(mid, 0, 2), mid);
+        assert_eq!(attempt_cap_frames(mid, 1, 2), mid);
+        assert!(attempt_cap_frames(mid, 2, 2) >= HOLD_CAP_FRAMES.min(mid * 4) && attempt_cap_frames(mid, 2, 2) >= mid * 2);
+        assert_eq!(attempt_cap_frames(mid, 2, 1), mid, "Once never doubles");
+        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 2);
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(long), 0);
     }
 }

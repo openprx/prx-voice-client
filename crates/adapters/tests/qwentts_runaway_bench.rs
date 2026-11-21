@@ -279,3 +279,49 @@ fn runaway_rate_by_class_of_short_text() {
         println!("{class:<28} {:>3} {n:>5} {runs:>8} {:>8.2}", texts.len(), secs / n as f64);
     }
 }
+
+/// The runaway rate of the texts in `PRXVC_RUNAWAY_TEXTS` (separated by `|`), `PRXVC_RUNAWAY_TRIES`
+/// attempts each, with a cap of 8 s and no retry: what a given text does, seed after seed.
+#[test]
+#[ignore = "needs the TTS models and the GPU"]
+fn runaway_rate_of_given_texts() {
+    let texts = std::env::var("PRXVC_RUNAWAY_TEXTS").unwrap_or_default();
+    let tries: usize = std::env::var("PRXVC_RUNAWAY_TRIES").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+    let models = bench_root().join("tts/models");
+    let talker = models.join("qwen-talker-1.7b-base-Q8_0.gguf");
+    let codec = models.join("qwen-tokenizer-12hz-Q8_0.gguf");
+    let hash = hash_model_files(&talker, &codec).expect("hash");
+    let mut cfg = QwenTtsConfig::new("qwen3-tts-1.7b-base-q8", hash);
+    cfg.workers = 1;
+    cfg.cap_frames_override = Some(60);
+    let tts = QwenTts::load_native(&talker, &codec, cfg).expect("load");
+    let reference = load_reference_wav(&bench_root().join("tts/refs/en_owner.wav"), "owner-en", Lang::En, None).expect("reference");
+    let cache_dir = tempfile::tempdir().expect("temp dir");
+    let cache = VoiceCache::new(cache_dir.path().join("owner-en"));
+    tts.prepare_voice_cached(&cache, &reference).expect("prepare");
+    let never = CancellationToken::new();
+    println!("text  tries  runaways  mean_audio_s");
+    for text in texts.split('|').filter(|t| !t.is_empty()) {
+        let (mut runs, mut secs) = (0u64, 0.0f64);
+        for _ in 0..tries {
+            let before = tts.stats();
+            let mut stream = tts
+                .synthesize(TtsRequest {
+                    clause: ClauseId::new(SegmentId::first(Direction::Outgoing), 0),
+                    text: text.to_owned(),
+                    lang: Lang::En,
+                    voice: VoiceSelection::Cloned { profile_id: "owner-en".to_owned() },
+                })
+                .expect("open");
+            let mut samples = 0usize;
+            while let Some(item) = stream.next(&never) {
+                if let Ok(TtsItem::Chunk(c)) = item {
+                    samples += c.samples.len();
+                }
+            }
+            runs += tts.stats().runaways - before.runaways;
+            secs += samples as f64 / 24_000.0;
+        }
+        println!("{text:<48} {tries:>5} {runs:>8} {:>8.2}", secs / tries as f64);
+    }
+}

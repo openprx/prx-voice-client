@@ -470,7 +470,8 @@ impl QwenTts {
         clause: String,
         cap_frames: u32,
     ) -> Result<QwenStream, TtsError> {
-        let (tx, rx) = sync_channel(queue_capacity(cap_frames));
+        // Sized for the doubled cap of a last attempt, whose held audio is released in one go.
+        let (tx, rx) = sync_channel(queue_capacity(cap::attempt_cap_frames(cap_frames, 2, 2)));
         let flags = Arc::new(RequestFlags::default());
         let outcome = Arc::new(Mutex::new(None));
         let job = Job {
@@ -640,7 +641,8 @@ fn run_job(inner: &Inner, job: Job) {
         } else {
             retry_seed(inner)
         };
-        let verdict = attempt_once(inner, &job, seed, retries > 0);
+        let cap_frames = cap::attempt_cap_frames(job.cap_frames, attempt, retries);
+        let verdict = attempt_once(inner, &job, seed, retries > 0, cap_frames);
         match verdict {
             Verdict::Done(secs) => break Ok(secs),
             Verdict::Cancelled => break Err(TtsError::Cancelled),
@@ -652,7 +654,7 @@ fn run_job(inner: &Inner, job: Job) {
                     clause = %job.clause,
                     produced_secs = secs,
                     attempt,
-                    cap_frames = job.cap_frames,
+                    cap_frames = cap::attempt_cap_frames(job.cap_frames, attempt, retries),
                     units = cap::speakable_units(&job.text, job.lang),
                     held = retries > 0,
                     will_retry = attempt < retries,
@@ -683,13 +685,13 @@ fn retry_seed(inner: &Inner) -> i64 {
     i64::try_from(z >> 1).unwrap_or(1)
 }
 
-fn attempt_once(inner: &Inner, job: &Job, seed: i64, hold: bool) -> Verdict {
+fn attempt_once(inner: &Inner, job: &Job, seed: i64, hold: bool, cap_frames: u32) -> Verdict {
     let sink = AttemptSink::new(
         &job.flags,
         &inner.closing,
         &inner.counters,
         &job.tx,
-        job.cap_frames,
+        cap_frames,
         hold,
     );
     let call = SynthCall {
@@ -697,7 +699,7 @@ fn attempt_once(inner: &Inner, job: &Job, seed: i64, hold: bool) -> Verdict {
         lang: job.lang,
         speaker: &job.speaker,
         seed,
-        max_new_tokens: job.cap_frames,
+        max_new_tokens: cap_frames,
     };
     let result = catch_unwind(AssertUnwindSafe(|| inner.engine.synthesize(&call, &sink)));
     let end = match result {
@@ -724,7 +726,7 @@ fn attempt_once(inner: &Inner, job: &Job, seed: i64, hold: bool) -> Verdict {
         ));
     }
     // Reaching the cap ends the call as a success for the runtime; here it is a failure.
-    if sink.runaway() || cap::is_runaway(sink.produced_samples(), job.cap_frames) {
+    if sink.runaway() || cap::is_runaway(sink.produced_samples(), cap_frames) {
         return Verdict::Runaway(sink.produced_secs());
     }
     if end == CallEnd::Aborted {
