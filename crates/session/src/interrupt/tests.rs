@@ -166,3 +166,29 @@ fn skipping_one_direction_never_names_the_other() {
             .all(|a| *a == CancelAction::CancelDirection(OUT))
     );
 }
+
+#[test]
+fn a_clause_that_is_completely_synthesised_is_never_dropped_as_stale() {
+    let queue = [
+        view(1, 1, ClauseState::Synthesizing, 2_000),
+        view(1, 2, ClauseState::Synthesizing, 2_500),
+    ];
+    let trigger = InterruptTrigger::SameSpeakerNewSegment {
+        new_segment: seg(OUT, 3),
+    };
+    let complete = [ClauseId::new(seg(OUT, 1), 1)];
+    let got = decide_interrupt_keeping(
+        trigger,
+        &params(),
+        MonoTime::from_millis(9_500),
+        &queue,
+        &complete,
+    );
+    assert_eq!(
+        got,
+        vec![CancelAction::CancelClause(ClauseId::new(seg(OUT, 1), 2))],
+        "only the clause whose audio is not complete is stale"
+    );
+    // Without the knowledge both are dropped, as before.
+    assert_eq!(decide(trigger, &params(), 9_500, &queue).len(), 2);
+}

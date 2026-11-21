@@ -290,13 +290,20 @@ impl Core {
 
     /// New speech of the same speaker: drop clauses that lag too far behind (D-P5).
     fn barge_in(&mut self, segment: prxvc_media::SegmentId, at: MonoTime) {
-        let actions = decide_interrupt(
+        let complete: Vec<ClauseId> = self
+            .clauses
+            .iter()
+            .filter(|(_, i)| i.tts_done)
+            .map(|(c, _)| *c)
+            .collect();
+        let actions = crate::interrupt::decide_interrupt_keeping(
             InterruptTrigger::SameSpeakerNewSegment {
                 new_segment: segment,
             },
             &self.p.interrupt,
             at,
             &self.book.clause_views(),
+            &complete,
         );
         for action in actions {
             self.cancel_with(action, SkipReason::Stale);

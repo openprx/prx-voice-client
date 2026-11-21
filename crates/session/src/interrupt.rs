@@ -83,9 +83,23 @@ pub fn decide_interrupt(
     now: MonoTime,
     queued: &[ClauseView],
 ) -> Vec<CancelAction> {
+    decide_interrupt_keeping(trigger, params, now, queued, &[])
+}
+
+/// [`decide_interrupt`], with the clauses whose audio is completely synthesised named in
+/// `complete`: such a clause is never dropped as stale. Everything needed to say it is ready, so
+/// dropping it would lose speech for nothing; the catch-up speed-up is what shortens its wait.
+pub fn decide_interrupt_keeping(
+    trigger: InterruptTrigger,
+    params: &InterruptParams,
+    now: MonoTime,
+    queued: &[ClauseView],
+    complete: &[ClauseId],
+) -> Vec<CancelAction> {
     match trigger {
         InterruptTrigger::SameSpeakerNewSegment { new_segment } if params.barge_in => queued
             .iter()
+            .filter(|c| !complete.contains(&c.clause))
             .filter(|c| is_stale(c, new_segment, params.max_lag, now))
             .map(|c| CancelAction::CancelClause(c.clause))
             .collect(),

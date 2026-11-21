@@ -75,8 +75,31 @@ pub fn decide(params: &CatchUpParams, queued: Duration, now: PlayPace) -> PlayPa
     PlayPace { speed, tight }
 }
 
+/// Shortest time a clause must have been synthesising before its rate is believed.
+const RATE_MIN_ELAPSED: Duration = Duration::from_millis(300);
+/// How many times faster than real time the producer must be before a clause that is still being
+/// synthesised is sped up: playing at the fastest speed (at most 2.0, 1.25 by default) consumes
+/// audio that much faster, so the margin keeps the lane from running dry.
+const RATE_MARGIN: f32 = 1.5;
+
+/// Whether a clause still being synthesised is produced comfortably faster than it is played at a
+/// sped-up pace: it has `synthesised` audio after `elapsed` since its first chunk. Never true on
+/// too short an observation, so a speed-up can not open a gap.
+pub fn producer_comfortably_ahead(synthesised: Duration, elapsed: Duration) -> bool {
+    elapsed >= RATE_MIN_ELAPSED && synthesised.as_secs_f32() >= RATE_MARGIN * elapsed.as_secs_f32()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_producer_is_believed_only_when_it_was_seen_long_enough_and_is_well_ahead() {
+        let ms = Duration::from_millis;
+        assert!(super::producer_comfortably_ahead(ms(2_000), ms(500)), "four times real time");
+        assert!(!super::producer_comfortably_ahead(ms(200), ms(100)), "too short an observation");
+        assert!(!super::producer_comfortably_ahead(ms(600), ms(500)), "barely faster than playing");
+        assert!(!super::producer_comfortably_ahead(ms(100), ms(600)), "slower than real time");
+    }
+
     use super::*;
 
     fn s(ms: u64) -> Duration {

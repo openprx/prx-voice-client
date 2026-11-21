@@ -136,7 +136,15 @@ impl Core {
         // Only a clause that is already synthesised completely is sped up: it reaches the lane
         // in one piece, so playing it faster cannot run the lane dry. A clause still being
         // synthesised (its next piece not translated yet) is played at normal speed.
-        let complete = self.clauses.get(&clause).is_some_and(|i| i.tts_done);
+        // A clause still being synthesised is sped up too when its producer is comfortably ahead
+        // (it delivers audio well above the rate it is played at), so a long queue is caught up
+        // even while its current clause streams; a producer that is not never creates a gap.
+        let complete = self.clauses.get(&clause).is_some_and(|i| {
+            i.tts_done
+                || i.first_chunk_at.is_some_and(|at| {
+                    crate::pace::producer_comfortably_ahead(i.synthesised, now.saturating_since(at))
+                })
+        });
         let effective = crate::pace::PlayPace {
             speed: if complete { self.pace.speed } else { 1.0 },
             tight: self.pace.tight,

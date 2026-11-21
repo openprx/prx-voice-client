@@ -240,12 +240,8 @@ fn translation_tokens_are_split_into_clauses_without_cutting_numbers_or_abbrevia
     assert!(rig.stop().clean);
 }
 
-fn is_skipped(e: &PipelineEvent) -> bool {
-    matches!(e, PipelineEvent::ClauseSkipped { .. })
-}
-
 #[test]
-fn a_new_utterance_does_not_cut_the_playing_translation_and_drops_only_a_stale_queued_clause() {
+fn a_new_utterance_does_not_cut_the_playing_translation_and_keeps_a_queued_clause_that_is_fully_synthesised() {
     let clock = ManualClock::new();
     let (mt, tts) = simple_providers(
         &clock,
@@ -281,19 +277,17 @@ fn a_new_utterance_does_not_cut_the_playing_translation_and_drops_only_a_stale_q
             .any(|x| x.clause == b && x.state == ClauseState::Synthesizing)
     });
     rig.feed(20);
-    rig.recorder
-        .wait("B skipped as stale", |e| e.iter().any(is_skipped));
-    let snap = rig.wait_snapshot("B skipped", |s| {
-        s.clauses
-            .iter()
-            .any(|x| x.clause == b && x.state == ClauseState::Skipped)
-    });
-    assert_eq!(snap.counters.stale_skips, 1);
-    assert_eq!(
-        snap.clauses[0].state,
-        ClauseState::Playing,
-        "the playing clause is never cut"
-    );
+    // B is completely synthesised: it is never dropped as stale, however long it waits. Only a
+    // clause whose audio is not complete is (see `interrupt::tests`).
+    rig.feed(25);
+    rig.advance(ms(300));
+    wait_audio_end(&rig, b);
+    rig.advance(ms(300));
+    wait_audio_end(&rig, c);
+    rig.advance(ms(300));
+    let snap = rig.wait_snapshot("A, B and C played", |s| s.counters.clauses_played == 3);
+    assert_eq!(snap.counters.stale_skips, 0);
+    assert_eq!(rig.recorder.audio_clause_order(), vec![a, b, c]);
     assert!(rig.recorder.events().iter().all(|e| !matches!(
         e,
         PipelineEvent::Flush(
@@ -301,13 +295,6 @@ fn a_new_utterance_does_not_cut_the_playing_translation_and_drops_only_a_stale_q
                 | prxvc_session::CancelAction::CancelDirection(_)
         )
     )));
-    rig.feed(25);
-    rig.advance(ms(300));
-    wait_audio_end(&rig, c);
-    rig.advance(ms(300));
-    rig.wait_snapshot("A and C played", |s| s.counters.clauses_played == 2);
-    assert_eq!(rig.recorder.audio_clause_order(), vec![a, c]);
-    assert_eq!(rig.recorder.chunks_of(b), 0);
     assert!(rig.stop().clean);
 }
 
