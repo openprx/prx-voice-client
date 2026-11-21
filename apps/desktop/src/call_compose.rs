@@ -159,6 +159,9 @@ pub(crate) fn outgoing_mixer(config: &prxvc_config::AppConfig) -> prxvc_audio::m
         jitter_buffer: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
         adaptive_preroll: config.pipeline.adaptive_preroll,
         preroll_max: Duration::from_millis(u64::from(config.pipeline.preroll_max_ms)),
+        trim_silence: config.pipeline.trim_silence,
+        silence_keep: Duration::from_millis(u64::from(config.pipeline.silence_keep_ms)),
+        catch_up_max_speed: config.pipeline.catch_up_max_speed,
         ..prxvc_audio::mix::MixerConfig::default()
     }
 }
@@ -450,6 +453,15 @@ mod tests {
             c.pipeline.preroll_max_ms = 900;
         }));
         assert!(!off.adaptive_preroll);
+        let shaped = outgoing_mixer(&config_with(|c| {
+            c.pipeline.trim_silence = false;
+            c.pipeline.silence_keep_ms = 90;
+            c.pipeline.catch_up_max_speed = 1.1;
+        }));
+        assert!(!shaped.trim_silence);
+        assert_eq!(shaped.silence_keep, Duration::from_millis(90));
+        assert_eq!(shaped.catch_up_max_speed, 1.1);
+        assert!(default.trim_silence && default.catch_up_max_speed == 1.25);
         assert_eq!(off.preroll_max, Duration::from_millis(900));
         assert_eq!(default.translated_gain_db, 0.0, "no gain unless asked for");
         assert_eq!(default.original_gain_db, -12.0);

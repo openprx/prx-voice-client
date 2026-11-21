@@ -267,6 +267,7 @@ impl Coordinator {
             }
             // Handled on the forwarder thread, or shown through the snapshot.
             PipelineEvent::SpeechStarted
+            | PipelineEvent::Pace { .. }
             | PipelineEvent::Audio(_)
             | PipelineEvent::AudioEnd(_)
             | PipelineEvent::Flush(_)
@@ -420,6 +421,11 @@ fn forward(
                 // waiting for the first translation.
                 if let (Some(n), Some(p)) = (notice, current()) {
                     n.on_speech_start(&*p);
+                }
+            }
+            PipelineEvent::Pace { speed, tight } => {
+                if let Some(p) = current() {
+                    p.set_pace(speed, tight);
                 }
             }
             PipelineEvent::Flush(action) => {

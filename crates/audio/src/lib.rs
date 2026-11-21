@@ -92,6 +92,7 @@ pub mod playback_buffer;
 mod playback_buffer_rt;
 pub mod playback_sink;
 pub mod resample;
+pub mod timescale;
 pub mod resampled_source;
 pub mod process_filter;
 pub mod routing;

@@ -99,6 +99,8 @@ struct ClauseInfo {
     source_text: String,
     /// When the clause's source speech ended.
     source_end: MonoTime,
+    /// When its first synthesised audio reached the control thread (for the queue wait).
+    first_chunk_at: Option<MonoTime>,
     /// The translation so far: the backlog estimate until synthesis is known.
     target_text: String,
     synthesised: Duration,
@@ -142,6 +144,10 @@ pub(crate) struct Core {
     tallies: BTreeMap<prxvc_media::SegmentId, SegmentTally>,
     /// The figures of the finished utterances.
     ledger: LedgerBook,
+    /// How the audio released now is played (speed and pause length), as last announced.
+    pace: crate::pace::PlayPace,
+    /// What was last sent to the playout (the pace, with the speed only for a complete clause).
+    announced: crate::pace::PlayPace,
     refine_failures: u32,
     last_error: Option<ErrorSnapshot>,
     recovery: Option<Recovery>,
@@ -175,6 +181,8 @@ impl Core {
             passed: None,
             tallies: BTreeMap::new(),
             ledger: LedgerBook::default(),
+            pace: crate::pace::PlayPace::default(),
+            announced: crate::pace::PlayPace::default(),
             refine_failures: 0,
             last_error: None,
             recovery: None,

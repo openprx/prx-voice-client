@@ -55,6 +55,8 @@ pub enum Played {
     Chunk(ClauseId, usize),
     End(ClauseId),
     Flush,
+    /// Speed in hundredths and whether pauses are tight.
+    Pace(u32, bool),
 }
 
 /// The scripts and fakes the next `prepare_providers` builds its pipelines from.
@@ -332,6 +334,10 @@ impl Playout for FakePlayout {
 
     fn flush(&self) {
         self.note(Played::Flush);
+    }
+
+    fn set_pace(&self, speed: f32, tight: bool) {
+        self.note(Played::Pace((speed * 100.0).round() as u32, tight));
     }
 }
 

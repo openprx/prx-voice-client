@@ -439,6 +439,7 @@ mod tests {
         fn flush(&self) {
             self.log.lock().push("flush".into());
         }
+        fn set_pace(&self, _speed: f32, _tight: bool) {}
     }
 
     fn chunk() -> PcmChunk {

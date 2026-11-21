@@ -114,6 +114,11 @@ pub(crate) fn pipeline_params(
         max_lag: ms(p.max_lag_ms),
     };
     params.jitter_buffer = ms(p.jitter_buffer_ms);
+    params.catch_up = prxvc_session::CatchUpParams {
+        enabled: p.catch_up,
+        after: ms(p.catch_up_after_ms),
+        max_speed: p.catch_up_max_speed,
+    };
     params
 }
 
@@ -148,6 +153,25 @@ mod tests {
         assert_eq!((params.source, params.target), (Lang::Zh, Lang::En));
         assert_eq!(params.jitter_buffer, Duration::from_millis(150));
         assert_eq!(params.backlog, BacklogParams::default());
+        assert_eq!(params.catch_up, prxvc_session::CatchUpParams::default());
+    }
+
+    #[test]
+    fn the_catch_up_keys_are_read() {
+        let mut config = AppConfig::default();
+        config.pipeline.catch_up = false;
+        config.pipeline.catch_up_after_ms = 3_500;
+        config.pipeline.catch_up_max_speed = 1.1;
+        let params = pipeline_params(
+            &config,
+            Direction::Incoming,
+            (Lang::En, Lang::Zh),
+            voice(),
+            PlannedMode::TwoPass,
+        );
+        assert!(!params.catch_up.enabled);
+        assert_eq!(params.catch_up.after, Duration::from_millis(3_500));
+        assert_eq!(params.catch_up.max_speed, 1.1);
     }
 
     #[test]

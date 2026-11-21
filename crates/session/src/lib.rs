@@ -49,6 +49,7 @@ mod ids;
 mod interrupt;
 mod manager;
 mod output;
+mod pace;
 mod rejection;
 mod segment;
 mod segment_book;
@@ -80,6 +81,7 @@ pub use filler::is_pure_filler;
 pub use ids::{SessionId, TurnId};
 pub use interrupt::{CancelAction, InterruptParams, InterruptTrigger, decide_interrupt};
 pub use manager::SessionManager;
+pub use pace::{CatchUpParams, PlayPace};
 pub use output::{DirectionConfig, OutputCause, OutputPolicy, OutputSource, Passthrough};
 pub use rejection::InvalidTransition;
 pub use segment::{

@@ -79,6 +79,14 @@ pub enum PipelineEvent {
     /// sign that something will be said: the spoken notice to the other party starts playing now,
     /// so that it overlaps the time recognition and translation need.
     SpeechStarted,
+    /// How the audio sent from now on is played: a speed above 1 while a backlog is caught up and
+    /// short pauses while one exists. Sent before the audio it applies to, only when it changes.
+    Pace {
+        /// Playback speed, 1.0 is normal.
+        speed: f32,
+        /// A backlog exists: pauses between clauses are cut short.
+        tight: bool,
+    },
     /// A clause failed (the direction may carry on: a runaway synthesis, an overflow).
     ClauseFailed {
         /// The clause.

@@ -69,6 +69,9 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 15_000));
     assert!(p.backlog_skipping);
     assert_eq!(p.max_lag_ms, 20_000);
+    assert!(p.catch_up && p.trim_silence);
+    assert_eq!((p.catch_up_after_ms, p.silence_keep_ms), (2_000, 60));
+    assert_eq!(p.catch_up_max_speed, 1.25);
     assert!(p.adaptive_preroll);
     assert_eq!(p.preroll_max_ms, 1_500);
     // The recogniser's cadence and stability keys default to the adapter's own values.

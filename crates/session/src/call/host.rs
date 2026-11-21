@@ -128,6 +128,9 @@ pub trait Playout: Send + Sync {
     fn end_clause(&self, clause: ClauseId);
     /// Discard everything queued and playing (a short fade).
     fn flush(&self);
+    /// How the clauses pushed from now on are played: `speed` (1.0 is normal; above it while a
+    /// backlog is caught up, pitch kept) and `tight` (pauses are cut short while a backlog exists).
+    fn set_pace(&self, speed: f32, tight: bool);
 }
 
 /// Something a running path reports.

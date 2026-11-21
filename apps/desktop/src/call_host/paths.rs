@@ -100,6 +100,10 @@ impl Playout for FeedPlayout {
     fn flush(&self) {
         self.0.flush();
     }
+
+    fn set_pace(&self, speed: f32, tight: bool) {
+        self.0.set_pace(prxvc_audio::mix::Pace { speed, tight });
+    }
 }
 
 impl AudioPath for PumpPath {

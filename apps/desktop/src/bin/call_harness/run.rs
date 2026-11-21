@@ -214,6 +214,9 @@ pub(crate) fn run_utterance(
                         feed.push(a.payload.clause, &a.payload.chunk);
                     }
                     PipelineEvent::AudioEnd(e) => feed.end_clause(e.payload),
+                    PipelineEvent::Pace { speed, tight } => {
+                        feed.set_pace(prxvc_audio::mix::Pace { speed, tight });
+                    }
                     // A clause that has not started playing leaves nothing in the lane (the
                     // coordinator's forwarder does the same).
                     PipelineEvent::Flush(prxvc_session::CancelAction::CancelClause(_)) => {}

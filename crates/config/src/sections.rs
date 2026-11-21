@@ -415,6 +415,20 @@ pub struct PipelineConfig {
     pub adaptive_preroll: bool,
     /// The most pre-roll the adaptation asks for, in milliseconds.
     pub preroll_max_ms: u32,
+    /// Catch up with a queue of translated speech without dropping any: while translated clauses
+    /// wait behind speech still being played, the clauses played next are sped up (pitch kept)
+    /// and their pauses cut short; normal pace returns when the queue is empty.
+    pub catch_up: bool,
+    /// Queued translated audio at which the speed-up starts, in milliseconds.
+    pub catch_up_after_ms: u32,
+    /// The fastest playback while catching up (1.25 is 25 % faster).
+    pub catch_up_max_speed: f32,
+    /// Cut the silence at the start and end of each translated clause (the synthesiser's lead-in
+    /// and fade-out), keeping `silence_keep_ms` at the start and twice that at the end; a third
+    /// of that while a queue exists.
+    pub trim_silence: bool,
+    /// Silence kept at the start of a translated clause, in milliseconds.
+    pub silence_keep_ms: u32,
     /// Skip stale queued clauses to keep up with the speaker. Off plays everything, however late.
     pub backlog_skipping: bool,
     /// Queued audio per direction above which stale clauses are skipped, in milliseconds.
@@ -459,6 +473,11 @@ impl Default for PipelineConfig {
             jitter_buffer_ms: 150,
             adaptive_preroll: true,
             preroll_max_ms: 1_500,
+            catch_up: true,
+            catch_up_after_ms: 2_000,
+            catch_up_max_speed: 1.25,
+            trim_silence: true,
+            silence_keep_ms: 60,
             backlog_skipping: true,
             max_backlog_ms: 15_000,
             max_lag_ms: 20_000,

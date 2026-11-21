@@ -83,6 +83,7 @@ impl Core {
                 source_ts,
                 source_text: commit.text.clone(),
                 source_end: commit.source_end,
+                first_chunk_at: None,
                 target_text: String::new(),
                 synthesised: std::time::Duration::ZERO,
                 chunks: 0,
@@ -142,6 +143,7 @@ impl Core {
             mt_first_token_ms = %Ms(u.mt_first_token_ms),
             first_audio_ms = %Ms(u.first_audio_ms),
             playback_end_ms = %Ms(u.playback_end_ms),
+            queue_wait_ms = %Ms(u.queue_wait_ms),
             notes = %notes(&u.tally),
             "utterance finished"
         );

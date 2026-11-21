@@ -106,7 +106,8 @@ impl DirectionTotals {
             "utterances={} clauses={} played={} failed={} filler_dropped={} unspeakable_dropped={} \
              skips(stale={} backlog={} other={}) passed_through={} suspects={} flags({}) \
              mt_retries={} synth_runaways={} {} \
-             start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={}{}",
+             start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={} \
+             queue_wait_ms(median/p95)={} catch_up(clauses={} max_speed={}%){}",
             s.ledger.utterances,
             c.clauses_committed,
             c.clauses_played,
@@ -124,6 +125,9 @@ impl DirectionTotals {
             self.playback.text(),
             percentiles(s.ledger.start_to_first_audio),
             percentiles(s.ledger.end_to_first_audio),
+            percentiles(s.ledger.queue_wait),
+            s.ledger.sped_clauses,
+            s.ledger.max_speed_pct,
             notice,
         )
     }
@@ -199,6 +203,13 @@ mod tests {
                     p95_ms: 4100,
                 },
                 end_to_first_audio: Percentiles::default(),
+                queue_wait: Percentiles {
+                    n: 5,
+                    median_ms: 1500,
+                    p95_ms: 3900,
+                },
+                sped_clauses: 4,
+                max_speed_pct: 125,
             },
         })
     }
@@ -266,6 +277,8 @@ mod tests {
             "underruns=6 gap_ms(total/worst)=840/310 sink_dry=1 capture_lane_dry=90",
             "start_to_first_audio_ms(median/p95)=2300/4100 (n=7)",
             "end_to_first_audio_ms(median/p95)=-",
+            "queue_wait_ms(median/p95)=1500/3900 (n=5)",
+            "catch_up(clauses=4 max_speed=125%)",
             "notice(played played=2 interrupted=1)",
         ] {
             assert!(line.contains(part), "{part} missing from: {line}");

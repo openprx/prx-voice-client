@@ -49,6 +49,7 @@
 mod lane;
 mod preroll;
 mod ramp;
+mod shape;
 
 use std::time::Duration;
 
@@ -60,6 +61,7 @@ use crate::call_pump::{Level, LevelMeter};
 pub use lane::LaneStats;
 use lane::{Lane, LaneConfig};
 pub use preroll::{PrerollConfig, PrerollModel};
+pub use shape::{Pace, ShapeConfig};
 use ramp::GainRamp;
 pub use ramp::db_to_linear;
 
@@ -106,6 +108,12 @@ pub struct MixerConfig {
     pub preroll_max: Duration,
     /// Most audio either input holds before it drops the excess.
     pub max_buffer: Duration,
+    /// Trim the silence at the ends of translated clauses (`pipeline.trim_silence`).
+    pub trim_silence: bool,
+    /// Silence kept at each end of a translated clause (`pipeline.silence_keep_ms`).
+    pub silence_keep: Duration,
+    /// The fastest the translated lane plays while it catches up (`pipeline.catch_up_max_speed`).
+    pub catch_up_max_speed: f32,
 }
 
 impl Default for MixerConfig {
@@ -124,6 +132,9 @@ impl Default for MixerConfig {
             adaptive_preroll: true,
             preroll_max: Duration::from_millis(1500),
             max_buffer: Duration::from_secs(20),
+            trim_silence: true,
+            silence_keep: Duration::from_millis(60),
+            catch_up_max_speed: 1.25,
         }
     }
 }
@@ -185,6 +196,12 @@ impl Mixer {
                     min_span: rate.samples_in(Duration::from_millis(100)) as u64,
                     max_stall: rate.samples_in(cfg.preroll_max.min(Duration::from_millis(600))),
                 }),
+                shape: (!timed).then(|| ShapeConfig {
+                    lead_keep: if cfg.trim_silence { rate.samples_in(cfg.silence_keep) } else { usize::MAX },
+                    trail_keep: if cfg.trim_silence { rate.samples_in(cfg.silence_keep) * 2 } else { usize::MAX },
+                    threshold: 0.004,
+                    max_speed: cfg.catch_up_max_speed,
+                }),
             })
         };
         let (t, o) = gains_of(&cfg, cfg.mode);
@@ -239,6 +256,12 @@ impl Mixer {
     /// [`AudioError::InitializationFailed`] when rate conversion fails.
     pub fn push_original(&mut self, frame: &AudioFrame) -> Result<(), AudioError> {
         self.original.push(frame)
+    }
+
+    /// What the pipeline asks for the translated clauses queued from now on: a speed above 1
+    /// while a backlog is caught up, and short pauses while one exists.
+    pub fn set_translated_pace(&mut self, pace: Pace) {
+        self.translated.set_pace(pace);
     }
 
     /// The translated stream has no more audio for now (end of an utterance
@@ -348,5 +371,7 @@ fn gains_of(cfg: &MixerConfig, mode: MixMode) -> (f32, f32) {
 
 #[cfg(test)]
 mod gap_tests;
+#[cfg(test)]
+mod shape_tests;
 #[cfg(test)]
 mod tests;

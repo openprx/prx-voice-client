@@ -38,6 +38,8 @@ use std::collections::VecDeque;
 use prxvc_media::{AudioFrame, MonoTime};
 
 use super::preroll::{PrerollConfig, PrerollModel};
+use super::shape::{Pace, ShapeConfig, leading_silence, trailing_silence};
+use crate::timescale::TimeScaler;
 use crate::AudioError;
 use crate::resample::MonoResampler;
 
@@ -65,6 +67,8 @@ pub struct LaneConfig {
     pub timed: bool,
     /// Adaptive pre-roll; `None` keeps the fixed `depth`.
     pub preroll: Option<PrerollConfig>,
+    /// Trim silence and catch up with a backlog; `None` plays what is queued as it is.
+    pub shape: Option<ShapeConfig>,
 }
 
 /// What a lane did, for the session's health view.
@@ -81,6 +85,10 @@ pub struct LaneStats {
     pub start_depth_samples: usize,
     /// Output samples dropped because the queue was full.
     pub dropped_samples: u64,
+    /// Output samples of silence cut from the ends of clauses.
+    pub trimmed_silence_samples: u64,
+    /// Output samples the speed-up saved (input samples taken in less output).
+    pub saved_samples: u64,
     /// Output samples of silence inserted for gaps between timed frames.
     pub filled_samples: u64,
     /// Input samples dropped because a timed frame overlapped the previous one.
@@ -115,6 +123,12 @@ pub struct Lane {
     start_depth: usize,
     model: Option<PrerollModel>,
     stream: StreamClock,
+    pace: Pace,
+    scaler: Option<TimeScaler>,
+    /// No audible sample of the stream has been queued yet: its leading silence is still cut.
+    lead_pending: bool,
+    /// Samples of the lead-in silence kept so far in this stream.
+    lead_kept: usize,
 }
 
 /// What the lane saw of the stream being received (for the pre-roll model).
@@ -152,6 +166,86 @@ impl Lane {
             clock: 0,
             gap: None,
             stream: StreamClock::default(),
+            pace: Pace::default(),
+            scaler: None,
+            lead_pending: true,
+            lead_kept: 0,
+        }
+    }
+
+    /// What the pipeline asks for the clauses queued from now on (speed and short pauses).
+    pub fn set_pace(&mut self, pace: Pace) {
+        let max = self.cfg.shape.map_or(1.0, |s| s.max_speed.max(1.0));
+        self.pace = Pace {
+            speed: pace.speed.clamp(1.0, max),
+            tight: pace.tight,
+        };
+    }
+
+    /// Cut the silence at the start of a stream and speed it up when asked. Only an untimed lane
+    /// with a [`ShapeConfig`] changes anything.
+    fn shape(&mut self, mut samples: Vec<f32>) -> Vec<f32> {
+        let Some(cfg) = self.cfg.shape else {
+            return samples;
+        };
+        if self.lead_pending && !samples.is_empty() {
+            let keep = cfg.lead(self.pace);
+            let silent = leading_silence(&samples, cfg.threshold);
+            if silent == samples.len() {
+                // Silence only: what is kept of the lead-in is spread over the blocks it spans.
+                let room = keep.saturating_sub(self.lead_kept).min(samples.len());
+                self.lead_kept += room;
+                self.stats.trimmed_silence_samples += (samples.len() - room) as u64;
+                samples.truncate(room);
+                if samples.is_empty() {
+                    return samples;
+                }
+                // Speech has not started: only the silence just kept goes on (below).
+            } else {
+                let cut = silent.saturating_sub(keep.saturating_sub(self.lead_kept));
+                self.stats.trimmed_silence_samples += cut as u64;
+                samples.drain(..cut);
+                self.lead_pending = false;
+            }
+        }
+        let scaler = self.scaler.get_or_insert_with(|| TimeScaler::new(self.cfg.out_rate));
+        if self.pace.speed <= 1.0 && scaler.is_empty() {
+            return samples;
+        }
+        let before = samples.len();
+        let mut out = Vec::with_capacity(before);
+        scaler.process(&samples, self.pace.speed, &mut out);
+        self.stats.saved_samples += (before as u64).saturating_sub(out.len() as u64);
+        out
+    }
+
+    /// End of a stream's audio: what the speed-up holds back is queued.
+    fn flush_shaper(&mut self) {
+        if let Some(scaler) = self.scaler.as_mut() {
+            let mut out = Vec::new();
+            scaler.finish(self.pace.speed, &mut out);
+            self.enqueue(&out);
+        }
+        self.lead_pending = true;
+        self.lead_kept = 0;
+    }
+
+    /// Cut the silence at the end of the stream that was just completed down to what is kept.
+    fn trim_tail(&mut self) {
+        let Some(cfg) = self.cfg.shape else {
+            return;
+        };
+        let keep = cfg.trail(self.pace);
+        let (a, b) = self.queue.as_slices();
+        let mut silent = trailing_silence(b, cfg.threshold);
+        if silent == b.len() {
+            silent += trailing_silence(a, cfg.threshold);
+        }
+        let cut = silent.saturating_sub(keep).min(self.queue.len());
+        if cut > 0 {
+            self.queue.truncate(self.queue.len() - cut);
+            self.stats.enqueued_total = self.stats.enqueued_total.saturating_sub(cut as u64);
+            self.stats.trimmed_silence_samples += cut as u64;
         }
     }
 
@@ -196,6 +290,7 @@ impl Lane {
             converted.extend(resampler.stream_write(&vec![0.0; silence])?);
         }
         converted.extend(resampler.stream_write(samples)?);
+        let converted = self.shape(converted);
         self.note_push(converted.len());
         self.enqueue(&converted);
         Ok(())
@@ -263,6 +358,7 @@ impl Lane {
     /// [`AudioError::InitializationFailed`] when the resampler fails.
     pub fn end_stream(&mut self) -> Result<(), AudioError> {
         self.finish_stream()?;
+        self.trim_tail();
         if self.queue.is_empty() {
             // Everything of the stream was played before its end was known: it was complete,
             // so the queue running dry was its normal end and not a gap.
@@ -279,8 +375,10 @@ impl Lane {
     fn finish_stream(&mut self) -> Result<(), AudioError> {
         if let Some((_, mut resampler)) = self.resampler.take() {
             let tail = resampler.stream_finish()?;
+            let tail = self.shape(tail);
             self.enqueue(&tail);
         }
+        self.flush_shaper();
         Ok(())
     }
 
@@ -294,6 +392,11 @@ impl Lane {
         self.next_ts = None;
         self.gap = None;
         self.stream = StreamClock::default();
+        if let Some(scaler) = self.scaler.as_mut() {
+            scaler.reset();
+        }
+        self.lead_pending = true;
+        self.lead_kept = 0;
     }
 
     fn enqueue(&mut self, samples: &[f32]) {

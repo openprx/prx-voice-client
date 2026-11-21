@@ -32,6 +32,9 @@ impl Core {
         info.chunks += 1;
         info.synthesised += chunk.duration();
         let first = info.chunks == 1;
+        if first {
+            info.first_chunk_at = Some(self.w.tracer.now());
+        }
         let audio = ClauseAudio {
             clause,
             voice: info.voice.clone().unwrap_or_else(|| self.p.voice.clone()),
@@ -100,6 +103,7 @@ impl Core {
 
     /// The book named `clause` next in playback order: hand out its held audio.
     pub(super) fn release(&mut self, clause: ClauseId) {
+        self.note_release(clause);
         let Some(info) = self.clauses.get_mut(&clause) else {
             return;
         };
@@ -111,6 +115,41 @@ impl Core {
                 Held::Chunk(audio) => self.send_audio(clause, audio),
                 Held::End => self.send_audio_end(clause),
             }
+        }
+    }
+
+    /// The clause is next in turn: record how long its audio waited behind earlier speech, and
+    /// decide how the audio queued from now on is paced (speed up while a queue exists).
+    fn note_release(&mut self, clause: ClauseId) {
+        let now = self.w.tracer.now();
+        if let Some(at) = self.clauses.get(&clause).and_then(|i| i.first_chunk_at) {
+            let wait = now.saturating_since(at);
+            self.w.tracer.note_wait(clause, wait);
+        }
+        let queued: Duration = self
+            .clauses
+            .iter()
+            .filter(|(c, i)| **c != clause && !i.released)
+            .map(|(c, _)| self.clause_audio_estimate(*c))
+            .sum();
+        self.pace = crate::pace::decide(&self.p.catch_up, queued, self.pace);
+        // Only a clause that is already synthesised completely is sped up: it reaches the lane
+        // in one piece, so playing it faster cannot run the lane dry. A clause still being
+        // synthesised (its next piece not translated yet) is played at normal speed.
+        let complete = self.clauses.get(&clause).is_some_and(|i| i.tts_done);
+        let effective = crate::pace::PlayPace {
+            speed: if complete { self.pace.speed } else { 1.0 },
+            tight: self.pace.tight,
+        };
+        if effective != self.announced {
+            self.announced = effective;
+            self.emit(PipelineEvent::Pace {
+                speed: effective.speed,
+                tight: effective.tight,
+            });
+        }
+        if effective.speed > 1.0 {
+            self.ledger.note_sped(effective.speed);
         }
     }
 
