@@ -55,7 +55,7 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ),
     (
         "call.issue.speaker_output",
-        "The sound goes out through the built-in speakers, so the microphone would pick up the translation and translate it again. Use headphones.",
+        "The sound goes out through the built-in speakers, so the microphone can pick up the translation and translate it again. The same happens when the other phone is in the same room: its loudspeaker is heard and re-translated. Use headphones and keep the other phone in another room.",
     ),
     (
         "call.issue.local_output_unavailable",
@@ -203,7 +203,7 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ),
     (
         "call.issue.speaker_output",
-        "\u{58f0}\u{97f3}\u{4ece}\u{5185}\u{7f6e}\u{626c}\u{58f0}\u{5668}\u{64ad}\u{51fa}\u{ff0c}\u{9ea6}\u{514b}\u{98ce}\u{4f1a}\u{6536}\u{5230}\u{8bd1}\u{6587}\u{5e76}\u{518d}\u{6b21}\u{7ffb}\u{8bd1}\u{3002}\u{8bf7}\u{4f7f}\u{7528}\u{8033}\u{673a}\u{3002}",
+        "\u{58f0}\u{97f3}\u{4ece}\u{5185}\u{7f6e}\u{626c}\u{58f0}\u{5668}\u{64ad}\u{51fa}\u{ff0c}\u{9ea6}\u{514b}\u{98ce}\u{53ef}\u{80fd}\u{6536}\u{5230}\u{8bd1}\u{6587}\u{5e76}\u{518d}\u{6b21}\u{7ffb}\u{8bd1}\u{ff1b}\u{53e6}\u{4e00}\u{90e8}\u{624b}\u{673a}\u{5728}\u{540c}\u{4e00}\u{623f}\u{95f4}\u{65f6}\u{4e5f}\u{4e00}\u{6837}\u{ff1a}\u{5b83}\u{7684}\u{626c}\u{58f0}\u{5668}\u{58f0}\u{97f3}\u{4f1a}\u{88ab}\u{542c}\u{5230}\u{5e76}\u{91cd}\u{65b0}\u{7ffb}\u{8bd1}\u{3002}\u{8bf7}\u{4f7f}\u{7528}\u{8033}\u{673a}\u{ff0c}\u{5e76}\u{8ba9}\u{53e6}\u{4e00}\u{90e8}\u{624b}\u{673a}\u{79bb}\u{5f00}\u{8fd9}\u{4e2a}\u{623f}\u{95f4}\u{3002}",
     ),
     (
         "call.issue.local_output_unavailable",
