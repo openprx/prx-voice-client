@@ -120,6 +120,10 @@ impl CallWindowState {
         let at = self.elapsed_s();
         self.transcript.absorb(Side::Me, &panel.outgoing, at);
         self.transcript.absorb(Side::Peer, &panel.incoming, at);
+        if !was_idle && is_idle {
+            // The pipelines are gone: whatever was in flight will never finish.
+            self.transcript.end_session();
+        }
         self.seen = panel.clone();
         // Forget heights of utterances that left the bounded list.
         if self.heights.len() > 2 * Transcript::MAX_UTTERANCES {
@@ -201,6 +205,23 @@ mod tests {
         });
         assert!(w.transcript.is_empty());
         assert!(w.began.is_some());
+    }
+
+    #[test]
+    fn a_stop_leaves_no_line_translating_for_ever() {
+        use crate::call_view::PartialView;
+        let mut w = CallWindowState::default();
+        let mut running = panel(CallPhase::Translating, "你好");
+        running.outgoing.clauses[0].status = ClauseStatus::Translating;
+        running.outgoing.partial = Some(PartialView { utterance: 2, text: "还没".into(), stable_len: 0 });
+        w.sync(&running);
+        assert_eq!(w.transcript.items().len(), 2);
+        w.sync(&CallPanel { phase: CallPhase::Idle, ..CallPanel::default() });
+        assert_eq!(w.transcript.items().len(), 1);
+        assert_eq!(
+            w.transcript.items()[0].activity(),
+            crate::call_transcript::Activity::Done
+        );
     }
 
     #[test]

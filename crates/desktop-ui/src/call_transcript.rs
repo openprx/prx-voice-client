@@ -172,6 +172,31 @@ impl Transcript {
         self.items.is_empty()
     }
 
+    /// The call ended: nothing is live any more. A partial that was never committed goes, and a
+    /// clause that was still on its way (recognised, translating, synthesising, playing) is shown
+    /// as cancelled instead of "translating" for ever.
+    pub fn end_session(&mut self) {
+        for u in &mut self.items {
+            let mut changed = u.partial.take().is_some();
+            for l in &mut u.lines {
+                if !matches!(
+                    l.status,
+                    ClauseStatus::Played
+                        | ClauseStatus::Cancelled
+                        | ClauseStatus::Skipped
+                        | ClauseStatus::Failed
+                ) {
+                    l.status = ClauseStatus::Cancelled;
+                    changed = true;
+                }
+            }
+            if changed {
+                u.rev += 1;
+            }
+        }
+        self.items.retain(|u| !u.lines.is_empty());
+    }
+
     /// Forget everything (the next call starts).
     pub fn clear(&mut self) {
         self.items.clear();
@@ -292,6 +317,28 @@ mod tests {
 
     fn lane(clauses: Vec<CaptionView>, partial: Option<PartialView>) -> LaneView {
         LaneView { clauses, partial, translating: true, ..LaneView::default() }
+    }
+
+    #[test]
+    fn when_the_call_ends_nothing_stays_live() {
+        let mut t = Transcript::default();
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![
+                    clause(1, 0, "你好", "Hello.", ClauseStatus::Played),
+                    clause(2, 0, "再见", "Bye.", ClauseStatus::Playing),
+                ],
+                Some(PartialView { utterance: 3, text: "还没说完".into(), stable_len: 0 }),
+            ),
+            1,
+        );
+        assert_eq!(t.items().len(), 3);
+        t.end_session();
+        assert_eq!(t.items().len(), 2, "an utterance that was only a partial leaves no bubble");
+        assert!(t.items().iter().all(|u| u.activity() == Activity::Done));
+        assert_eq!(t.items()[0].lines[0].status, ClauseStatus::Played, "what finished stays finished");
+        assert_eq!(t.items()[1].lines[0].status, ClauseStatus::Cancelled);
     }
 
     #[test]
