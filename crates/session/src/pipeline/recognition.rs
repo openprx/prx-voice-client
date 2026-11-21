@@ -564,9 +564,23 @@ impl RecognitionStage {
             }
             return Ok(());
         }
-        // A filler never waits as a carry for the next clause: it is dropped in `emit_commit`.
+        // A filler in the middle of a segment (more speech may follow in it) is not dropped: it
+        // waits as a carry and joins the next unit, so that a word the recogniser left alone
+        // between two pauses ("the", "和", "to") is not lost. Only a filler that is the whole
+        // segment or its trailing fragment is dropped, when the segment ends (`emit_commit`). A
+        // second filler while one already waits is dropped on the spot, so that echo noise does
+        // not pile up in front of the next real unit; every dropped unit is counted once.
         let filler = self.p.drop_filler && is_pure_filler(self.p.source, &text);
-        if !ending && !filler && !is_clause_sized(&self.p.commit, &text) {
+        if !ending && (filler || !is_clause_sized(&self.p.commit, &text)) {
+            let waiting_filler = self.p.drop_filler
+                && !open.carry.is_empty()
+                && is_pure_filler(self.p.source, &open.carry);
+            if filler && waiting_filler && !tail.trim().is_empty() {
+                Stats::add(&self.stats.filler_dropped, 1);
+                self.tracer
+                    .mark_text(open.clause(), TraceStage::FillerDropped, || tail.trim().to_owned());
+                return Ok(());
+            }
             open.carry = text;
             return Ok(());
         }

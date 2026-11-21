@@ -4,10 +4,10 @@ mod pipeline_rig;
 
 use prxvc_media::{ClauseId, Direction, ManualClock, SegmentId};
 use prxvc_ports::TraceStage;
-use prxvc_ports::fakes::{FakeSpeechSynth, FakeTranslator, MtScript, TtsScript};
+use prxvc_ports::fakes::{AsrScript, FakeSpeechSynth, FakeStreamingAsr, FakeTranslator, MtScript, TtsScript};
 use prxvc_session::{ClauseState, Stage};
 
-use pipeline_rig::{Rig, asr_script, utterances};
+use pipeline_rig::{Rig, asr_script, utterances, vad_runs};
 
 const OUT: Direction = Direction::Outgoing;
 
@@ -111,5 +111,84 @@ fn a_translation_with_nothing_to_say_is_a_visible_failure_and_never_reaches_the_
         rig.fakes.tts.requests().is_empty(),
         "punctuation is never sent to the synthesiser"
     );
+    assert!(rig.stop().clean);
+}
+
+/// One segment of three speech runs, a clause pause (352 ms) between them, then the segment end.
+fn three_runs() -> prxvc_ports::fakes::VadScript {
+    vad_runs(&[(0.0, 10), (0.9, 20), (0.0, 11), (0.9, 20), (0.0, 11), (0.9, 20), (0.0, 25)])
+}
+
+fn rounds(clock: &ManualClock, texts: &[&'static str]) -> FakeStreamingAsr {
+    let partials = |t: &'static str| vec![(t, 0); 80];
+    let mut script = AsrScript::new(partials(texts[0]).into_iter().map(|(t, _)| t), texts[0]);
+    for t in &texts[1..] {
+        script = script.then_round(partials(t), t);
+    }
+    FakeStreamingAsr::new(clock.clone(), script.then_round([], ""))
+}
+
+#[test]
+fn a_filler_in_the_middle_of_a_segment_joins_the_next_unit_and_is_not_lost() {
+    let clock = ManualClock::new();
+    let (mt, tts) = providers(&clock);
+    let mt = mt.with_script("\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002} \u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}", MtScript::tokens(["Um, let's go to the park."]));
+    let rig = Rig::start_asr(
+        &clock,
+        vad_runs(&[(0.0, 10), (0.9, 20), (0.0, 11), (0.9, 20), (0.0, 25)]),
+        rounds(&clock, &["\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002}", "\u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}"]),
+        mt,
+        tts,
+    );
+    rig.wait_running();
+    rig.feed(86);
+    let snap = rig.wait_snapshot("the merged unit is translated", |s| {
+        s.clauses.first().is_some_and(|c| !c.translation.is_empty())
+    });
+    assert_eq!(snap.counters.filler_dropped, 0, "nothing was dropped");
+    assert_eq!(snap.clauses.len(), 1, "one unit: the filler joined the speech after it");
+    assert_eq!(snap.clauses[0].source_text, "\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002} \u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}");
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_filler_that_ends_the_segment_is_dropped_once() {
+    let clock = ManualClock::new();
+    let (mt, tts) = providers(&clock);
+    let mt = mt.with_script("\u{4eca}\u{5929}\u{5929}\u{6c14}\u{5f88}\u{597d}", MtScript::tokens(["The weather is nice."]));
+    let rig = Rig::start_asr(
+        &clock,
+        vad_runs(&[(0.0, 10), (0.9, 20), (0.0, 11), (0.9, 20), (0.0, 25)]),
+        rounds(&clock, &["\u{4eca}\u{5929}\u{5929}\u{6c14}\u{5f88}\u{597d}", "\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002}"]),
+        mt,
+        tts,
+    );
+    rig.wait_running();
+    rig.feed(86);
+    let snap = rig.wait_snapshot("the trailing filler is dropped", |s| s.counters.filler_dropped >= 1);
+    assert_eq!(snap.counters.filler_dropped, 1);
+    assert_eq!(snap.clauses.len(), 1, "the speech before it is a unit of its own");
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_second_filler_while_one_waits_is_dropped_and_counted_once() {
+    let clock = ManualClock::new();
+    let (mt, tts) = providers(&clock);
+    let mt = mt.with_script("\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002} \u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}", MtScript::tokens(["Um, let's go to the park."]));
+    let rig = Rig::start_asr(
+        &clock,
+        three_runs(),
+        rounds(&clock, &["\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002}", "\u{554a}\u{554a}\u{554a}\u{554a}\u{3002}", "\u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}"]),
+        mt,
+        tts,
+    );
+    rig.wait_running();
+    rig.feed(130);
+    let snap = rig.wait_snapshot("the speech is translated", |s| {
+        s.clauses.first().is_some_and(|c| !c.translation.is_empty())
+    });
+    assert_eq!(snap.counters.filler_dropped, 1, "the second hum only");
+    assert_eq!(snap.clauses[0].source_text, "\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002} \u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}");
     assert!(rig.stop().clean);
 }
