@@ -128,7 +128,21 @@ pub(crate) async fn run_engine_loop(
 impl EngineLoop {
     /// 1. Drain UI commands and process them through the engine.
     fn drain_commands(&mut self) {
-        let commands = self.shared.take_commands();
+        // "End assistant and start" ends the assistant session like the end button does; the call
+        // starts when the session has let go of the microphone (`release_assistant_when_idle`).
+        let commands: Vec<String> = self
+            .shared
+            .take_commands()
+            .into_iter()
+            .map(|c| {
+                if c == prxvc_desktop_ui::call_view::command::END_ASSISTANT_AND_START {
+                    self.call.arm_start_after_assistant();
+                    "StopSession".to_owned()
+                } else {
+                    c
+                }
+            })
+            .collect();
         if commands.iter().any(|c| c == "StopSession") {
             self.turn_policy.reset();
         }

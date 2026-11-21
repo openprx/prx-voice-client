@@ -40,6 +40,48 @@ struct Inner {
     ownership: MicOwnership,
     assistant: Mutex<Option<MicClaim>>,
     shared: SharedAppState,
+    handoff: Mutex<Handoff>,
+    /// The call commands sent to the coordinator, by name (tests read it).
+    #[cfg(test)]
+    sent: Mutex<Vec<&'static str>>,
+}
+
+/// "End the assistant and start": the start that follows the end of the assistant session.
+///
+/// The start request is remembered when it is made (so that a refused start can be repeated with
+/// the same options). The button arms it; the start is sent when the assistant has let go of the
+/// microphone claim, which the engine loop reports through [`CallControl::release_assistant`].
+/// Nothing waits on a timer.
+#[derive(Debug, Default)]
+struct Handoff {
+    /// `translate` of the last start request, if any.
+    last_start: Option<bool>,
+    /// A start is armed: its `translate` flag.
+    armed: Option<bool>,
+}
+
+impl Handoff {
+    /// A start was requested (and may be refused because the assistant holds the microphone).
+    fn started(&mut self, translate: bool) {
+        self.last_start = Some(translate);
+        // Any new start or stop of the user's replaces a pending hand-off.
+        self.armed = None;
+    }
+
+    /// The user pressed "End assistant and start"; `default` applies without an earlier start.
+    fn arm(&mut self, default: bool) {
+        self.armed = Some(self.last_start.unwrap_or(default));
+    }
+
+    /// The microphone claim is free: the armed start, once.
+    fn released(&mut self) -> Option<bool> {
+        self.armed.take()
+    }
+
+    /// Something else happened (a stop, or a new assistant session): the hand-off no longer applies.
+    fn cancel(&mut self) {
+        self.armed = None;
+    }
 }
 
 /// The engine's and the application's handle on call mode. Clones share one coordinator.
@@ -121,10 +163,16 @@ impl CallControl {
             ownership,
             assistant: Mutex::new(None),
             shared: shared.clone(),
+            handoff: Mutex::new(Handoff::default()),
+            #[cfg(test)]
+            sent: Mutex::new(Vec::new()),
         }))
     }
 
     /// Run a `Call*` command from the UI; returns whether `cmd` was one.
+    ///
+    /// `CallEndAssistantAndStart` is not handled here: the engine loop ends the assistant session
+    /// and calls [`arm_start_after_assistant`](Self::arm_start_after_assistant).
     pub(crate) fn handle_command(&self, cmd: &str) -> bool {
         let typed = match cmd {
             command::START => CallCommand::Start {
@@ -145,15 +193,34 @@ impl CallControl {
             command::REAPPLY_MICROPHONE => CallCommand::ReapplyVirtualMicrophone,
             _ => return false,
         };
+        match &typed {
+            CallCommand::Start { translate, .. } => self.0.handoff.lock().started(*translate),
+            CallCommand::Stop => self.0.handoff.lock().cancel(),
+            _ => {}
+        }
+        self.send(typed, cmd_name(cmd));
+        true
+    }
+
+    fn send(&self, typed: CallCommand, name: &'static str) {
+        #[cfg(test)]
+        self.0.sent.lock().push(name);
         let result = match self.0.handle.lock().as_ref() {
             Some(handle) => handle.send(typed),
             None => Err(SendError::Ended),
         };
         if let Err(e) = result {
-            tracing::warn!(cmd, error = %e, "call command not delivered");
+            tracing::warn!(cmd = name, error = %e, "call command not delivered");
             push_error(&self.0.shared, &format!("Call mode: {e}"));
         }
-        true
+    }
+
+    /// "End assistant and start" was pressed: remember to start call mode with the options of the
+    /// refused start as soon as the assistant has let go of the microphone. The caller ends the
+    /// assistant session; [`release_assistant`](Self::release_assistant) sends the start.
+    pub(crate) fn arm_start_after_assistant(&self) {
+        let default = crate::call_kit::config::load_current().call.translate;
+        self.0.handoff.lock().arm(default);
     }
 
     /// An assistant session wants the microphone: refuse while call mode holds it.
@@ -168,15 +235,29 @@ impl CallControl {
         match self.0.ownership.claim(MicOwner::Assistant) {
             Ok(claim) => {
                 *slot = Some(claim);
+                // A new assistant session replaces a pending hand-off to call mode.
+                self.0.handoff.lock().cancel();
                 Ok(())
             }
             Err(_) => Err(prxvc_i18n::t("call.refused.call_running")),
         }
     }
 
-    /// The assistant session ended: give the microphone back.
+    /// The assistant session ended: give the microphone back, and send the start that
+    /// "End assistant and start" armed, if any. The claim is dropped before the start is sent, so
+    /// the coordinator finds the microphone free.
     pub(crate) fn release_assistant(&self) {
         *self.0.assistant.lock() = None;
+        let armed = self.0.handoff.lock().released();
+        if let Some(translate) = armed {
+            self.send(
+                CallCommand::Start {
+                    target_app: None,
+                    translate,
+                },
+                "CallEndAssistantAndStart",
+            );
+        }
     }
 
     /// Stop call mode (restoring the default input) and end the coordinator; the application is closing.
@@ -190,6 +271,22 @@ impl CallControl {
             );
         }
     }
+}
+
+/// The static name of a `Call*` command, for the log.
+fn cmd_name(cmd: &str) -> &'static str {
+    [
+        command::START,
+        command::START_TRANSLATED,
+        command::START_AUDIO_ONLY,
+        command::STOP,
+        command::PAUSE,
+        command::RESUME,
+        command::REAPPLY_MICROPHONE,
+    ]
+    .into_iter()
+    .find(|c| *c == cmd)
+    .unwrap_or("Call")
 }
 
 #[cfg(target_os = "macos")]
@@ -336,5 +433,89 @@ mod tests {
         assert!(!control.handle_command("StartSession"));
         assert!(!control.handle_command("RefreshDriverStatus"));
         control.shutdown();
+    }
+
+    /// A control with no coordinator behind it: what would be sent is recorded in `sent`.
+    fn control() -> CallControl {
+        CallControl(Arc::new(Inner {
+            handle: Mutex::new(None),
+            ownership: MicOwnership::new(),
+            assistant: Mutex::new(None),
+            shared: SharedAppState::new(),
+            handoff: Mutex::new(Handoff::default()),
+            sent: Mutex::new(Vec::new()),
+        }))
+    }
+
+    fn sent(c: &CallControl) -> Vec<&'static str> {
+        c.0.sent.lock().clone()
+    }
+
+    #[test]
+    fn the_start_after_the_assistant_is_sent_when_its_claim_is_released_and_not_before() {
+        let c = control();
+        assert!(c.claim_assistant().is_ok());
+        // The start the assistant refused, then the button.
+        assert!(c.handle_command(command::START_TRANSLATED));
+        c.arm_start_after_assistant();
+        assert_eq!(
+            sent(&c),
+            vec![command::START_TRANSLATED],
+            "the armed start waits: only the refused one was sent"
+        );
+        assert_eq!(c.0.ownership.holder(), Some(MicOwner::Assistant));
+        c.release_assistant();
+        assert_eq!(c.0.ownership.holder(), None, "the claim is free when the start goes");
+        assert_eq!(
+            sent(&c),
+            vec![command::START_TRANSLATED, "CallEndAssistantAndStart"]
+        );
+        // Releasing again does not start twice.
+        c.release_assistant();
+        assert_eq!(sent(&c).len(), 2);
+    }
+
+    #[test]
+    fn the_hand_off_repeats_the_options_of_the_refused_start() {
+        let mut h = Handoff::default();
+        h.started(false);
+        h.arm(true);
+        assert_eq!(h.released(), Some(false), "audio only was asked for");
+        let mut h = Handoff::default();
+        h.started(true);
+        h.arm(false);
+        assert_eq!(h.released(), Some(true));
+        let mut h = Handoff::default();
+        h.arm(true);
+        assert_eq!(h.released(), Some(true), "without an earlier start the setting applies");
+    }
+
+    #[test]
+    fn a_stop_a_new_start_or_a_new_assistant_session_cancel_the_hand_off() {
+        let c = control();
+        assert!(c.claim_assistant().is_ok());
+        c.arm_start_after_assistant();
+        assert!(c.handle_command(command::STOP));
+        c.release_assistant();
+        assert_eq!(sent(&c), vec![command::STOP], "nothing started after a stop");
+
+        let c = control();
+        assert!(c.claim_assistant().is_ok());
+        c.arm_start_after_assistant();
+        c.release_assistant();
+        assert_eq!(sent(&c), vec!["CallEndAssistantAndStart"]);
+
+        let c = control();
+        c.arm_start_after_assistant();
+        assert!(c.claim_assistant().is_ok());
+        c.release_assistant();
+        assert!(sent(&c).is_empty(), "a new assistant session replaced the hand-off");
+    }
+
+    #[test]
+    fn end_assistant_and_start_is_not_a_command_of_the_coordinator() {
+        let c = control();
+        assert!(!c.handle_command(command::END_ASSISTANT_AND_START));
+        assert!(sent(&c).is_empty());
     }
 }
