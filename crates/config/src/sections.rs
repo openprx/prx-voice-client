@@ -295,6 +295,8 @@ pub struct CallConfig {
     /// `"hands_free"` or `"push_to_talk"`.
     pub outgoing_capture: String,
     pub captions_show_source: bool,
+    /// Text size of the Call translation window's captions: `"small"`, `"medium"` or `"large"`.
+    pub captions_size: String,
     pub barge_in: bool,
     /// `"manual"` or `"on_call"`: when call mode starts.
     pub start_mode: String,
@@ -333,6 +335,7 @@ impl Default for CallConfig {
             local_output_mode: "translation".to_owned(),
             outgoing_capture: "hands_free".to_owned(),
             captions_show_source: true,
+            captions_size: "medium".to_owned(),
             barge_in: true,
             start_mode: "manual".to_owned(),
             outgoing_when_paused: "original".to_owned(),

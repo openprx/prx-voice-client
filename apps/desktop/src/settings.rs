@@ -113,6 +113,7 @@ plain_fields! {
     call_local_output_mode => call.local_output_mode,
     call_outgoing_capture => call.outgoing_capture,
     call_captions_show_source => call.captions_show_source,
+    call_captions_size => call.captions_size,
     call_barge_in => call.barge_in,
     network_language => network.language,
     virtual_mic_device => audio.virtual_mic_device,
@@ -285,6 +286,7 @@ mod tests {
         c.call.local_output_mode = "both".to_owned();
         c.call.outgoing_capture = "push_to_talk".to_owned();
         c.call.captions_show_source = false;
+        c.call.captions_size = "large".to_owned();
         c.call.barge_in = false;
         c.voice.self_profile_id = "me".to_owned();
         c.voice.use_clone_outgoing = false;
@@ -406,6 +408,7 @@ mod tests {
             call_local_output_mode => call.local_output_mode : "original".to_owned(),
             call_outgoing_capture => call.outgoing_capture : "hands_free".to_owned(),
             call_captions_show_source => call.captions_show_source : true,
+            call_captions_size => call.captions_size : "small".to_owned(),
             call_barge_in => call.barge_in : true,
             network_language => network.language : "zh-CN".to_owned(),
             virtual_mic_device => audio.virtual_mic_device : String::new(),

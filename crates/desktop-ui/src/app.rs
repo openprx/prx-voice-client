@@ -268,17 +268,36 @@ fn show_call_window(
     let call = state.call.clone();
     let mut actions = Vec::new();
     {
-        let DesktopUiState { windows, call_translate, settings, .. } = &mut *state;
-        tool_window::show(ctx, tk, ToolKind::Call, &mut windows.call, placement, |ui| {
-            call_window_view::body(ui, tk, &call, call_translate, settings, &mut actions);
+        let DesktopUiState { windows, call_translate, settings, call_window, .. } = &mut *state;
+        tool_window::show_raw(ctx, tk, ToolKind::Call, &mut windows.call, placement, |ui| {
+            call_window_view::body(ui, tk, &call, call_translate, settings, call_window, &mut actions);
         });
     }
+    apply_call_actions(state, actions);
+}
+
+/// Apply what was clicked in the Call translation window after the frame.
+fn apply_call_actions(state: &mut DesktopUiState, actions: Vec<CallWindowAction>) {
     for action in actions {
         match action {
             CallWindowAction::Command(cmd) => state.pending_commands.push(cmd.to_owned()),
             CallWindowAction::OpenSettings(section) => state.open_settings(Some(section)),
         }
     }
+}
+
+/// Draw the content of the Call translation window into `ui`, in the padded window frame, and
+/// apply what was clicked. The window itself draws the same content; this entry exists so that
+/// tests and snapshots can show it without the orb around it.
+pub fn render_call_window(ui: &mut egui::Ui, state: &mut DesktopUiState) {
+    let tk = crate::theme::tokens_for(ui.ctx());
+    let call = state.call.clone();
+    let mut actions = Vec::new();
+    egui::CentralPanel::default().frame(tool_window::window_frame(&tk)).show(ui, |ui| {
+        let DesktopUiState { call_translate, settings, call_window, .. } = &mut *state;
+        call_window_view::body(ui, &tk, &call, call_translate, settings, call_window, &mut actions);
+    });
+    apply_call_actions(state, actions);
 }
 
 /// Ask egui for the next repaint according to the state-based policy.

@@ -1,17 +1,14 @@
 //! Tests of the Call translation window and the orb clicks that lead to it (egui_kittest), through `render_app`: both themes, both languages, a narrow and a wide window, and the idle, translating, degraded and assistant-blocked states; Start and Stop, the menu entry and the orb click that ends an assistant session.
 
+mod call_fixtures;
 mod common;
 
 use common::lock_locale;
 use egui::{Role, Theme};
 use egui_kittest::kittest::Queryable as _;
-use prxvc_desktop_ui::call_view::{
-    CaptionView, ClauseStatus, CountersView, IssueAction, LatencyView, PartialView, command,
-};
+use prxvc_desktop_ui::call_view::command;
 use prxvc_desktop_ui::tool_window::ToolKind;
-use prxvc_desktop_ui::{
-    CallPanel, CallPhase, DesktopUiState, Heard, IssueSeverity, IssueView, LaneView,
-};
+use prxvc_desktop_ui::{CallPanel, DesktopUiState, IssueSeverity, IssueView};
 
 fn app_harness(
     state: DesktopUiState,
@@ -36,121 +33,21 @@ fn state_with(panel: CallPanel) -> DesktopUiState {
     st
 }
 
-fn issue(key: &str, severity: IssueSeverity, action: IssueAction) -> IssueView {
-    IssueView {
-        key: key.into(),
-        severity,
-        detail: "detail from the coordinator".into(),
-        action,
-    }
-}
-
-fn translating_lane(hears: Heard) -> LaneView {
-    LaneView {
-        running: true,
-        translating: true,
-        languages: Some(("zh".into(), "en".into())),
-        hears,
-        device: "Built-in Mic".into(),
-        rms: 0.05,
-        peak: 0.3,
-        partial: Some(PartialView {
-            utterance: 3,
-            text: "今天天气很好我们去".into(),
-            stable_len: 18,
-        }),
-        clauses: vec![
-            CaptionView {
-                source: "你好，今天的会议改到下午三点".into(),
-                translation: "Hello, today's meeting has moved to three in the afternoon.".into(),
-                status: ClauseStatus::Played,
-                ..CaptionView::default()
-            },
-            CaptionView {
-                source: "我们开会".into(),
-                translation: String::new(),
-                status: ClauseStatus::Translating,
-                ..CaptionView::default()
-            },
-        ],
-        counters: Some(CountersView {
-            filler_dropped: 3,
-            backlog_skips: 1,
-            stale_skips: 1,
-            ..CountersView::default()
-        }),
-        latency: Some(LatencyView {
-            speech_start_to_first_audio_ms: Some(2500.0),
-            pause_to_first_audio_ms: Some(900.0),
-            stages: vec![("mt_first_token".into(), 90.0)],
-        }),
-        ..LaneView::default()
-    }
-}
-
 fn panels() -> Vec<(&'static str, CallPanel)> {
     vec![
         ("idle", CallPanel::default()),
-        (
-            "translating",
-            CallPanel {
-                phase: CallPhase::Translating,
-                translate_enabled: true,
-                in_call_mode: true,
-                default_input_ours: true,
-                outgoing: translating_lane(Heard::Translation),
-                incoming: translating_lane(Heard::Translation),
-                ..CallPanel::default()
-            },
-        ),
-        (
-            "degraded",
-            CallPanel {
-                phase: CallPhase::Degraded,
-                translate_enabled: true,
-                in_call_mode: true,
-                default_input_ours: true,
-                outgoing: translating_lane(Heard::Original),
-                incoming: translating_lane(Heard::Translation),
-                issues: vec![
-                    issue(
-                        "call.issue.speaker_output",
-                        IssueSeverity::Degraded,
-                        IssueAction::OpenAudioSettings,
-                    ),
-                    issue(
-                        "call.issue.provider.server_unreachable",
-                        IssueSeverity::Blocking,
-                        IssueAction::OpenSpeechSettings,
-                    ),
-                ],
-                ..CallPanel::default()
-            },
-        ),
-        (
-            "blocked",
-            CallPanel {
-                issues: vec![
-                    issue(
-                        "call.issue.assistant_active",
-                        IssueSeverity::Blocking,
-                        IssueAction::EndAssistantAndStart,
-                    ),
-                    issue(
-                        "call.issue.mic_consent_denied",
-                        IssueSeverity::Blocking,
-                        IssueAction::OpenPermissions,
-                    ),
-                ],
-                last_error: Some(issue(
-                    "call.issue.driver_missing",
-                    IssueSeverity::Blocking,
-                    IssueAction::OpenPermissions,
-                )),
-                ..CallPanel::default()
-            },
-        ),
+        ("loading", call_fixtures::loading_panel()),
+        ("listening", call_fixtures::listening_panel()),
+        ("translating", call_fixtures::live_panel()),
+        ("degraded", call_fixtures::degraded_panel()),
+        ("paused", call_fixtures::paused_panel()),
+        ("blocked", call_fixtures::blocked_panel()),
+        ("long", call_fixtures::long_panel(300)),
     ]
+}
+
+fn panel(name: &str) -> CallPanel {
+    panels().into_iter().find(|(n, _)| *n == name).unwrap().1
 }
 
 #[test]
@@ -159,7 +56,7 @@ fn the_window_renders_in_both_themes_languages_and_widths_for_every_state() {
     for scheme in [Theme::Light, Theme::Dark] {
         for locale in [prxvc_i18n::Locale::En, prxvc_i18n::Locale::ZhCn] {
             prxvc_i18n::set_locale(locale);
-            for width in [420.0, 900.0] {
+            for width in [380.0, 900.0] {
                 for (name, panel) in panels() {
                     let mut h = common::builder(egui::vec2(width, 900.0), scheme).build_ui_state(
                         |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_app(ui, st),
@@ -168,7 +65,7 @@ fn the_window_renders_in_both_themes_languages_and_widths_for_every_state() {
                     h.input_mut().system_theme = Some(scheme);
                     h.run_steps(3);
                     h.check_accessibility();
-                    // The window's title, drawn in the embedded fallback, and its state line.
+                    // The window's title, drawn in the embedded fallback.
                     assert!(has_label(&h, &prxvc_i18n::t("callwin.title")));
                     assert!(
                         h.state().windows.call.is_open(),
@@ -182,49 +79,48 @@ fn the_window_renders_in_both_themes_languages_and_widths_for_every_state() {
 }
 
 #[test]
-fn the_state_is_said_in_plain_words() {
+fn the_state_is_said_in_plain_words_in_a_chip() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let cases = [
         ("idle", "Not running"),
-        ("translating", "Translating both directions"),
-        ("degraded", "Reduced:"),
+        ("loading", "Loading"),
+        ("translating", "Translating"),
+        ("degraded", "Reduced"),
+        ("paused", "Paused"),
     ];
     for (name, words) in cases {
-        let panel = panels().into_iter().find(|(n, _)| *n == name).unwrap().1;
-        let mut h = app_harness(state_with(panel), 420.0);
+        let mut h = app_harness(state_with(panel(name)), 420.0);
         h.run_steps(3);
         assert!(has_label(&h, words), "{name}: {words}");
     }
 }
 
 #[test]
-fn start_and_stop_are_one_primary_button_that_sends_the_call_commands() {
+fn the_translate_switch_is_on_by_default_and_start_sends_the_translated_command() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-    // Idle: Start, audio only until the Translate switch is on.
     let mut h = app_harness(state_with(CallPanel::default()), 420.0);
     h.run_steps(3);
-    assert!(h.query_by_role_and_label(Role::Button, "Stop").is_none());
-    h.get_by_role_and_label(Role::Button, "Start").click();
-    h.run_steps(2);
-    assert_eq!(h.state().pending_commands, [command::START_AUDIO_ONLY]);
-    // The Translate switch decides what the next Start does.
-    h.state_mut().pending_commands.clear();
-    h.get_by_role_and_label(Role::Switch, "Translate").click();
-    h.run_steps(2);
-    assert!(h.state().call_translate);
+    assert!(h.state().call_translate, "the window's purpose is translation");
     h.get_by_role_and_label(Role::Button, "Start").click();
     h.run_steps(2);
     assert_eq!(h.state().pending_commands, [command::START_TRANSLATED]);
+    // Audio only stays possible: the switch off.
+    h.state_mut().pending_commands.clear();
+    h.get_by_role_and_label(Role::Switch, "Translate").click();
+    h.run_steps(2);
+    assert!(!h.state().call_translate);
+    h.get_by_role_and_label(Role::Button, "Start").click();
+    h.run_steps(2);
+    assert_eq!(h.state().pending_commands, [command::START_AUDIO_ONLY]);
+}
 
-    // Translating: the same button is Stop; Pause is next to it.
-    let translating = panels()
-        .into_iter()
-        .find(|(n, _)| *n == "translating")
-        .unwrap()
-        .1;
-    let mut h = app_harness(state_with(translating), 420.0);
+#[test]
+fn start_and_stop_are_one_primary_button_with_pause_beside_it() {
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    let mut h = app_harness(state_with(panel("translating")), 420.0);
     h.run_steps(3);
     assert!(h.query_by_role_and_label(Role::Button, "Start").is_none());
     h.get_by_role_and_label(Role::Button, "Pause").click();
@@ -238,16 +134,52 @@ fn start_and_stop_are_one_primary_button_that_sends_the_call_commands() {
 fn resume_replaces_pause_while_paused() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-    let panel = CallPanel {
-        phase: CallPhase::Paused,
-        ..CallPanel::default()
-    };
-    let mut h = app_harness(state_with(panel), 420.0);
+    let mut h = app_harness(state_with(panel("paused")), 420.0);
     h.run_steps(3);
     assert!(h.query_by_role_and_label(Role::Button, "Pause").is_none());
     h.get_by_role_and_label(Role::Button, "Resume").click();
     h.run_steps(2);
     assert_eq!(h.state().pending_commands, [command::RESUME]);
+}
+
+#[test]
+fn space_toggles_pause_when_nothing_has_focus_and_does_nothing_when_idle() {
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    let mut h = app_harness(state_with(panel("translating")), 420.0);
+    h.run_steps(3);
+    h.key_press(egui::Key::Space);
+    h.run_steps(2);
+    assert_eq!(h.state().pending_commands, [command::PAUSE]);
+
+    let mut h = app_harness(state_with(panel("paused")), 420.0);
+    h.run_steps(3);
+    h.key_press(egui::Key::Space);
+    h.run_steps(2);
+    assert_eq!(h.state().pending_commands, [command::RESUME]);
+
+    let mut h = app_harness(state_with(CallPanel::default()), 420.0);
+    h.run_steps(3);
+    h.key_press(egui::Key::Space);
+    h.run_steps(2);
+    assert!(h.state().pending_commands.is_empty());
+}
+
+#[test]
+fn command_w_closes_the_window() {
+    let _guard = lock_locale();
+    let mut h = app_harness(state_with(CallPanel::default()), 420.0);
+    h.run_steps(3);
+    assert!(h.state().windows.call.is_open());
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::W,
+        physical_key: Some(egui::Key::W),
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::COMMAND,
+    });
+    h.run_steps(3);
+    assert!(!h.state().windows.call.is_open());
 }
 
 #[test]
@@ -262,12 +194,7 @@ fn the_issue_buttons_end_the_assistant_and_start_or_open_the_settings_page() {
         (prxvc_i18n::Locale::ZhCn, "结束助手并开始", "打开权限页"),
     ] {
         prxvc_i18n::set_locale(locale);
-        let blocked = panels()
-            .into_iter()
-            .find(|(n, _)| *n == "blocked")
-            .unwrap()
-            .1;
-        let mut h = app_harness(state_with(blocked), 420.0);
+        let mut h = app_harness(state_with(panel("blocked")), 420.0);
         h.run_steps(3);
         h.get_by_role_and_label(Role::Button, end).click();
         h.run_steps(2);
@@ -278,11 +205,12 @@ fn the_issue_buttons_end_the_assistant_and_start_or_open_the_settings_page() {
         );
         // A permission issue's button opens the Permissions page of the settings.
         let consent = CallPanel {
-            issues: vec![issue(
-                "call.issue.mic_consent_denied",
-                IssueSeverity::Blocking,
-                IssueAction::OpenPermissions,
-            )],
+            issues: vec![IssueView {
+                key: "call.issue.mic_consent_denied".into(),
+                severity: IssueSeverity::Blocking,
+                detail: String::new(),
+                action: prxvc_desktop_ui::call_view::IssueAction::OpenPermissions,
+            }],
             ..CallPanel::default()
         };
         let mut h = app_harness(state_with(consent), 420.0);
@@ -299,60 +227,93 @@ fn the_issue_buttons_end_the_assistant_and_start_or_open_the_settings_page() {
 }
 
 #[test]
-fn the_end_assistant_button_appears_only_next_to_that_issue() {
+fn issues_appear_only_when_there_is_something_to_do() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-    let degraded = panels()
-        .into_iter()
-        .find(|(n, _)| *n == "degraded")
-        .unwrap()
-        .1;
-    let mut h = app_harness(state_with(degraded), 420.0);
+    let mut h = app_harness(state_with(panel("translating")), 420.0);
     h.run_steps(3);
     assert!(
         h.query_by_role_and_label(Role::Button, "End assistant and start")
             .is_none()
     );
+    assert!(!has_label(&h, "Notes"), "no issues area, no heading");
+    let mut h = app_harness(state_with(panel("degraded")), 420.0);
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Button, "Open Audio settings");
+    h.get_by_role_and_label(Role::Button, "Open Speech settings");
 }
 
 #[test]
-fn the_languages_are_the_settings_and_locked_while_a_call_runs() {
+fn the_languages_swap_while_idle_and_are_edited_in_the_details_and_locked_while_a_call_runs() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-    let mut h = app_harness(state_with(CallPanel::default()), 420.0);
+    let mut st = state_with(CallPanel::default());
+    st.settings.call_self_language = "zh".into();
+    st.settings.call_peer_language = "en".into();
+    let mut h = app_harness(st, 420.0);
+    h.run_steps(3);
+    assert!(has_label(&h, "中文 \u{2192} English / English \u{2192} 中文"));
+    h.get_by_role_and_label(Role::Button, "Swap").click();
+    h.run_steps(2);
+    assert_eq!(h.state().settings.call_self_language, "en");
+    assert_eq!(h.state().settings.call_peer_language, "zh");
+    // Edit opens the details, where the two selects are.
+    h.get_by_role_and_label(Role::Button, "Edit").click();
     h.run_steps(3);
     h.get_by_role_and_label(Role::ComboBox, "You speak");
     h.get_by_role_and_label(Role::ComboBox, "They speak");
-    let translating = panels()
-        .into_iter()
-        .find(|(n, _)| *n == "translating")
-        .unwrap()
-        .1;
-    let mut h = app_harness(state_with(translating), 420.0);
+
+    let mut st = state_with(panel("translating"));
+    st.call_window.details_open = true;
+    let mut h = app_harness(st, 420.0);
     h.run_steps(3);
+    assert!(h.query_by_role_and_label(Role::Button, "Swap").is_none());
     assert!(
         h.query_by_role_and_label(Role::ComboBox, "You speak")
             .is_none()
     );
-    assert!(has_label(
-        &h,
-        "The languages change while call mode is off."
-    ));
+    assert!(has_label(&h, "The languages change while call mode is off."));
 }
 
 #[test]
-fn the_notes_say_what_was_dropped_and_skipped() {
+fn the_details_hold_the_counters_and_stay_closed_until_asked() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
-    let translating = panels()
-        .into_iter()
-        .find(|(n, _)| *n == "translating")
-        .unwrap()
-        .1;
-    let mut h = app_harness(state_with(translating), 420.0);
+    let mut h = app_harness(state_with(panel("translating")), 420.0);
     h.run_steps(3);
-    assert!(has_label(&h, "Dropped filler: 3. Skipped to keep up: 2."));
+    assert!(!has_label(&h, "Filler dropped 3"));
+    assert!(has_label(&h, "Delay 2.5 s"), "the delay is a quiet indicator");
+    h.get_by_role_and_label(Role::Button, "Details").click();
+    h.run_steps(3);
+    assert!(has_label(&h, "Filler dropped 3"));
+    assert!(has_label(&h, "Already in target language 1"));
     assert!(has_label(&h, "2500 ms"));
+    h.get_by_role_and_label(Role::Button, "Hide details").click();
+    h.run_steps(3);
+    assert!(!has_label(&h, "Filler dropped 3"));
+}
+
+#[test]
+fn a_conversation_starts_with_what_will_happen_and_listening_has_its_own_words() {
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    for (name, title) in [
+        ("idle", "Ready when you are"),
+        ("loading", "Getting ready"),
+        ("listening", "Listening"),
+        ("paused", "Paused"),
+    ] {
+        let mut panel = panel(name);
+        if name == "paused" {
+            panel.outgoing.clauses.clear();
+            panel.outgoing.partial = None;
+            panel.incoming.clauses.clear();
+            panel.incoming.partial = None;
+        }
+        let mut h = app_harness(state_with(panel), 420.0);
+        h.run_steps(3);
+        assert!(has_label(&h, title), "{name}: {title}");
+    }
 }
 
 #[test]

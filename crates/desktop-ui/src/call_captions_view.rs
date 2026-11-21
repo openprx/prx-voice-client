@@ -1,7 +1,7 @@
-//! The translation part of a call lane: the live captions (the open clause with its stable prefix marked, the committed clauses with their translations and status) for the Call translation window, and the counters, last latency figures and the level of the translated playback for the debug control.
+//! The translation part of a call lane for the debug control: the languages, the level of the translated playback, the counters and the last latency figures. The captions themselves are the Call translation window's timeline (`call_timeline_view`).
 
 use crate::call_debug_view::db;
-use crate::call_view::{ClauseStatus, LaneView, LatencyView};
+use crate::call_view::{LaneView, LatencyView};
 use crate::theme::{Tokens, size, space};
 use crate::widgets;
 
@@ -60,60 +60,6 @@ pub(crate) fn translation_detail(ui: &mut egui::Ui, tk: &Tokens, lane: &LaneView
     latency(ui, tk, lane.latency.as_ref());
 }
 
-/// The open clause with its stable prefix marked and the committed clauses with their translations.
-pub(crate) fn captions(ui: &mut egui::Ui, tk: &Tokens, lane: &LaneView) {
-    ui.label(widgets::text(
-        prxvc_i18n::t("call.captions"),
-        size::META,
-        tk.secondary,
-    ));
-    for (i, clause) in lane.clauses.iter().enumerate() {
-        ui.push_id(("clause", i), |ui| {
-            let tone = match clause.status {
-                ClauseStatus::Failed | ClauseStatus::Cancelled | ClauseStatus::Skipped => {
-                    tk.secondary
-                }
-                _ => tk.text,
-            };
-            ui.add(
-                egui::Label::new(widgets::text(
-                    format!(
-                        "{}  [{}]",
-                        clause.source,
-                        prxvc_i18n::t(clause.status.key())
-                    ),
-                    size::META,
-                    tone,
-                ))
-                .wrap(),
-            );
-            if !clause.translation.is_empty() {
-                ui.add(
-                    egui::Label::new(widgets::text(
-                        format!("  {}", clause.translation),
-                        size::META,
-                        tk.primary,
-                    ))
-                    .wrap(),
-                );
-            }
-        });
-    }
-    if let Some(p) = &lane.partial {
-        // The stable prefix is final text; the tail may still change.
-        let cut = p.stable_len.min(p.text.len());
-        let cut = (0..=cut)
-            .rev()
-            .find(|i| p.text.is_char_boundary(*i))
-            .unwrap_or(0);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            ui.label(widgets::text(&p.text[..cut], size::META, tk.text));
-            ui.label(widgets::text(&p.text[cut..], size::META, tk.secondary).italics());
-        });
-    }
-}
-
 fn latency(ui: &mut egui::Ui, tk: &Tokens, latency: Option<&LatencyView>) {
     ui.add_space(space::S4);
     let Some(l) = latency else {
@@ -152,13 +98,4 @@ fn latency(ui: &mut egui::Ui, tk: &Tokens, latency: Option<&LatencyView>) {
         size::CAPTION,
         tk.secondary,
     ));
-}
-
-/// The first figure of the last clause's latency (speech start to first translated audio), or a note that there is none.
-pub(crate) fn latency_line(ui: &mut egui::Ui, tk: &Tokens, latency: Option<&LatencyView>) {
-    let text = match latency.and_then(|l| l.speech_start_to_first_audio_ms) {
-        Some(ms) => prxvc_i18n::t_with("callwin.latency", &[&format!("{ms:.0}")]),
-        None => prxvc_i18n::t("callwin.latency.none"),
-    };
-    ui.label(widgets::text(text, size::META, tk.secondary));
 }

@@ -24,10 +24,19 @@
 //!   [`settings_command`] (what the window asks of the app).
 
 mod app;
+mod call_bubble;
+mod call_captions_bar;
 mod call_captions_view;
 mod call_debug_view;
-mod call_window_view;
+mod call_timeline_view;
+pub mod call_transcript;
 pub mod call_view;
+mod call_window_details;
+mod call_window_footer;
+mod call_window_header;
+mod call_window_issues;
+pub mod call_window_state;
+mod call_window_view;
 mod context_menu;
 mod debug_view;
 mod error_banner;
@@ -64,7 +73,7 @@ mod transcript_view;
 pub mod widgets;
 mod widgets_radio;
 
-pub use app::render_app;
+pub use app::{render_app, render_call_window};
 pub use call_view::{ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
 pub use debug_view::render_debug_page;
 pub use error_banner::render_error_banner;
