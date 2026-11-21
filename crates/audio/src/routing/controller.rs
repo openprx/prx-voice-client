@@ -38,7 +38,14 @@ pub struct RoutingController<R, S, J> {
     system: S,
     journal: J,
     state: CallState,
+    idle_window_start: u64,
+    idle_fixes: u32,
 }
+
+/// Restores [`RoutingController::correct_idle_default`] makes in one window.
+pub const IDLE_FIXES_PER_WINDOW: u32 = 3;
+/// The length of that window, in seconds.
+pub const IDLE_FIX_WINDOW_SECS: u64 = 60;
 
 impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R, S, J> {
     /// A controller that is not in call mode.
@@ -48,6 +55,8 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
             system,
             journal,
             state: CallState::idle(),
+            idle_window_start: 0,
+            idle_fixes: 0,
         }
     }
 
@@ -224,8 +233,8 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
     ///   microphone is the default input: restore the default input.
     /// * Stale journal, default input already another device: delete the journal.
     /// * Journal of a running other process: leave everything alone.
-    /// * No journal, our microphone is the default input: change nothing (the
-    ///   user may have chosen it); report it.
+    /// * No journal, our microphone is the default input: restore the input policy's choice (our
+    ///   microphone is never the default outside call mode) and report it.
     /// * Unusable journal: move it aside; restore by policy when our
     ///   microphone is the default input.
     pub fn recover_if_needed(&mut self) -> RecoveryReport {
@@ -234,9 +243,10 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
         }
         let report = match self.recovery_plan() {
             RecoveryPlan::Nothing => RecoveryReport::Nothing,
-            RecoveryPlan::OwnMicrophoneWithoutJournal => {
-                RecoveryReport::OwnMicrophoneIsDefaultWithoutJournal
-            }
+            RecoveryPlan::OwnMicrophoneWithoutJournal => match self.restore_default(None) {
+                Ok(restored) => RecoveryReport::OwnMicrophoneRestoredWithoutJournal { restored },
+                Err(error) => RecoveryReport::Failed { error },
+            },
             RecoveryPlan::OwnerAlive { pid } => RecoveryReport::OwnerAlive { pid },
             RecoveryPlan::Unreadable(e) => RecoveryReport::Failed {
                 error: CallModeError::Routing(e),
@@ -265,6 +275,41 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
             other => tracing::info!(report = ?other, "routing recovery"),
         }
         report
+    }
+
+    /// Outside call mode, put the default input back by policy when our virtual microphone has
+    /// become the default (macOS picks it when the device that was the default is unplugged). Call
+    /// it when the system reports a default-input change and now and then while idle; it acts only
+    /// with no call mode and no journal, so it can never undo a call, and it stops after
+    /// [`IDLE_FIXES_PER_WINDOW`] restores in [`IDLE_FIX_WINDOW_SECS`] seconds so that two
+    /// parties changing the default cannot loop. `None`: nothing to do or not allowed.
+    pub fn correct_idle_default(&mut self) -> Option<Result<Restored, CallModeError>> {
+        if self.state.phase != Phase::Idle
+            || !matches!(self.recovery_plan(), RecoveryPlan::OwnMicrophoneWithoutJournal)
+        {
+            return None;
+        }
+        let now = self.system.unix_secs();
+        if now.saturating_sub(self.idle_window_start) >= IDLE_FIX_WINDOW_SECS {
+            self.idle_window_start = now;
+            self.idle_fixes = 0;
+        }
+        if self.idle_fixes >= IDLE_FIXES_PER_WINDOW {
+            if self.idle_fixes == IDLE_FIXES_PER_WINDOW {
+                self.idle_fixes += 1;
+                tracing::warn!(
+                    "the default input keeps returning to the PRX Voice Microphone outside call mode; not correcting it again for a while"
+                );
+            }
+            return None;
+        }
+        self.idle_fixes += 1;
+        let result = self.restore_default(None);
+        match &result {
+            Ok(restored) => tracing::info!(?restored, "the PRX Voice Microphone was the default input outside call mode; the policy's choice was restored"),
+            Err(error) => tracing::error!(%error, "could not take the PRX Voice Microphone off the default input outside call mode"),
+        }
+        Some(result)
     }
 
     /// What [`recover_if_needed`](Self::recover_if_needed) would do now. Reads

@@ -188,10 +188,18 @@ impl CallHost for RealCallHost {
             required_variant: required_variant(target),
             configured_input: self.config.input_device.clone(),
         };
-        let outcome = self
-            .controller()?
-            .enter_call_mode(&request)
-            .map_err(|e| call_mode_fault(&e))?;
+        // The idle watch of the default input stands aside from here until call mode is left.
+        crate::routing_recovery::set_call_mode(true);
+        let outcome = match self.controller().and_then(|c| {
+            c.enter_call_mode(&request)
+                .map_err(|e| call_mode_fault(&e))
+        }) {
+            Ok(o) => o,
+            Err(e) => {
+                crate::routing_recovery::set_call_mode(false);
+                return Err(e);
+            }
+        };
         Ok(EnteredRouting {
             saved_input: outcome.saved.map(|d| d.name),
             physical_input: outcome.physical_input.name,
@@ -251,6 +259,7 @@ impl CallHost for RealCallHost {
             .controller()?
             .leave_call_mode()
             .map_err(|e| call_mode_fault(&e))?;
+        crate::routing_recovery::set_call_mode(false);
         Ok(match outcome {
             LeaveOutcome::NotInCallMode => LeftRouting {
                 restored_to: None,

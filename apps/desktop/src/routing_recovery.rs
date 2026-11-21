@@ -34,11 +34,13 @@ pub(crate) fn event_for(report: &RecoveryReport) -> Option<(&'static str, String
                 "another PRX Voice process ({pid}) is in call mode; the default input was left alone"
             ),
         )),
-        RecoveryReport::OwnMicrophoneIsDefaultWithoutJournal => Some((
+        RecoveryReport::OwnMicrophoneRestoredWithoutJournal { restored } => Some((
             "RoutingOwnMicrophoneDefault",
-            "the PRX Voice Microphone is the system default input and no call mode is recorded; \
-             it was left unchanged"
-                .to_owned(),
+            format!(
+                "the PRX Voice Microphone was the system default input and no call mode was recorded; \
+                 the default input was set to {}",
+                restored.to.name
+            ),
         )),
         RecoveryReport::CorruptJournal {
             reason,
@@ -87,6 +89,51 @@ pub(crate) fn recover_at_start(shared: &SharedAppState) {
     let mut controller =
         RoutingController::new(routing, OsSystem, FileJournalStore::in_dir(&paths.data_dir));
     publish(shared, &controller.recover_if_needed());
+    watch_idle_default(shared.clone(), controller);
+}
+
+/// Set by the call host while it is entering, in or leaving call mode: the idle watch stands
+/// aside for all of it.
+static CALL_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The call host tells the idle watch whether call mode is (about to be) on.
+pub(crate) fn set_call_mode(on: bool) {
+    CALL_MODE.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// While call mode is off, keep our virtual microphone from staying the system default input:
+/// macOS selects it when the device that was the default is unplugged, and every other application
+/// would then record silence. Looks every few seconds; the controller acts only with no call mode
+/// and no journal and stops after a few restores in a minute.
+#[cfg(target_os = "macos")]
+fn watch_idle_default<R, S, J>(
+    shared: SharedAppState,
+    mut controller: prxvc_audio::routing::RoutingController<R, S, J>,
+) where
+    R: prxvc_ports::routing::SystemAudioRouting + 'static,
+    S: prxvc_audio::routing::system::SystemProbe + 'static,
+    J: prxvc_audio::routing::JournalStore + 'static,
+{
+    let spawned = std::thread::Builder::new()
+        .name("prxvc-idle-default".to_owned())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if CALL_MODE.load(std::sync::atomic::Ordering::SeqCst) {
+                    continue;
+                }
+                let _ = controller.poll();
+                if let Some(Ok(restored)) = controller.correct_idle_default() {
+                    publish(
+                        &shared,
+                        &RecoveryReport::OwnMicrophoneRestoredWithoutJournal { restored },
+                    );
+                }
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("the idle default-input watch did not start: {e}");
+    }
 }
 
 /// Routing recovery exists on macOS only.
@@ -144,7 +191,9 @@ mod tests {
             ),
             (RecoveryReport::OwnerAlive { pid: 7 }, "RoutingOwnerAlive"),
             (
-                RecoveryReport::OwnMicrophoneIsDefaultWithoutJournal,
+                RecoveryReport::OwnMicrophoneRestoredWithoutJournal {
+                    restored: restored(),
+                },
                 "RoutingOwnMicrophoneDefault",
             ),
             (

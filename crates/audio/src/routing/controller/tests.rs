@@ -396,18 +396,46 @@ fn the_journal_of_a_live_other_process_is_left_alone() {
 }
 
 #[test]
-fn no_journal_and_our_microphone_as_default_changes_nothing_and_says_so() {
+fn no_journal_and_our_microphone_as_default_is_put_back_by_policy_at_start() {
     let (mut c, rig) = controller_with_default(OWN_MIC_UID);
-    assert_eq!(
-        c.recover_if_needed(),
-        RecoveryReport::OwnMicrophoneIsDefaultWithoutJournal
-    );
-    assert!(rig.switches().is_empty());
-    assert_eq!(rig.default_input(), Some(uid(OWN_MIC_UID)));
+    let report = c.recover_if_needed();
     assert!(
-        rig.journal.log_entries().is_empty(),
-        "the journal store was not written"
+        matches!(report, RecoveryReport::OwnMicrophoneRestoredWithoutJournal { ref restored }
+            if restored.reason == RestoreReason::Policy && restored.to.uid.as_str() != OWN_MIC_UID),
+        "{report:?}"
     );
+    assert_ne!(rig.default_input(), Some(uid(OWN_MIC_UID)));
+    assert_eq!(rig.switches().len(), 1);
+    assert!(rig.journal.log_entries().is_empty(), "no journal was involved");
+}
+
+#[test]
+fn outside_call_mode_a_default_that_becomes_ours_is_corrected_and_never_in_a_loop() {
+    let (mut c, rig) = controller();
+    assert!(c.correct_idle_default().is_none(), "a physical default is left alone");
+    assert!(rig.switches().is_empty());
+    // macOS picks our microphone when the device that was the default goes away: corrected.
+    for round in 0..IDLE_FIXES_PER_WINDOW {
+        rig.probe.user_selects_input(OWN_MIC_UID);
+        let fixed = c.correct_idle_default();
+        assert!(matches!(fixed, Some(Ok(_))), "round {round}: {fixed:?}");
+        assert_ne!(rig.default_input(), Some(uid(OWN_MIC_UID)));
+    }
+    // It keeps coming back: the correction stops for the window and says so once.
+    rig.probe.user_selects_input(OWN_MIC_UID);
+    assert!(c.correct_idle_default().is_none());
+    assert_eq!(rig.default_input(), Some(uid(OWN_MIC_UID)));
+    assert_eq!(rig.switches().len(), IDLE_FIXES_PER_WINDOW as usize);
+}
+
+#[test]
+fn in_call_mode_the_idle_correction_does_nothing() {
+    let (mut c, rig) = controller_with_default("usb");
+    enter(&mut c).unwrap();
+    let switches = rig.switches().len();
+    assert!(c.correct_idle_default().is_none());
+    assert_eq!(rig.default_input(), Some(uid(OWN_MIC_UID)));
+    assert_eq!(rig.switches().len(), switches);
 }
 
 #[test]

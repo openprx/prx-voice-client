@@ -141,9 +141,13 @@ pub enum RecoveryReport {
         /// The running owner.
         pid: u32,
     },
-    /// No journal, yet our microphone is the default input (for example the
-    /// user selected it by hand): nothing was changed. The UI explains it.
-    OwnMicrophoneIsDefaultWithoutJournal,
+    /// No journal, yet our microphone was the default input outside call mode (macOS chose it when
+    /// the previous default device went away, or the user selected it): it was put back by policy,
+    /// because every other application would record silence from it.
+    OwnMicrophoneRestoredWithoutJournal {
+        /// The restore.
+        restored: Restored,
+    },
     /// The journal was unusable: moved aside, and if our microphone was the
     /// default input it was restored by policy.
     CorruptJournal {
