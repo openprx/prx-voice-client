@@ -730,6 +730,7 @@ mod tests {
         ("assistant.end_silence_ms.", "turn-taking tuning; not in the design's rows"),
         ("assistant.history_max_turns.", "conversation bound; not in the design's rows"),
         ("assistant.history_max_tokens.", "conversation bound; not in the design's rows"),
+        ("assistant.keep_warm_s.", "how long the assistant's engines stay loaded after a session; config file only"),
         ("providers.egress_acknowledged", "set by the egress dialog (provider editor package)"),
         ("providers.active", "role choices belong to the provider editor package"),
         ("providers.fallback", "role choices belong to the provider editor package"),

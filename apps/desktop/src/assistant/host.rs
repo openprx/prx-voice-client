@@ -183,6 +183,7 @@ impl AssistantHost {
 
     /// Take what the loop reported and the housekeeping of every turn of the host's loop.
     pub(crate) fn tick(&mut self) {
+        super::launch::expire_warm();
         let mut ended = false;
         let mut events = Vec::new();
         if let Some(active) = &self.active {

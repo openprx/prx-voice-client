@@ -18,6 +18,7 @@ pub(crate) mod launch;
 pub(crate) mod params;
 pub(crate) mod run;
 pub(crate) mod turn_log;
+pub(crate) mod warm;
 
 #[cfg(test)]
 mod tests;

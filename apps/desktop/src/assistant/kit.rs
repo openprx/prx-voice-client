@@ -34,7 +34,8 @@ pub(crate) struct Prepared {
     /// The voice the assistant speaks with.
     pub voice: VoiceSelection,
     /// The hold on the local model server while the session runs; dropping it lets the server
-    /// idle out.
+    /// idle out. Held, never read.
+    #[allow(dead_code)]
     pub server: Option<crate::call_kit::model_server::Hold>,
 }
 

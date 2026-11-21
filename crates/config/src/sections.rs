@@ -165,6 +165,10 @@ pub struct AssistantConfig {
     pub history_max_turns: u32,
     /// Most estimated tokens of conversation sent with a request (the current turn is always sent).
     pub history_max_tokens: u32,
+    /// How long the assistant's engines stay loaded after a session ends, in seconds, so that a
+    /// new session within that time starts at once (released when call mode starts); 0 frees them
+    /// with the session.
+    pub keep_warm_s: u32,
 }
 
 impl Default for AssistantConfig {
@@ -176,6 +180,7 @@ impl Default for AssistantConfig {
             end_silence_ms: DEFAULT_ASSISTANT_END_SILENCE_MS,
             history_max_turns: DEFAULT_ASSISTANT_HISTORY_TURNS,
             history_max_tokens: DEFAULT_ASSISTANT_HISTORY_TOKENS,
+            keep_warm_s: 60,
         }
     }
 }

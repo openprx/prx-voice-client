@@ -190,6 +190,8 @@ impl CallHost for RealCallHost {
         };
         // The idle watch of the default input stands aside from here until call mode is left.
         crate::routing_recovery::set_call_mode(true);
+        // The assistant's engines kept warm after its last session make room for the call's own.
+        crate::assistant::launch::release_warm();
         let outcome = match self.controller().and_then(|c| {
             c.enter_call_mode(&request)
                 .map_err(|e| call_mode_fault(&e))
