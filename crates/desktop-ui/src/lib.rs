@@ -51,6 +51,7 @@ mod settings_advanced;
 mod settings_assistant;
 mod settings_audio;
 mod settings_call;
+mod settings_engine;
 pub mod settings_command;
 pub mod settings_data;
 pub mod settings_feed;

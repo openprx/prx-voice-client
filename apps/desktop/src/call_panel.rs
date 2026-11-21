@@ -79,6 +79,9 @@ fn provider_key(issue: ProviderIssue) -> &'static str {
         ProviderIssue::Unsupported => "call.issue.provider.unsupported",
         ProviderIssue::Offline => "call.issue.provider.offline",
         ProviderIssue::Setting => "call.issue.provider.setting",
+        ProviderIssue::LanguagePackMissing => "call.issue.provider.language_pack_missing",
+        ProviderIssue::OsTooOld => "call.issue.provider.os_too_old",
+        ProviderIssue::ServerFailed => "call.issue.provider.server_failed",
         _ => "call.issue.provider.start_failed",
     }
 }
@@ -279,6 +282,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         }
     };
     CallPanel {
+        translation: prxvc_desktop_ui::call_view::TranslationView::default(),
         translate_enabled: s.translate_enabled,
         phase: phase(&s.state),
         in_call_mode: s.routing.in_call_mode,

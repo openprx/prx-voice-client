@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use prxvc_adapters::dialogue::OpenAiChatDialogue;
 use prxvc_adapters::mt::OpenAiChatMt;
+use prxvc_adapters::mt::apple::AppleSystemMt;
 use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_media::{Lang, MonoTime, SampleRate};
 use prxvc_ports::{
@@ -41,6 +42,34 @@ impl Translator for SharedTranslator {
     fn translate(&self, req: MtRequest) -> Result<Box<dyn MtStream>, MtError> {
         // The client is stateless: no failure of a request is a reason to rebuild it.
         self.lease.engine().translate(req)
+    }
+}
+
+/// A system-translation handle.
+pub struct SharedSystemTranslator {
+    pub(crate) lease: Lease<AppleSystemMt>,
+}
+
+impl SharedSystemTranslator {
+    /// The lease, to compare engines or retire the engine.
+    pub fn lease(&self) -> &Lease<AppleSystemMt> {
+        &self.lease
+    }
+}
+
+impl Translator for SharedSystemTranslator {
+    fn descriptor(&self) -> ProviderDescriptor {
+        self.lease.engine().descriptor()
+    }
+
+    fn translate(&self, req: MtRequest) -> Result<Box<dyn MtStream>, MtError> {
+        let started = self.lease.engine().translate(req);
+        // A system-level failure (not a cancellation or a slow answer) means the engine's session
+        // is unusable; the next build creates a new one.
+        if matches!(started, Err(MtError::Unavailable { .. })) {
+            self.lease.report_failure();
+        }
+        started
     }
 }
 

@@ -21,7 +21,7 @@ use crate::keys::CallRole;
 use crate::problem::ProblemKind;
 use crate::runtime::Runtime;
 use crate::schema::apply_schema;
-use crate::spec::{MtSpec, locality_of};
+use crate::spec::{MtEngineKind, MtSpec, locality_of};
 
 /// An endpoint provider before its checks, from whichever source named it.
 struct Draft {
@@ -120,6 +120,7 @@ impl Resolver<'_> {
     ) -> Result<MtSpec, Vec<ProblemKind>> {
         let ep = self.chat_provider(id, CallRole::Mt, Some((source, target)))?;
         Ok(MtSpec {
+            engine: MtEngineKind::Chat,
             id: ep.id,
             display_name: ep.display_name,
             template: ep.template,

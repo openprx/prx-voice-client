@@ -310,6 +310,9 @@ pub struct CallConfig {
     /// the lowering of other applications' sound while the call application
     /// runs its voice processing.
     pub output_gain_db: f32,
+    /// Which engine translates a call: `"system"` (the operating system's translation) or `"llm"`
+    /// (a language model; `providers.active.mt` says which). See [`crate::TranslationEngine`].
+    pub translation_engine: String,
 }
 
 impl Default for CallConfig {
@@ -335,6 +338,30 @@ impl Default for CallConfig {
             barge_in_max_lag_ms: 3_000,
             translate: false,
             output_gain_db: 0.0,
+            translation_engine: crate::TranslationEngine::build_default().as_str().to_owned(),
+        }
+    }
+}
+
+/// `[llm_server]`: the local `llama-server` the application starts and stops by itself for the
+/// language-model engine and the assistant's dialogue (the built-in `local-llama-server` provider).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmServerConfig {
+    /// Path of the `llama-server` binary; empty searches `/opt/homebrew/bin`, `/usr/local/bin`
+    /// and `PATH`.
+    pub binary: String,
+    /// Seconds the server keeps running after the last consumer released it while the engine is
+    /// not the language model (the assistant's dialogue, for example). The language-model
+    /// engine keeps it running without a limit.
+    pub idle_stop_s: u32,
+}
+
+impl Default for LlmServerConfig {
+    fn default() -> Self {
+        Self {
+            binary: String::new(),
+            idle_stop_s: 60,
         }
     }
 }

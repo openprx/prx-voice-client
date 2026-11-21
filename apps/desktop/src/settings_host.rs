@@ -301,6 +301,12 @@ impl Host {
                     reveal(&path);
                 }
             }
+            SettingsCommand::RetryModelServer => {
+                if let Some(server) = crate::llm_server::global() {
+                    server.retry();
+                }
+                self.refresh();
+            }
             SettingsCommand::ExportDiagnostics => self.shared.push_command("ExportDiagnostics"),
         }
     }
@@ -417,7 +423,14 @@ fn run_write(manager: &AppConfigManager, job: WriteJob) -> WriteResult {
     match job {
         WriteJob::Settings { before, after } => {
             match manager.update(|c| settings::apply_changes(c, &before, &after)) {
-                Ok(_) => WriteResult::Saved,
+                Ok(_) => {
+                    // Selecting the language model starts the model server, selecting system
+                    // translation stops it.
+                    if before.call_translation_engine != after.call_translation_engine {
+                        crate::llm_server::on_engine_changed(&after.call_translation_engine);
+                    }
+                    WriteResult::Saved
+                }
                 Err(e) => WriteResult::SettingsFailed {
                     before,
                     after,
@@ -465,10 +478,11 @@ fn probe_loop(jobs: &Receiver<ProbeJob>, feed: &SettingsFeed) {
         let config = crate::call_kit::config::load_current();
         let previous = feed.snapshot();
         let data = crate::settings_data::collect(&config, &previous);
+        // The driver operation and the model server are polled while they change.
         driver_working = matches!(
             data.permissions.driver.operation,
             DriverOperationView::Working(_)
-        );
+        ) || crate::settings_data::engine_in_motion(&config);
         feed.update(|d| {
             let notices = std::mem::take(&mut d.notices);
             *d = data;
@@ -538,6 +552,11 @@ fn run_detached(command: Option<(&'static str, Vec<String>)>) {
     if let Err(e) = spawned {
         tracing::warn!("could not start a thread to open a file or pane: {e}");
     }
+}
+
+/// Open a System Settings pane (also used by the Call translation window's actions).
+pub(crate) fn open_pane(pane: SystemPane) {
+    open_system_pane(pane);
 }
 
 fn open_system_pane(pane: SystemPane) {

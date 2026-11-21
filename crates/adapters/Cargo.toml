@@ -30,6 +30,8 @@ parking_lot = { workspace = true }
 prxvc-qwentts-sys = { workspace = true, optional = true }
 # Raw bindings of the `transcribe` feature.
 prxvc-transcribe-sys = { workspace = true, optional = true }
+# Raw bindings of the `apple-translation` feature.
+prxvc-apple-translation-sys = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -39,6 +41,19 @@ qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]
 # The in-process `transcribe.cpp` runtime behind `vad::SileroVad` and `asr::QwenAsr`: builds the
 # vendored C++ runtime and links it as a second dynamic library. Off by default, additive (CS-7.5).
 transcribe = ["dep:prxvc-transcribe-sys", "prxvc-transcribe-sys/transcribe"]
+# System translation through Apple's on-device Translation framework (`mt::apple`): compiles the
+# Swift bridge with `swiftc` and links it as a third dynamic library. macOS only. Off by default,
+# additive (CS-7.5).
+apple-translation = ["dep:prxvc-apple-translation-sys", "prxvc-apple-translation-sys/apple-translation"]
+
+# Live check of system translation against the real framework. Its own `main` (no test harness):
+# the framework needs the main thread to run its run loop, so the checks run on a second thread.
+# Ignored unless `--ignored` is passed; needs the zh-Hans and en language packs.
+[[test]]
+name = "apple_translation_live"
+path = "tests/apple_translation_live.rs"
+harness = false
+required-features = ["apple-translation"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

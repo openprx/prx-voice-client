@@ -81,3 +81,8 @@ fn general_light_zh() {
 fn pipeline_light_zh() {
     snapshot(SettingsSection::SpeechPipeline, Theme::Light, Locale::ZhCn);
 }
+
+#[test]
+fn call_light_zh() {
+    snapshot(SettingsSection::CallTranslation, Theme::Light, Locale::ZhCn);
+}

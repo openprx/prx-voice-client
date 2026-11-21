@@ -370,6 +370,59 @@ pub enum SettingsNotice {
     },
 }
 
+/// Whether system translation can serve, from the operating system's point of view.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum SystemEngineView {
+    /// Not probed yet.
+    #[default]
+    NotChecked,
+    /// The language packs of both directions are installed.
+    Ready,
+    /// A pack is missing; the text names the pair, for example `Chinese \u{2192} English`.
+    PackMissing(String),
+    /// The framework does not support the pair named.
+    Unsupported(String),
+    /// The system is older than macOS 26.
+    OsTooOld,
+    /// This build does not include system translation.
+    NotBuilt,
+    /// Any other failure, in the framework's words.
+    Failed(String),
+}
+
+/// The local model server of the language-model engine.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ModelServerView {
+    /// Not running (starts when needed). Also: no manager in this build.
+    #[default]
+    Stopped,
+    /// Loading the model; seconds waited so far.
+    Starting {
+        /// Seconds since the process started.
+        waited_s: u64,
+    },
+    /// Running and answering. `adopted` is a server started by something else.
+    Ready {
+        /// A server this application did not start (it is never stopped by it).
+        adopted: bool,
+        /// Its address.
+        address: String,
+    },
+    /// Being stopped.
+    Stopping,
+    /// Cannot be provided; the sentence says why and what to do.
+    Failed(String),
+}
+
+/// What the engine rows of the settings show.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct EngineData {
+    /// System translation.
+    pub system: SystemEngineView,
+    /// The local model server.
+    pub server: ModelServerView,
+}
+
 /// Everything the app publishes for the settings window.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SettingsData {
@@ -383,6 +436,8 @@ pub struct SettingsData {
     pub pipeline: PipelineData,
     /// The assistant: its backends and its chain.
     pub assistant: AssistantData,
+    /// The translation engines: system translation and the local model server.
+    pub engine: EngineData,
     /// The installed voice profile, when there is one.
     pub voice_profile: Option<VoiceProfileView>,
     /// Ids of the preset voices that can be chosen.

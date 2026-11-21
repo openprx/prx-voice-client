@@ -2,7 +2,9 @@
 # Print, without changing anything, whether everything for a first translated call is in place:
 # the bundle and its signature, the native runtimes, the virtual microphone driver, the
 # consents (as the bundle sees them), the default input and output (and whether the output is the
-# built-in speaker), the models, the owner's voice, the preset voice and the translation server.
+# built-in speaker), the models, the owner's voice, the preset voice, the selected translation
+# engine (system translation: its language packs; language model: the local server, which the
+# application starts by itself) and the state of the local model server.
 #
 # Usage: scripts/dev/preflight.sh [--app "PATH TO PRX Voice.app"]
 #   default app: dist/debug/PRX Voice.app (built by scripts/run-app.sh --native --no-open)
@@ -29,7 +31,7 @@ else
   fi
   id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || true)"
   [ "$id" = "$app_id" ] && say "[ok     ] identifier: $id" || miss "identifier: '$id', expected $app_id"
-  for lib in qwentts transcribe; do
+  for lib in qwentts transcribe apple_translation; do
     if ls "$app/Contents/Frameworks/"*"$lib"* >/dev/null 2>&1; then
       say "[ok     ] native library: $lib in Contents/Frameworks"
     else
@@ -51,13 +53,13 @@ else
 fi
 
 say ""
-say "== helper report (native runtimes loadable, models, voices, server) =="
+say "== helper report (native runtimes loadable, models, voices, translation engine) =="
 out="$(run_dev preflight 2>&1)"; status=$?
 say "$out"
 missing=$((missing + $(printf '%s\n' "$out" | grep -c '^\[MISSING\]' || true)))
 
 say ""
-say "== translation server =="
+say "== local model server (only needed when the language model is the engine; the app starts it itself) =="
 "$(dirname "$0")/llama-server.sh" status || true
 
 say ""

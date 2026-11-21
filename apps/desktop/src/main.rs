@@ -29,6 +29,7 @@
 mod app;
 mod assistant;
 mod bundle;
+mod call_engine;
 mod call_kit;
 #[cfg(target_os = "macos")]
 mod call_host;
@@ -41,6 +42,7 @@ mod diagnostics;
 mod driver_install;
 mod event_map;
 mod hotkey;
+mod llm_server;
 mod logging;
 mod native_libs;
 mod persistence;
@@ -65,7 +67,7 @@ fn main() -> eframe::Result<()> {
         }
         cli::Mode::CheckCall => {
             println!("{}", cli::check_report(bundle::current()));
-            println!("{}", check_call_report());
+            println!("{}", call_kit::main_loop::with_main_loop(check_call_report));
             return Ok(());
         }
         cli::Mode::Unknown => {

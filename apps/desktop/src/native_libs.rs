@@ -18,6 +18,11 @@ pub(crate) fn report_lines() -> Vec<String> {
         "native:      transcribe {}",
         prxvc_adapters::transcribe::runtime_version()
     ));
+    #[cfg(feature = "apple-translation")]
+    lines.push(format!(
+        "native:      apple-translation {}",
+        prxvc_adapters::mt::apple::ffi::runtime_version()
+    ));
     if lines.is_empty() {
         lines.push("native:      none (built without native features)".into());
     }

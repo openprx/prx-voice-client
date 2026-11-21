@@ -33,6 +33,9 @@ pub(crate) struct Prepared {
     pub lang: Lang,
     /// The voice the assistant speaks with.
     pub voice: VoiceSelection,
+    /// The hold on the local model server while the session runs; dropping it lets the server
+    /// idle out.
+    pub server: Option<crate::call_kit::model_server::Hold>,
 }
 
 /// Resolve, check and build. `system` is the operating system's language tag.
@@ -66,6 +69,13 @@ pub(crate) fn prepare(
         }
     }
 
+    // The local model server is started on demand for the dialogue (and stopped again when the
+    // session ends and nothing else needs it).
+    let server = crate::call_kit::model_server::hold(
+        dialogue.primary.id.as_str(),
+        &dialogue.primary.base_url,
+    )
+    .map_err(|detail| vec![issues::server_failed(&detail)])?;
     // A server that does not answer is reported now, before any model is loaded.
     if let Err(reason) = probe_address(&dialogue.primary.base_url, dialogue.primary.locality) {
         return Err(vec![issues::dialogue_down(
@@ -88,6 +98,7 @@ pub(crate) fn prepare(
         dialogue: dialogue_p,
         lang,
         voice: tts.primary.voice.selection(),
+        server,
     })
 }
 

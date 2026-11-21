@@ -3929,6 +3929,7 @@ name = "prxvc-adapters"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
+ "prxvc-apple-translation-sys",
  "prxvc-audio",
  "prxvc-media",
  "prxvc-ports",
@@ -3945,6 +3946,10 @@ dependencies = [
  "tracing",
  "uuid",
 ]
+
+[[package]]
+name = "prxvc-apple-translation-sys"
+version = "0.1.0"
 
 [[package]]
 name = "prxvc-audio"
@@ -4015,9 +4020,11 @@ dependencies = [
  "prxvc-providers",
  "prxvc-session",
  "prxvc-storage",
+ "serde",
  "serde_json",
  "sys-locale",
  "tempfile",
+ "thiserror 2.0.18",
  "tracing",
  "tracing-subscriber",
  "tray-icon",

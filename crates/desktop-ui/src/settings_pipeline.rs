@@ -109,6 +109,7 @@ pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
         &summary,
         None,
     );
+    crate::settings_engine::mirror(ui, cx);
 
     // b. Roles.
     widgets::section_header(ui, tk, &t("settings.pipeline.roles"), false);

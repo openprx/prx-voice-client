@@ -63,8 +63,10 @@ fn walk(node: &Node<'_>, clip: Option<Rect>, out: &mut Vec<Item>) {
         if kind == "ScrollBar" {
             continue;
         }
-        if !matches!(kind.as_str(), "TextRun" | "GenericContainer" | "Window" | "Pane" | "Group")
-            && !child.accesskit_node().is_hidden()
+        if !matches!(
+            kind.as_str(),
+            "TextRun" | "GenericContainer" | "Window" | "Pane" | "Group"
+        ) && !child.accesskit_node().is_hidden()
             && let Some(mut rect) = bounds(child)
         {
             if let Some(c) = clip {
@@ -88,8 +90,10 @@ fn walk(node: &Node<'_>, clip: Option<Rect>, out: &mut Vec<Item>) {
 /// rect: a node entirely inside such a widget is part of it, not an overlap.
 fn nested(a: &Item, b: &Item) -> bool {
     let inside = |outer: &Item, inner: &Item| {
-        matches!(outer.role.as_str(), "RadioButton" | "CheckBox" | "Link" | "Tab")
-            && outer.rect.expand(SLACK).contains_rect(inner.rect)
+        matches!(
+            outer.role.as_str(),
+            "RadioButton" | "CheckBox" | "Link" | "Tab"
+        ) && outer.rect.expand(SLACK).contains_rect(inner.rect)
     };
     inside(a, b) || inside(b, a)
 }
@@ -120,5 +124,10 @@ pub fn problems<S>(h: &Harness<'_, S>, viewport: Rect) -> Vec<String> {
 #[track_caller]
 pub fn assert_clean<S>(h: &Harness<'_, S>, viewport: Rect, what: &str) {
     let found = problems(h, viewport);
-    assert!(found.is_empty(), "{what}: {} layout problem(s)\n{}", found.len(), found.join("\n"));
+    assert!(
+        found.is_empty(),
+        "{what}: {} layout problem(s)\n{}",
+        found.len(),
+        found.join("\n")
+    );
 }

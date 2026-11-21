@@ -20,6 +20,7 @@ members = [
     "crates/ports",
     "crates/native/qwentts-sys",
     "crates/native/transcribe-sys",
+    "crates/native/apple-translation-sys",
     "crates/native/link",
     "apps/desktop",
 ]
@@ -52,6 +53,7 @@ prxvc-media = { path = "crates/media" }
 prxvc-ports = { path = "crates/ports" }
 prxvc-qwentts-sys = { path = "crates/native/qwentts-sys" }
 prxvc-transcribe-sys = { path = "crates/native/transcribe-sys" }
+prxvc-apple-translation-sys = { path = "crates/native/apple-translation-sys" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

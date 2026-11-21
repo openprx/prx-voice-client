@@ -1,0 +1,19 @@
+[package]
+name = "prxvc-apple-translation-sys"
+description = "Raw bindings and build of the Swift bridge to Apple's on-device Translation framework (dynamic library)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+links = "prxvc_apple_translation"
+build = "build.rs"
+# The bridge is first-party code (Swift, native/); the Translation framework is part of macOS.
+
+[features]
+# Builds and links the Swift library. Off by default so `cargo check` and `cargo test` on the
+# workspace never need a Swift toolchain. macOS only.
+apple-translation = []
+
+[lints]
+workspace = true

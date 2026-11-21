@@ -9,11 +9,13 @@
 //!   System Settings panes;
 //! * `pipeline`: the provider registry's `resolve_call()` and `egress_summary` as view models, and
 //!   the assistant's backends and chain;
+//! * `engine`: whether system translation can serve and what the local model server is doing;
 //! * `voice`: the installed profile and the preset voices;
 //! * `about`: version, directories, notices, local endpoints.
 
 mod about;
 mod audio;
+mod engine;
 mod permissions;
 mod pipeline;
 mod voice;
@@ -22,6 +24,7 @@ use prxvc_config::AppConfig;
 use prxvc_config::paths::AppPaths;
 use prxvc_desktop_ui::settings_data::{PermissionsData, SettingsData};
 
+pub(crate) use engine::in_motion as engine_in_motion;
 pub(crate) use permissions::{request_call_audio, request_microphone, system_pane_url};
 
 /// Run every probe for `config`. `previous` supplies what a probe cannot know: the outcome of
@@ -60,6 +63,7 @@ pub(crate) fn collect(config: &AppConfig, previous: &SettingsData) -> SettingsDa
         },
         pipeline: pipeline::probe(config),
         assistant: pipeline::probe_assistant(config),
+        engine: engine::probe(),
         voice_profile: paths
             .as_ref()
             .and_then(|p| voice::profile(&p.voices_dir, &config.voice.self_profile_id)),

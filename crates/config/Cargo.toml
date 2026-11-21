@@ -6,6 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+# Only changes the default of `call.translation_engine` for new configurations (system translation
+# on macOS when the bridge is built in). Enabled by the application's `apple-translation` feature.
+apple-translation = []
+
 [dependencies]
 serde = { workspace = true }
 toml = { workspace = true }

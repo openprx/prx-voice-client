@@ -17,6 +17,10 @@ qwentts = ["prxvc-adapters/qwentts"]
 # additive (CS-7.5); without it a configured local recognition or VAD model is the typed problem
 # `RuntimeNotBuiltIn`.
 transcribe = ["prxvc-adapters/transcribe"]
+# System translation through Apple's Translation framework (`prxvc-adapters/apple-translation`).
+# Off by default and additive (CS-7.5); without it `call.translation_engine = "system"` is the typed
+# problem `RuntimeNotBuiltIn`.
+apple-translation = ["prxvc-adapters/apple-translation", "prxvc-config/apple-translation"]
 
 [dependencies]
 prxvc-adapters = { workspace = true }

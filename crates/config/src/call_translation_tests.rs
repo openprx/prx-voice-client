@@ -32,9 +32,9 @@ fn write_config(dir: &TempDir, text: &str) {
 }
 
 #[test]
-fn schema_version_is_three() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 3);
-    assert_eq!(AppConfig::default().schema_version, 3);
+fn schema_version_is_four() {
+    assert_eq!(CURRENT_SCHEMA_VERSION, 4);
+    assert_eq!(AppConfig::default().schema_version, 4);
 }
 
 #[test]
@@ -151,10 +151,10 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 1, to: 3 }]
+        vec![LoadNotice::Migrated { from: 1, to: 4 }]
     );
     let c = report.config;
-    assert_eq!(c.schema_version, 3);
+    assert_eq!(c.schema_version, 4);
 
     assert_eq!(c.audio.echo_mode, EchoMode::Always);
     assert_eq!(c.audio.input_device, "usb-mic");
@@ -184,7 +184,7 @@ fn values_a_user_set_under_the_current_version_survive_a_load_and_save() {
     let dir = TempDir::new("ct_v2_values");
     write_config(
         &dir,
-        "schema_version = 3\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
+        "schema_version = 4\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
          original_gain_db = -6.5\n[pipeline]\nclause_pause_ms = 450\nrecognition_mode = \"streaming\"\n",
     );
     let m = mgr(&dir);
@@ -217,7 +217,7 @@ fn the_whole_chain_takes_an_unversioned_file_to_the_current_version() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 0, to: 3 }]
+        vec![LoadNotice::Migrated { from: 0, to: 4 }]
     );
     let c = report.config;
     assert_eq!(c.audio.echo_mode, EchoMode::Off, "step of version 0 -> 1");

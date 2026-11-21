@@ -181,3 +181,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+
+## Apple Translation framework (operating-system feature)
+
+The optional `apple-translation` feature translates through the Translation framework that ships
+with macOS 26 and later ("system translation"). It is an operating-system feature used through its
+public API, like the microphone and audio APIs: the application neither contains nor redistributes
+any part of it, and the language packs are downloaded by the user through System Settings. The
+project owner explicitly approved it as the one exception to the open-source-only rule for models
+and runtimes (`CLAUDE.md`, rule 9); the alternative language-model engine stays fully open source.
+The Swift bridge in `crates/native/apple-translation-sys/native` is first-party code under the
+project licence. Text sent to the framework is translated on the device.

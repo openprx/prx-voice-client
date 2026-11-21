@@ -123,6 +123,7 @@ plain_fields! {
     call_captions_size => call.captions_size,
     call_disclosure => call.disclosure,
     call_barge_in => call.barge_in,
+    call_translation_engine => call.translation_engine,
     assistant_language => assistant.language,
     assistant_voice => assistant.voice,
     assistant_voice_preset => assistant.voice_preset,
@@ -438,6 +439,7 @@ mod tests {
             call_captions_size => call.captions_size : "small".to_owned(),
             call_disclosure => call.disclosure : true,
             call_barge_in => call.barge_in : true,
+            call_translation_engine => call.translation_engine : "other".to_owned(),
             assistant_language => assistant.language : "zh-CN".to_owned(),
             assistant_voice => assistant.voice : "preset".to_owned(),
             assistant_voice_preset => assistant.voice_preset : String::new(),
@@ -731,6 +733,7 @@ mod tests {
         ("providers.active", "role choices belong to the provider editor package"),
         ("providers.fallback", "role choices belong to the provider editor package"),
         ("providers.entries", "provider entries belong to the provider editor package"),
+        ("llm_server.", "the local model server's binary path and idle time: set in the config file; the engine choice and the server's status are in the window"),
         ("models.skipped_updates", "set by the model update dialog (model manager package)"),
     ];
 

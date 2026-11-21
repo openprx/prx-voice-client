@@ -12,6 +12,9 @@ pub enum SystemPane {
     Microphone,
     /// Privacy: system audio recording.
     AudioCapture,
+    /// Where the languages of system translation are downloaded (General, Language & Region,
+    /// Translation Languages).
+    TranslationLanguages,
 }
 
 /// A folder or file the app can show in the system's file manager.
@@ -48,4 +51,6 @@ pub enum SettingsCommand {
     Reveal(RevealTarget),
     /// Write a diagnostics bundle.
     ExportDiagnostics,
+    /// Try to start the local model server again after it failed.
+    RetryModelServer,
 }

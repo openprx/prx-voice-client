@@ -278,7 +278,11 @@ pub(crate) fn describe_plan(plan: &CallPlan, summary: &EgressSummary) -> Pipelin
             key,
             d.mt.primary.id.as_str(),
             &d.mt.primary.display_name,
-            &d.mt.primary.base_url,
+            if d.mt.primary.is_system() {
+                &d.mt.primary.model
+            } else {
+                &d.mt.primary.base_url
+            },
             fallback.as_deref(),
             summary,
         ));

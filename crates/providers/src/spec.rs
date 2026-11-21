@@ -96,9 +96,22 @@ fn classify_ip(ip: IpAddr) -> Locality {
     }
 }
 
-/// A translation provider over an OpenAI-compatible chat endpoint.
+/// How a translation provider works, which decides how it is built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MtEngineKind {
+    /// A language model behind an OpenAI-compatible chat endpoint.
+    Chat,
+    /// The operating system's translation service (system translation).
+    System,
+}
+
+/// A translation provider: a language model behind an OpenAI-compatible chat endpoint, or system
+/// translation. For system translation the endpoint fields are empty (it has no endpoint, nothing
+/// leaves the machine); consumers of the endpoint check [`MtSpec::is_system`] first.
 #[derive(Clone, Debug)]
 pub struct MtSpec {
+    /// Which kind of engine this is.
+    pub engine: MtEngineKind,
     /// The provider id as configured.
     pub id: ProviderId,
     /// Display name of the entry or template.
@@ -131,6 +144,11 @@ pub struct MtSpec {
 }
 
 impl MtSpec {
+    /// Whether this is system translation (no endpoint).
+    pub const fn is_system(&self) -> bool {
+        matches!(self.engine, MtEngineKind::System)
+    }
+
     /// What the endpoint receives: the text of every clause.
     pub const fn data_leaving(&self) -> DataLeaving {
         match self.locality {
