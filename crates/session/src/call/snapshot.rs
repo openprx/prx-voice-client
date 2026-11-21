@@ -57,6 +57,8 @@ pub enum CallCommand {
     ReapplyVirtualMicrophone,
     /// Skip: cancel everything this direction has in flight and queued.
     Skip(Direction),
+    /// Say the notice to the other party again.
+    SayDisclosure,
 }
 
 /// One direction in the snapshot.
@@ -150,6 +152,8 @@ pub struct CallSnapshot {
     pub last_error: Option<CallIssue>,
     /// The last change of what a listener hears.
     pub last_output_change: Option<OutputChange>,
+    /// The spoken notice to the other party.
+    pub disclosure: super::DisclosureSnapshot,
 }
 
 impl CallSnapshot {

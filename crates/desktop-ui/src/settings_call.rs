@@ -145,4 +145,12 @@ pub(crate) fn page(ui: &mut Ui, cx: &mut PageCx<'_>) {
         &mut cx.settings.call_captions_show_source,
         true,
     );
+    switch_row(
+        ui,
+        tk,
+        &t("settings.call.disclosure"),
+        &saved_only(&t("settings.call.disclosure.desc")),
+        &mut cx.settings.call_disclosure,
+        true,
+    );
 }

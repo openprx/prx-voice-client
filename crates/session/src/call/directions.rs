@@ -99,6 +99,11 @@ impl Coordinator {
         cause: OutputCause,
     ) {
         let at = self.now();
+        if direction == Direction::Outgoing
+            && let Some(d) = &self.disclosure
+        {
+            d.set_audible(to == OutputSource::Translation);
+        }
         let lane = &mut self.lanes[slot(direction)];
         lane.passthrough = false;
         lane.hears = to;
@@ -141,6 +146,11 @@ impl Coordinator {
         let from = std::mem::replace(&mut lane.hears, to);
         if let Some(path) = lane.path.as_mut() {
             path.set_listener_hears(to);
+        }
+        if direction == Direction::Outgoing
+            && let Some(d) = &self.disclosure
+        {
+            d.set_audible(to == OutputSource::Translation);
         }
         tracing::info!(
             ?direction,

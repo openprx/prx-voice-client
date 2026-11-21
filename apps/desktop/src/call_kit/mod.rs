@@ -3,6 +3,7 @@
 //! * `config`: the configuration and directories, read fresh.
 //! * `models`: the model store as the registry's source of models.
 //! * `providers`: resolving, checking and building the providers of a call.
+//! * `disclosure`: the spoken notice to the other party, from the configuration.
 //! * `params`: `call.*` and `[pipeline]` as pipeline parameters.
 //! * `problems`: registry problems as typed call issues.
 //! * `trace`: the sink for stage timestamps.
@@ -12,6 +13,7 @@
 #![allow(dead_code)] // the harness includes this tree and uses a different part of it
 
 pub(crate) mod config;
+pub(crate) mod disclosure;
 pub(crate) mod models;
 pub(crate) mod params;
 pub(crate) mod problems;

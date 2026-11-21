@@ -601,6 +601,7 @@ fn call_control_renders_in_both_languages_with_issues() {
             detail: String::new(),
             ..IssueView::default()
         }),
+        ..CallPanel::default()
     };
     // A translating call: captions with a stable prefix, counters, latency, level and the gate.
     let lane = LaneView {

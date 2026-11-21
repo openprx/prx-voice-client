@@ -11,6 +11,7 @@ use prxvc_media::Direction;
 use prxvc_ports::MtFlag;
 
 use super::coordinator::{BOTH, Coordinator, slot};
+use super::disclosure::{DisclosureSnapshot, DisclosureState};
 use crate::pipeline::{DirectionSnapshot, Percentiles};
 
 /// What one direction did during the call.
@@ -19,6 +20,8 @@ pub(super) struct DirectionTotals {
     pub pipeline: Option<Arc<DirectionSnapshot>>,
     /// Times playback ran dry (sink and translated lane).
     pub underruns: u64,
+    /// The spoken notice to the other party (the outgoing direction only).
+    pub disclosure: Option<DisclosureSnapshot>,
 }
 
 fn percentiles(p: Percentiles) -> String {
@@ -29,11 +32,28 @@ fn percentiles(p: Percentiles) -> String {
     }
 }
 
+/// What became of the spoken notice, in one short text.
+fn notice_text(n: &DisclosureSnapshot) -> String {
+    let state = match n.state {
+        DisclosureState::Off => "off",
+        DisclosureState::Preparing => "never ready",
+        DisclosureState::Ready => "not played",
+        DisclosureState::Playing => "cut off",
+        DisclosureState::Played => "played",
+        DisclosureState::Failed => "failed",
+    };
+    format!("{state} played={} interrupted={}", n.plays, n.interrupted)
+}
+
 impl DirectionTotals {
     /// The direction's part of the summary line.
     pub(super) fn line(&self) -> String {
+        let notice = match &self.disclosure {
+            None => String::new(),
+            Some(n) => format!(" notice({})", notice_text(n)),
+        };
         let Some(s) = &self.pipeline else {
-            return format!("no translation, underruns={}", self.underruns);
+            return format!("no translation, underruns={}{notice}", self.underruns);
         };
         let c = &s.counters;
         let other_skips = c.skipped.saturating_sub(c.backlog_skips + c.stale_skips);
@@ -46,7 +66,7 @@ impl DirectionTotals {
             "utterances={} clauses={} played={} failed={} filler_dropped={} unspeakable_dropped={} \
              skips(stale={} backlog={} other={}) passed_through={} suspects={} flags({}) \
              mt_retries={} synth_runaways={} underruns={} \
-             start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={}",
+             start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={}{}",
             s.ledger.utterances,
             c.clauses_committed,
             c.clauses_played,
@@ -64,6 +84,7 @@ impl DirectionTotals {
             self.underruns,
             percentiles(s.ledger.start_to_first_audio),
             percentiles(s.ledger.end_to_first_audio),
+            notice,
         )
     }
 }
@@ -71,15 +92,23 @@ impl DirectionTotals {
 impl Coordinator {
     /// Remember what a direction's pipeline came to, as it stops (its snapshot is gone afterwards).
     pub(super) fn capture_totals(&mut self, d: Direction) {
-        let lane = &mut self.lanes[slot(d)];
+        let lane = &self.lanes[slot(d)];
         let pipeline = lane.running.as_ref().and_then(|r| r.snapshot());
         let underruns = lane
             .stats
             .as_ref()
             .map_or(0, |x| x.underruns + x.translated_underruns);
-        lane.totals = DirectionTotals {
+        let disclosure = (d == Direction::Outgoing)
+            .then(|| {
+                self.disclosure
+                    .as_ref()
+                    .map(|n| n.snapshot(self.call_began))
+            })
+            .flatten();
+        self.lanes[slot(d)].totals = DirectionTotals {
             pipeline,
             underruns,
+            disclosure,
         };
     }
 
@@ -142,6 +171,7 @@ mod tests {
         let t = DirectionTotals {
             pipeline: None,
             underruns: 3,
+            disclosure: None,
         };
         assert_eq!(t.line(), "no translation, underruns=3");
     }
@@ -165,6 +195,13 @@ mod tests {
                 ..Counters::default()
             })),
             underruns: 6,
+            disclosure: Some(DisclosureSnapshot {
+                enabled: true,
+                state: DisclosureState::Played,
+                plays: 2,
+                interrupted: 1,
+                last_played_s: Some(9),
+            }),
         };
         let line = t.line();
         for part in [
@@ -182,6 +219,7 @@ mod tests {
             "underruns=6",
             "start_to_first_audio_ms(median/p95)=2300/4100 (n=7)",
             "end_to_first_audio_ms(median/p95)=-",
+            "notice(played played=2 interrupted=1)",
         ] {
             assert!(line.contains(part), "{part} missing from: {line}");
         }

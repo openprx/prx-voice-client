@@ -295,6 +295,14 @@ pub struct CallConfig {
     /// `"hands_free"` or `"push_to_talk"`.
     pub outgoing_capture: String,
     pub captions_show_source: bool,
+    /// Tell the other party once, in their language, that the call is translated by a machine and
+    /// that they hear a synthetic voice: a spoken notice played before the first translated
+    /// sentence of each call mode session (on by default).
+    pub disclosure: bool,
+    /// The notice in English; empty uses the built-in text.
+    pub disclosure_text_en: String,
+    /// The notice in Simplified Chinese; empty uses the built-in text.
+    pub disclosure_text_zh: String,
     /// Text size of the Call translation window's captions: `"small"`, `"medium"` or `"large"`.
     pub captions_size: String,
     pub barge_in: bool,
@@ -335,6 +343,9 @@ impl Default for CallConfig {
             local_output_mode: "translation".to_owned(),
             outgoing_capture: "hands_free".to_owned(),
             captions_show_source: true,
+            disclosure: true,
+            disclosure_text_en: String::new(),
+            disclosure_text_zh: String::new(),
             captions_size: "medium".to_owned(),
             barge_in: true,
             start_mode: "manual".to_owned(),

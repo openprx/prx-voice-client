@@ -41,6 +41,7 @@
 mod actions;
 mod coordinator;
 mod directions;
+mod disclosure;
 mod error;
 mod events;
 mod host;
@@ -54,6 +55,7 @@ mod translation;
 #[cfg(test)]
 mod tests;
 
+pub use disclosure::{DisclosureSnapshot, DisclosureSpec, DisclosureState};
 pub use coordinator::{CallSettings, Coordinator, CoordinatorDeps, SnapshotSink};
 pub use error::{CallErrorCode, CallIssue, HostFault, ProviderIssue, Severity};
 pub use host::{

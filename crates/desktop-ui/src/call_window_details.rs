@@ -128,6 +128,7 @@ fn languages(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut U
 pub(crate) fn details(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut UiSettings) {
     ui.spacing_mut().item_spacing.y = space::S4;
     languages(ui, tk, panel, settings);
+    crate::call_window_notice::switch_row(ui, tk, settings);
     ui.add_space(space::S8);
     lane(ui, tk, "callwin.lane.out", "call.they_hear", &panel.outgoing);
     ui.add_space(space::S4);

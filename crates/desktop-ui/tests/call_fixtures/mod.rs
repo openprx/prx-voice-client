@@ -2,8 +2,8 @@
 #![allow(dead_code)] // each test file uses a different part
 
 use prxvc_desktop_ui::call_view::{
-    CaptionFlag, CaptionView, ClauseStatus, CountersView, IssueAction, LatencyView, PartialView,
-    SkipView,
+    CaptionFlag, CaptionView, ClauseStatus, CountersView, IssueAction, LatencyView, NoticeState,
+    NoticeView, PartialView, SkipView,
 };
 use prxvc_desktop_ui::{CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
 
@@ -98,6 +98,12 @@ pub fn live_panel() -> CallPanel {
         default_input_ours: true,
         outgoing: me,
         incoming: peer,
+        notice: NoticeView {
+            enabled: true,
+            state: NoticeState::Played,
+            plays: 1,
+            last_played_s: Some(12),
+        },
         ..CallPanel::default()
     }
 }
@@ -133,6 +139,11 @@ pub fn loading_panel() -> CallPanel {
     CallPanel {
         phase: CallPhase::Initializing,
         translate_enabled: true,
+        notice: NoticeView {
+            enabled: true,
+            state: NoticeState::Preparing,
+            ..NoticeView::default()
+        },
         ..CallPanel::default()
     }
 }
@@ -145,7 +156,20 @@ pub fn listening_panel() -> CallPanel {
         default_input_ours: true,
         outgoing: lane(Heard::Translation, ("zh", "en")),
         incoming: lane(Heard::Translation, ("en", "zh")),
+        notice: NoticeView {
+            enabled: true,
+            state: NoticeState::Ready,
+            ..NoticeView::default()
+        },
         ..CallPanel::default()
+    }
+}
+
+/// A translated call whose notice to the other party is switched off.
+pub fn undisclosed_panel() -> CallPanel {
+    CallPanel {
+        notice: NoticeView::default(),
+        ..listening_panel()
     }
 }
 

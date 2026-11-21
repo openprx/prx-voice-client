@@ -294,6 +294,51 @@ fn the_details_hold_the_counters_and_stay_closed_until_asked() {
 }
 
 #[test]
+fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
+    let _guard = lock_locale();
+    prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
+    // Ready: it plays before the first translated sentence; the repeat is offered.
+    let mut h = app_harness(state_with(call_fixtures::listening_panel()), 420.0);
+    h.run_steps(3);
+    assert!(has_label(&h, "Plays before your first translated sentence."));
+    h.get_by_role_and_label(Role::Button, "Say it again").click();
+    h.run_steps(2);
+    assert_eq!(h.state().pending_commands, [command::SAY_DISCLOSURE]);
+
+    // Played: the window says when.
+    let h2 = {
+        let mut h = app_harness(state_with(panel("translating")), 420.0);
+        h.run_steps(3);
+        h
+    };
+    assert!(has_label(&h2, "Played to the other party at 0:12."));
+
+    // Preparing: no repeat yet.
+    let mut h = app_harness(state_with(panel("loading")), 420.0);
+    h.run_steps(3);
+    assert!(has_label(&h, "Getting the spoken notice ready."));
+    assert!(h.query_by_role_and_label(Role::Button, "Say it again").is_none());
+
+    // Off: a quiet line says the other party is not being told, and there is nothing to repeat.
+    let mut h = app_harness(state_with(call_fixtures::undisclosed_panel()), 420.0);
+    h.run_steps(3);
+    assert!(has_label(&h, "The other party is not being told"));
+    assert!(h.query_by_role_and_label(Role::Button, "Say it again").is_none());
+
+    // The switch lives in the details and is the setting.
+    let mut h = app_harness(state_with(CallPanel::default()), 420.0);
+    h.run_steps(3);
+    assert!(h.state().settings.call_disclosure, "on by default");
+    assert!(!has_label(&h, "The other party is not being told"), "idle and on: quiet");
+    h.get_by_role_and_label(Role::Button, "Details").click();
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::Switch, "Tell the other party (spoken notice)").click();
+    h.run_steps(3);
+    assert!(!h.state().settings.call_disclosure);
+    assert!(has_label(&h, "The other party is not being told"));
+}
+
+#[test]
 fn a_conversation_starts_with_what_will_happen_and_listening_has_its_own_words() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);

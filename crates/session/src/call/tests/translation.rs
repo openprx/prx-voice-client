@@ -17,16 +17,16 @@ use crate::fault::ProviderRole;
 use crate::output::{OutputCause, OutputSource};
 use crate::segment::ClauseState;
 
-const SOURCE_TEXT: &str = "今天天气很好";
+pub(super) const SOURCE_TEXT: &str = "今天天气很好";
 /// What the remote party says in the incoming direction (English, translated into Chinese).
 const INCOMING_TEXT: &str = "The weather is very nice today";
 
-fn clause(direction: Direction, seg: u64, index: u16) -> ClauseId {
+pub(super) fn clause(direction: Direction, seg: u64, index: u16) -> ClauseId {
     ClauseId::new(SegmentId::new(direction, seg).expect("seq >= 1"), index)
 }
 
 /// One utterance: 10 frames of silence, 20 of speech, 25 of silence (a segment end).
-fn one_utterance() -> VadScript {
+pub(super) fn one_utterance() -> VadScript {
     VadScript::probabilities(
         std::iter::repeat_n(0.0, 10)
             .chain(std::iter::repeat_n(0.9, 20))
@@ -37,7 +37,7 @@ fn one_utterance() -> VadScript {
 
 /// Each direction says one clause in its own language (`SOURCE_TEXT` outgoing, `INCOMING_TEXT`
 /// incoming) and gets a two-chunk translation back.
-fn script_one_utterance(rig: &Rig) {
+pub(super) fn script_one_utterance(rig: &Rig) {
     rig.world.with_translation(|t| {
         for d in [Direction::Outgoing, Direction::Incoming] {
             t.vad.insert(d, one_utterance());
@@ -62,7 +62,7 @@ fn script_one_utterance(rig: &Rig) {
     });
 }
 
-fn translating_both(rig: &mut Rig) {
+pub(super) fn translating_both(rig: &mut Rig) {
     rig.until("both directions translate", |s| {
         s.directions
             .iter()
@@ -71,7 +71,7 @@ fn translating_both(rig: &mut Rig) {
 }
 
 /// Push `n` frames of 32 ms at 16 kHz into the path called `name`, as its source would.
-fn speak(rig: &Rig, name: &'static str, n: u64) {
+pub(super) fn speak(rig: &Rig, name: &'static str, n: u64) {
     for i in 0..n {
         let frame = AudioFrame::new(
             vec![0.1; 512],

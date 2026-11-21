@@ -1,7 +1,8 @@
 //! Maps the coordinator's snapshot into the debug control's view model: enums, stable i18n keys for issues, numbers for levels and counters.
 
 use prxvc_desktop_ui::call_view::{
-    CaptionFlag, CaptionView, ClauseStatus, CountersView, LatencyView, PartialView, SkipView,
+    CaptionFlag, CaptionView, ClauseStatus, CountersView, LatencyView, NoticeState, NoticeView,
+    PartialView, SkipView,
 };
 use prxvc_desktop_ui::call_view::IssueAction;
 use prxvc_desktop_ui::{
@@ -12,8 +13,8 @@ use prxvc_ports::MtFlag;
 use prxvc_session::ClauseState;
 use prxvc_session::pipeline::SkipReason;
 use prxvc_session::call::{
-    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot, ProviderIssue,
-    Severity,
+    ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot,
+    DisclosureSnapshot, DisclosureState, ProviderIssue, Severity,
 };
 use prxvc_session::{CallState, OutputSource};
 
@@ -59,6 +60,7 @@ pub(crate) fn issue_key(code: CallErrorCode) -> &'static str {
         CallErrorCode::TranslationUnavailable => "call.issue.translation_unavailable",
         CallErrorCode::Provider(issue) => provider_key(issue),
         CallErrorCode::SpeakerOutput => "call.issue.speaker_output",
+        CallErrorCode::DisclosureUnavailable => "call.issue.disclosure_unavailable",
         _ => "call.issue.internal",
     }
 }
@@ -246,6 +248,22 @@ fn issue(i: &CallIssue) -> IssueView {
     }
 }
 
+fn notice(d: &DisclosureSnapshot) -> NoticeView {
+    NoticeView {
+        enabled: d.enabled,
+        state: match d.state {
+            DisclosureState::Off => NoticeState::Off,
+            DisclosureState::Preparing => NoticeState::Preparing,
+            DisclosureState::Ready => NoticeState::Ready,
+            DisclosureState::Playing => NoticeState::Playing,
+            DisclosureState::Played => NoticeState::Played,
+            DisclosureState::Failed => NoticeState::Failed,
+        },
+        plays: d.plays,
+        last_played_s: d.last_played_s,
+    }
+}
+
 /// The control's view of a snapshot.
 pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
     let (activity, activity_devices) = match &s.routing.call_activity {
@@ -275,6 +293,7 @@ pub(crate) fn panel_of(s: &CallSnapshot, trace: &TraceSlot) -> CallPanel {
         displaced_to: s.routing.displaced_to.clone().unwrap_or_default(),
         issues: s.issues.iter().map(issue).collect(),
         last_error: s.last_error.as_ref().map(issue),
+        notice: notice(&s.disclosure),
     }
 }
 
@@ -340,6 +359,7 @@ mod tests {
             }],
             last_error: None,
             last_output_change: None,
+            disclosure: DisclosureSnapshot::default(),
         }
     }
 
@@ -406,6 +426,7 @@ mod tests {
             CallErrorCode::AssistantActive,
             CallErrorCode::TranslationUnavailable,
             CallErrorCode::SpeakerOutput,
+            CallErrorCode::DisclosureUnavailable,
             CallErrorCode::Provider(ProviderIssue::ModelNotInstalled),
             CallErrorCode::Provider(ProviderIssue::ModelInstalling),
             CallErrorCode::Provider(ProviderIssue::ModelDamaged),

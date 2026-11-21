@@ -191,6 +191,7 @@ impl CallControl {
             command::PAUSE => CallCommand::Pause(DirSet::BOTH),
             command::RESUME => CallCommand::Resume,
             command::REAPPLY_MICROPHONE => CallCommand::ReapplyVirtualMicrophone,
+            command::SAY_DISCLOSURE => CallCommand::SayDisclosure,
             _ => return false,
         };
         match &typed {

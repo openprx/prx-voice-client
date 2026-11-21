@@ -86,6 +86,8 @@ pub struct UiSettings {
     pub call_outgoing_capture: String,
     /// `call.captions_show_source`.
     pub call_captions_show_source: bool,
+    /// `call.disclosure`: tell the other party, by a spoken notice, that the call is translated.
+    pub call_disclosure: bool,
     /// `call.captions_size`: `"small"`, `"medium"` or `"large"`.
     pub call_captions_size: String,
     /// `call.barge_in`.
@@ -183,6 +185,7 @@ impl Default for UiSettings {
             call_local_output_mode: "translation".to_owned(),
             call_outgoing_capture: "hands_free".to_owned(),
             call_captions_show_source: true,
+            call_disclosure: true,
             call_captions_size: "medium".to_owned(),
             call_barge_in: true,
             network_language: "zh-CN".to_owned(),

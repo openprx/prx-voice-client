@@ -128,6 +128,19 @@ pub fn t(key: &str) -> String {
     key.to_owned()
 }
 
+/// Translate `key` into `locale`, whatever the active locale is (the spoken notice to the other
+/// party is in their language, not the interface's). Falls back to English, then to the key.
+pub fn t_in(locale: Locale, key: &str) -> String {
+    let store = STORE.read();
+    store
+        .translations
+        .get(&locale)
+        .and_then(|m| m.get(key))
+        .or_else(|| store.translations.get(&Locale::En).and_then(|m| m.get(key)))
+        .cloned()
+        .unwrap_or_else(|| key.to_owned())
+}
+
 /// Translate `key` and substitute positional parameters.
 ///
 /// Placeholders `{0}`, `{1}`, ... in the translated string are replaced with

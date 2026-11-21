@@ -81,6 +81,7 @@ shots! {
     live_dark_en_420: "callwin_live_dark_en_420", call_fixtures::live_panel(), Dark, En, 420.0;
     live_dark_zh_380: "callwin_live_dark_zh_380", call_fixtures::live_panel(), Dark, ZhCn, 380.0;
     live_light_zh_760: "callwin_live_light_zh_760", call_fixtures::live_panel(), Light, ZhCn, 760.0;
+    undisclosed_light_en_420: "callwin_undisclosed_light_en_420", call_fixtures::undisclosed_panel(), Light, En, 420.0;
     degraded_light_en_420: "callwin_degraded_light_en_420", call_fixtures::degraded_panel(), Light, En, 420.0;
     degraded_dark_zh_420: "callwin_degraded_dark_zh_420", call_fixtures::degraded_panel(), Dark, ZhCn, 420.0;
     paused_light_zh_420: "callwin_paused_light_zh_420", call_fixtures::paused_panel(), Light, ZhCn, 420.0;

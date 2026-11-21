@@ -13,6 +13,7 @@ use crate::call_window_details;
 use crate::call_window_footer;
 use crate::call_window_header::{self, language_codes, language_name};
 use crate::call_window_issues;
+use crate::call_window_notice;
 use crate::call_window_state::{CallWindowState, CaptionSize};
 use crate::settings_section::SettingsSection;
 use crate::state::UiSettings;
@@ -108,6 +109,7 @@ pub(crate) fn body(
         footer(ui, tk, panel, settings, w);
         ui.with_layout(Layout::top_down(Align::Min), |ui| {
             call_window_header::header(ui, tk, panel, translate, settings, w, actions);
+            call_window_notice::notice_line(ui, tk, panel, settings, actions);
             call_window_issues::issues(ui, tk, panel, actions);
             ui.add_space(space::S12);
             let (own, peer) = language_codes(panel, settings);

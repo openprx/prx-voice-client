@@ -345,6 +345,37 @@ pub struct LaneView {
     pub underruns: u64,
 }
 
+/// Where the spoken notice to the other party stands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NoticeState {
+    /// Not part of this call.
+    #[default]
+    Off,
+    /// Being prepared.
+    Preparing,
+    /// Ready, plays before the first translated sentence.
+    Ready,
+    /// Playing now.
+    Playing,
+    /// Played to the end.
+    Played,
+    /// Could not be prepared.
+    Failed,
+}
+
+/// The spoken notice to the other party as the window shows it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoticeView {
+    /// The setting is on for this call.
+    pub enabled: bool,
+    /// Where it stands.
+    pub state: NoticeState,
+    /// Times it was played to the end.
+    pub plays: u32,
+    /// Seconds into the call when it was last played.
+    pub last_played_s: Option<u32>,
+}
+
 /// Everything the control shows.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CallPanel {
@@ -376,6 +407,8 @@ pub struct CallPanel {
     pub issues: Vec<IssueView>,
     /// The last failure.
     pub last_error: Option<IssueView>,
+    /// The spoken notice to the other party.
+    pub notice: NoticeView,
 }
 
 impl CallPanel {
@@ -421,6 +454,8 @@ pub mod command {
     pub const RESUME: &str = "CallResume";
     /// Make our microphone the default input again.
     pub const REAPPLY_MICROPHONE: &str = "CallReapplyMicrophone";
+    /// Say the spoken notice to the other party again.
+    pub const SAY_DISCLOSURE: &str = "CallSayDisclosure";
     /// End the assistant session and, once it has let go of the microphone, start call mode with
     /// the options of the start that was refused.
     pub const END_ASSISTANT_AND_START: &str = "CallEndAssistantAndStart";

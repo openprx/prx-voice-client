@@ -152,6 +152,11 @@ pub struct Coordinator {
     pub(super) call_cancel: CancellationToken,
     /// A path failed to stop in time during the current stop.
     pub(super) leaked: bool,
+    /// The spoken notice to the other party of the call that is running (translated calls with
+    /// the setting on).
+    pub(super) disclosure: Option<Arc<super::disclosure::Disclosure>>,
+    /// The failure of the notice was shown.
+    pub(super) disclosure_failure_shown: bool,
     /// When the call that is running began (for the summary at its end).
     pub(super) call_began: Option<MonoTime>,
     published: Option<CallSnapshot>,
@@ -197,6 +202,8 @@ impl Coordinator {
             prepared: None,
             call_cancel: CancellationToken::new(),
             leaked: false,
+            disclosure: None,
+            disclosure_failure_shown: false,
             call_began: None,
             published: None,
             revision: 0,
@@ -227,6 +234,7 @@ impl Coordinator {
             CallCommand::SetLocalOutputMode(mode) => self.set_local_output_mode(mode),
             CallCommand::Skip(direction) => self.skip(direction),
             CallCommand::ReapplyVirtualMicrophone => self.reassert(),
+            CallCommand::SayDisclosure => self.say_disclosure(),
         }
         self.publish();
     }
@@ -236,6 +244,7 @@ impl Coordinator {
         let now = self.now();
         self.collect_paths();
         self.collect_translation();
+        self.check_disclosure();
         self.advance_recovery(now, false);
         if now.saturating_since(self.last_poll) >= self.settings.routing_poll {
             self.last_poll = now;
@@ -376,6 +385,8 @@ impl Coordinator {
         self.new_call_token();
         self.leaked = false;
         self.call_began = Some(self.now());
+        self.disclosure = None;
+        self.disclosure_failure_shown = false;
         self.recovery = None;
         self.routing.restored_to = None;
         self.routing.call_activity = ActivityJudgement::Unknown;
@@ -471,6 +482,11 @@ impl Coordinator {
             issues: self.issues.clone(),
             last_error: self.last_error.clone(),
             last_output_change: self.last_change.clone(),
+            disclosure: self
+                .disclosure
+                .as_ref()
+                .map(|d| d.snapshot(self.call_began))
+                .unwrap_or_default(),
         }
     }
 

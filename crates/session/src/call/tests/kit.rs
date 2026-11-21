@@ -65,6 +65,8 @@ pub struct Translation {
     pub tts: FakeSpeechSynth,
     pub trace: FakeTraceSink,
     pub params: Box<dyn Fn(&mut PipelineParams) + Send>,
+    /// The spoken notice the outgoing direction carries.
+    pub disclosure: Option<crate::call::DisclosureSpec>,
 }
 
 #[derive(Default)]
@@ -106,6 +108,7 @@ impl World {
                 .with_default_script(TtsScript::chunks(2, 2400)),
             trace: FakeTraceSink::new(false),
             params: Box::new(|_| {}),
+            disclosure: None,
         };
         Self {
             log: Arc::default(),
@@ -564,6 +567,9 @@ impl CallHost for FakeHost {
                         )),
                         tts: Arc::new(t.tts.clone()),
                     },
+                    disclosure: (d == Direction::Outgoing)
+                        .then(|| t.disclosure.clone())
+                        .flatten(),
                 }
             })
             .collect();

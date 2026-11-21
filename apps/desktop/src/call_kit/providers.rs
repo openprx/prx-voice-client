@@ -224,6 +224,9 @@ pub(crate) fn build_directions(
                 mt: Arc::from(mt),
                 tts: Arc::from(tts),
             },
+            // Only the outgoing direction speaks to the other party.
+            disclosure: (d.direction == Direction::Outgoing)
+                .then(|| super::disclosure::disclosure_spec(config, d.target)),
         });
     }
     Ok(out)

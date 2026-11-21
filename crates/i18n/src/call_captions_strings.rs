@@ -75,6 +75,24 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Filler dropped {0} · Skipped to keep up {1} · Already in target language {2} · Translated again {3} · Failed translations {4}",
     ),
     ("callwin.detail.flags", "Flagged translations: {0}"),
+    (
+        "call.issue.disclosure_unavailable",
+        "The spoken notice to the other party could not be prepared, so they are not being told that the call is translated. The translation itself goes on.",
+    ),
+    ("callwin.notice.title", "Notice to the other party"),
+    ("callwin.notice.preparing", "Getting the spoken notice ready. It plays before your first translated sentence."),
+    ("callwin.notice.ready", "Plays before your first translated sentence."),
+    ("callwin.notice.playing", "Playing to the other party now."),
+    ("callwin.notice.played", "Played to the other party at {0}."),
+    ("callwin.notice.failed", "The spoken notice could not be prepared. The other party is not being told."),
+    ("callwin.notice.off", "The other party is not being told that this call is translated by a machine."),
+    ("callwin.notice.again", "Say it again"),
+    ("callwin.notice.switch", "Tell the other party (spoken notice)"),
+    ("callwin.notice.switch_hint", "Applies from the next start."),
+    (
+        "call.disclosure.text",
+        "This call is being translated in real time. You are hearing a synthesized voice.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -152,4 +170,22 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "已丢弃语气词 {0} · 为跟上语速跳过 {1} · 已是目标语言 {2} · 重新翻译 {3} · 翻译失败 {4}",
     ),
     ("callwin.detail.flags", "被标记的译文：{0}"),
+    (
+        "call.issue.disclosure_unavailable",
+        "给对方的语音提示没能准备好，所以对方不会被告知这通电话在翻译。翻译本身继续进行。",
+    ),
+    ("callwin.notice.title", "对对方的提示"),
+    ("callwin.notice.preparing", "正在准备语音提示，它会在你第一句译文之前播放。"),
+    ("callwin.notice.ready", "会在你第一句译文之前播放。"),
+    ("callwin.notice.playing", "正在向对方播放。"),
+    ("callwin.notice.played", "已在 {0} 向对方播放。"),
+    ("callwin.notice.failed", "语音提示没能准备好，对方不会被告知。"),
+    ("callwin.notice.off", "对方不会被告知这通电话由机器翻译。"),
+    ("callwin.notice.again", "再说一遍"),
+    ("callwin.notice.switch", "告知对方（语音提示）"),
+    ("callwin.notice.switch_hint", "下次开始时生效。"),
+    (
+        "call.disclosure.text",
+        "本次通话正在实时翻译，你听到的是合成语音。",
+    ),
 ];
