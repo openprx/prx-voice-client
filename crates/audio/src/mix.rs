@@ -26,10 +26,14 @@
 //! output rate with the crate's streaming resampler, queued, and played out
 //! after a prebuffer. The translated lane's prebuffer is the jitter buffer
 //! (`jitter_buffer_ms`): a chunk that arrives late but within that depth
-//! leaves no gap. When the queue does run dry the lane fades out over its
-//! last `fade` samples and waits for the prebuffer to refill, which is
-//! counted as an underrun ([`LaneStats::underruns`]); an announced end of
-//! stream ([`Mixer::end_translated`]) is not an underrun. The original lane
+//! leaves no gap. The depth adapts to the measured real-time factor of synthesis
+//! ([`PrerollModel`]): a clause never starts with less queued than it needs to
+//! finish without a gap at the current rate. When the queue does run dry in the middle of a
+//! clause the lane fades out and waits for the prebuffer to refill, which is
+//! counted as an underrun ([`LaneStats::underruns`]) with the length of the silence
+//! ([`LaneStats::gap_samples`]); an announced end of
+//! stream ([`Mixer::end_translated`]) is not an underrun, even when it arrives after the
+//! queue emptied. The original lane
 //! places frames by timestamp, so lost frames become silence of the right
 //! length and the two inputs stay aligned.
 //!
@@ -43,6 +47,7 @@
 //! The sum of the two inputs is clamped to [-1, 1].
 
 mod lane;
+mod preroll;
 mod ramp;
 
 use std::time::Duration;
@@ -54,6 +59,7 @@ use crate::AudioError;
 use crate::call_pump::{Level, LevelMeter};
 pub use lane::LaneStats;
 use lane::{Lane, LaneConfig};
+pub use preroll::{PrerollConfig, PrerollModel};
 use ramp::GainRamp;
 pub use ramp::db_to_linear;
 
@@ -88,8 +94,16 @@ pub struct MixerConfig {
     pub original_buffer: Duration,
     /// Length of a mode switch.
     pub crossfade: Duration,
-    /// Length of the fade a lane applies when it starts or runs dry.
+    /// Length of the fade a lane applies when it starts or when a stream ends.
     pub fade: Duration,
+    /// Length of the fade-out of the translated lane while its stream is not announced as ended
+    /// (it may run dry before the clause is complete): an unavoidable gap is a fade, not a cut.
+    pub dry_fade: Duration,
+    /// Adapt the translated lane's pre-roll to the measured real-time factor of synthesis
+    /// (`pipeline.adaptive_preroll`).
+    pub adaptive_preroll: bool,
+    /// The most pre-roll the adaptation asks for (`pipeline.preroll_max_ms`).
+    pub preroll_max: Duration,
     /// Most audio either input holds before it drops the excess.
     pub max_buffer: Duration,
 }
@@ -106,6 +120,9 @@ impl Default for MixerConfig {
             original_buffer: Duration::from_millis(20),
             crossfade: Duration::from_millis(20),
             fade: Duration::from_millis(5),
+            dry_fade: Duration::from_millis(20),
+            adaptive_preroll: true,
+            preroll_max: Duration::from_millis(1500),
             max_buffer: Duration::from_secs(20),
         }
     }
@@ -153,12 +170,21 @@ impl Mixer {
     pub fn new(cfg: MixerConfig) -> Self {
         let rate = cfg.output_rate;
         let lane = |depth: Duration, timed: bool| {
+            let adaptive = !timed && cfg.adaptive_preroll;
             Lane::new(LaneConfig {
                 out_rate: rate.hz(),
                 depth: rate.samples_in(depth),
                 fade: rate.samples_in(cfg.fade),
+                dry_fade: if timed { 0 } else { rate.samples_in(cfg.dry_fade) },
                 capacity: rate.samples_in(cfg.max_buffer),
                 timed,
+                preroll: adaptive.then(|| PrerollConfig {
+                    max_depth: rate.samples_in(cfg.preroll_max),
+                    safety: 1.2,
+                    default_len: rate.samples_in(Duration::from_secs(2)),
+                    min_span: rate.samples_in(Duration::from_millis(100)) as u64,
+                    max_stall: rate.samples_in(cfg.preroll_max.min(Duration::from_millis(600))),
+                }),
             })
         };
         let (t, o) = gains_of(&cfg, cfg.mode);
@@ -179,6 +205,11 @@ impl Mixer {
             scratch_translated: Vec::new(),
             scratch_original: Vec::new(),
         }
+    }
+
+    /// The output sample rate.
+    pub fn output_rate(&self) -> SampleRate {
+        self.cfg.output_rate
     }
 
     /// The mode the mixer is in or crossfading to.
@@ -315,5 +346,7 @@ fn gains_of(cfg: &MixerConfig, mode: MixMode) -> (f32, f32) {
     }
 }
 
+#[cfg(test)]
+mod gap_tests;
 #[cfg(test)]
 mod tests;

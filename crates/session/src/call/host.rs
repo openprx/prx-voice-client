@@ -45,12 +45,23 @@ pub struct PathStats {
     pub overruns: u64,
     /// Samples refused by the sink or dropped by the mixer.
     pub drops: u64,
-    /// Times the sink or the mixer ran dry.
+    /// Times the sink or the mixer's original lane ran dry. Diagnostic only: the original lane is
+    /// silent while a translation plays, and a short dry spell of the capture is not a gap in the
+    /// speech the listener hears (see `translated_underruns`).
     pub underruns: u64,
+    /// Of `underruns`: times the sink ran dry.
+    pub sink_underruns: u64,
+    /// Of `underruns`: times the original (capture) lane ran dry.
+    pub lane_underruns: u64,
     /// Audio queued in the sink.
     pub queued: Duration,
-    /// Times the translated lane ran dry in the middle of a clause.
+    /// Gaps in the translated speech: times the translated lane ran dry while a clause was still
+    /// being synthesised or queued (the normal end of a clause is not one).
     pub translated_underruns: u64,
+    /// Milliseconds of silence in those gaps, in total.
+    pub translated_gap_ms: u64,
+    /// The longest single gap, in milliseconds.
+    pub translated_worst_gap_ms: u64,
     /// Translated samples dropped because the lane or the feed was full.
     pub translated_dropped: u64,
     /// Peak of the translated speech as played (after the output gain), last full window, linear.

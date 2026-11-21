@@ -403,6 +403,12 @@ pub struct PipelineConfig {
     pub mt_context_clauses: u32,
     /// Playout jitter buffer, in milliseconds.
     pub jitter_buffer_ms: u32,
+    /// Raise the start-of-clause pre-roll above `jitter_buffer_ms` when synthesis delivers audio
+    /// slower than it is played (measured per call), so that a clause does not start with less
+    /// queued than it needs to finish without a gap.
+    pub adaptive_preroll: bool,
+    /// The most pre-roll the adaptation asks for, in milliseconds.
+    pub preroll_max_ms: u32,
     /// Skip stale queued clauses to keep up with the speaker. Off plays everything, however late.
     pub backlog_skipping: bool,
     /// Queued audio per direction above which stale clauses are skipped, in milliseconds.
@@ -445,6 +451,8 @@ impl Default for PipelineConfig {
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,
+            adaptive_preroll: true,
+            preroll_max_ms: 1_500,
             backlog_skipping: true,
             max_backlog_ms: 15_000,
             max_lag_ms: 20_000,

@@ -32,7 +32,13 @@ pub(crate) struct UtteranceRun {
     pub spoken: String,
     /// Seconds of translated audio produced, per clause in order.
     pub audio_seconds: Vec<f64>,
+    /// Gaps in the translated speech (the lane ran dry while a clause was still coming).
     pub underruns: u64,
+    /// Milliseconds of silence in those gaps and the longest one.
+    pub gap_ms: u64,
+    pub worst_gap_ms: u64,
+    /// Times the sink ran dry (diagnostic).
+    pub sink_underruns: u64,
     pub runaway_synth: u64,
     pub mt_suspect: u64,
     pub clauses_failed: u64,
@@ -174,8 +180,15 @@ pub(crate) fn table(runs: &[UtteranceRun]) -> String {
     }
     let n = runs.len();
     let with = |f: fn(&UtteranceRun) -> bool| runs.iter().filter(|r| f(r)).count();
+    let gaps: u64 = runs.iter().map(|r| r.underruns).sum();
+    let gap_ms: u64 = runs.iter().map(|r| r.gap_ms).sum();
+    let worst = runs.iter().map(|r| r.worst_gap_ms).max().unwrap_or(0);
+    let sink: u64 = runs.iter().map(|r| r.sink_underruns).sum();
     out.push_str(&format!(
-        "| items with an output underrun | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n| items with a final that disagreed with committed text | {n} | {} | |\n",
+        "| translated gaps (count, total ms, worst ms, sink dry) | {n} | {gaps}, {gap_ms}, {worst}, {sink} | |\n"
+    ));
+    out.push_str(&format!(
+        "| items with a gap in the translated speech | {n} | {} | |\n| items with a clause that hit the runaway guard | {n} | {} | |\n| items with a suspect translation | {n} | {} | |\n| items with a failed clause | {n} | {} | |\n| items with no translated audio | {n} | {} | |\n| items with a clause skipped to keep up | {n} | {} | |\n| items with a final that disagreed with committed text | {n} | {} | |\n",
         with(|r| r.underruns > 0),
         with(|r| r.runaway_synth > 0),
         with(|r| r.mt_suspect > 0),

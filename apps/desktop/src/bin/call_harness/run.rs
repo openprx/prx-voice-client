@@ -51,7 +51,8 @@ pub(crate) struct Rig {
     pub params: PipelineParams,
     pub providers: PipelineProviders,
     pub output: Output,
-    pub jitter: Duration,
+    /// The mixer's settings (jitter buffer, adaptive pre-roll); the mode is set per run.
+    pub mixer: MixerConfig,
 }
 
 /// Speech start and end in the recording, from the VAD the pipeline uses (probability of at least
@@ -141,8 +142,7 @@ pub(crate) fn run_utterance(
         route: PumpRoute::Mix {
             mixer: Box::new(Mixer::new(MixerConfig {
                 mode: MixMode::Translation,
-                jitter_buffer: rig.jitter,
-                ..MixerConfig::default()
+                ..rig.mixer
             })),
             sink,
         },
@@ -312,7 +312,10 @@ pub(crate) fn run_utterance(
         translation,
         spoken,
         audio_seconds,
-        underruns: stats.translated_underruns + stats.sink_underruns,
+        underruns: stats.translated_underruns,
+        gap_ms: stats.translated_gap_ms,
+        worst_gap_ms: stats.translated_worst_gap_ms,
+        sink_underruns: stats.sink_underruns,
         runaway_synth: counters.runaway_synth,
         mt_suspect: counters.mt_suspect,
         clauses_failed: counters.clauses_failed,

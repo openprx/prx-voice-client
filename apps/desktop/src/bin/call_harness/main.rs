@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -42,6 +42,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use prxvc_audio::mix::MixerConfig;
 use prxvc_media::{Direction, Lang, SystemClock};
 use prxvc_session::EarlyCommit;
 
@@ -80,6 +81,7 @@ struct Options {
     own: String,
     peer: String,
     vad_profile: bool,
+    no_adaptive_preroll: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -103,6 +105,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         own: "zh".into(),
         peer: "en".into(),
         vad_profile: false,
+        no_adaptive_preroll: false,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -151,6 +154,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--subset" => o.subset = Some(value(arg, &mut it)?),
             "--no-backlog-skip" => o.no_backlog_skip = true,
             "--vad-profile" => o.vad_profile = true,
+            "--no-adaptive-preroll" => o.no_adaptive_preroll = true,
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -394,7 +398,12 @@ fn execute(o: &Options) -> Result<bool, String> {
         params,
         providers: build.providers.clone(),
         output,
-        jitter: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+        mixer: MixerConfig {
+            jitter_buffer: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+            adaptive_preroll: config.pipeline.adaptive_preroll && !o.no_adaptive_preroll,
+            preroll_max: Duration::from_millis(u64::from(config.pipeline.preroll_max_ms)),
+            ..MixerConfig::default()
+        },
     };
     let mut runs: Vec<UtteranceRun> = Vec::new();
     for item in &items {

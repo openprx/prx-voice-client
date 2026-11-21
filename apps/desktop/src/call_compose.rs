@@ -148,7 +148,16 @@ pub(crate) fn incoming_mixer(config: &prxvc_config::AppConfig) -> prxvc_audio::m
     prxvc_audio::mix::MixerConfig {
         translated_gain_db: config.call.output_gain_db,
         original_gain_db: config.call.original_gain_db,
+        ..outgoing_mixer(config)
+    }
+}
+
+/// The outgoing mixer's settings: the translated lane's jitter buffer and its adaptive pre-roll.
+pub(crate) fn outgoing_mixer(config: &prxvc_config::AppConfig) -> prxvc_audio::mix::MixerConfig {
+    prxvc_audio::mix::MixerConfig {
         jitter_buffer: Duration::from_millis(u64::from(config.pipeline.jitter_buffer_ms)),
+        adaptive_preroll: config.pipeline.adaptive_preroll,
+        preroll_max: Duration::from_millis(u64::from(config.pipeline.preroll_max_ms)),
         ..prxvc_audio::mix::MixerConfig::default()
     }
 }
@@ -345,6 +354,7 @@ fn spawn(
         echo_mode: config.audio.echo_mode,
         echo_tail: std::time::Duration::from_millis(u64::from(config.audio.half_duplex_tail_ms)),
         incoming_mixer: incoming_mixer(config),
+        outgoing_mixer: outgoing_mixer(config),
         data_dir: paths.data_dir.clone(),
         config_source: crate::call_kit::config::current_source(),
         translate: vec![prxvc_media::Direction::Outgoing, prxvc_media::Direction::Incoming],
@@ -432,6 +442,14 @@ mod tests {
         assert_eq!(mixer.original_gain_db, -18.0);
         assert_eq!(mixer.jitter_buffer, Duration::from_millis(120));
         let default = incoming_mixer(&prxvc_config::AppConfig::default());
+        assert!(default.adaptive_preroll);
+        assert_eq!(default.preroll_max, Duration::from_millis(1500));
+        let off = outgoing_mixer(&config_with(|c| {
+            c.pipeline.adaptive_preroll = false;
+            c.pipeline.preroll_max_ms = 900;
+        }));
+        assert!(!off.adaptive_preroll);
+        assert_eq!(off.preroll_max, Duration::from_millis(900));
         assert_eq!(default.translated_gain_db, 0.0, "no gain unless asked for");
         assert_eq!(default.original_gain_db, -12.0);
     }

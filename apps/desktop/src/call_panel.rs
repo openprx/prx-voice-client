@@ -183,7 +183,8 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
             })
             .collect();
         let c = &p.counters;
-        let underruns = d.path.as_ref().map_or(0, |x| x.underruns + x.translated_underruns);
+        // Gaps in the translated speech only: a dry sink or capture lane is not heard as one.
+        let underruns = d.path.as_ref().map_or(0, |x| x.translated_underruns);
         view.counters = Some(CountersView {
             late_dropped: c.late_dropped,
             backlog_skips: c.backlog_skips,

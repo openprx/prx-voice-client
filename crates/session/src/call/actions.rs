@@ -140,7 +140,7 @@ impl Coordinator {
             if lane.totals.pipeline.is_none()
                 && let Some(x) = lane.stats.as_ref()
             {
-                lane.totals.underruns = x.underruns + x.translated_underruns;
+                lane.totals.playback = super::summary::PlaybackTotals::of(x);
             }
             lane.stats = None;
             if let Some(mut path) = lane.path.take()

@@ -191,8 +191,12 @@ fn stats_of(s: &PumpStats) -> PathStats {
         overruns: s.source_dropped_samples,
         drops: s.sink_dropped_samples + s.lane_dropped_samples,
         underruns: s.sink_underruns + s.lane_underruns,
+        sink_underruns: s.sink_underruns,
+        lane_underruns: s.lane_underruns,
         queued: s.sink_queued,
         translated_underruns: s.translated_underruns,
+        translated_gap_ms: s.translated_gap_ms,
+        translated_worst_gap_ms: s.translated_worst_gap_ms,
         translated_dropped: s.translated_dropped_samples,
         translated_peak: s.translated_level.peak,
         translated_rms: s.translated_level.rms,
@@ -210,6 +214,8 @@ pub(super) struct OutgoingPlan<'a> {
     pub virtual_mic_device: &'a str,
     /// The half-duplex gate, in speaker mode: while it is closed the microphone is not listened to.
     pub echo: Option<EchoGateHandle>,
+    /// The mixer's settings: the translated lane's jitter buffer and adaptive pre-roll.
+    pub mixer: MixerConfig,
 }
 
 /// Open the virtual microphone sink and the microphone and start the outgoing pump.
@@ -223,7 +229,7 @@ pub(super) fn start_outgoing(plan: &OutgoingPlan<'_>) -> Result<Box<dyn AudioPat
     let source = SupervisedMic::new(PlatformInputBackend, plan.microphone, events.clone());
     let mixer = Box::new(Mixer::new(MixerConfig {
         mode: MixMode::Original,
-        ..MixerConfig::default()
+        ..plan.mixer
     }));
     let pump = Pump::start(PumpSpec {
         config: PumpConfig::new("outgoing"),
@@ -392,6 +398,8 @@ mod tests {
             sink_queued: Duration::from_millis(40),
             mode: Some(MixMode::Original),
             translated_underruns: 5,
+            translated_gap_ms: 800,
+            translated_worst_gap_ms: 300,
             translated_dropped_samples: 6,
             translated_level: Level {
                 peak: 0.75,
@@ -406,6 +414,7 @@ mod tests {
         assert_eq!(s.sink_device.as_deref(), Some("sink"));
         assert_eq!(s.queued, Duration::from_millis(40));
         assert_eq!((s.translated_underruns, s.translated_dropped), (5, 6));
+        assert_eq!((s.translated_gap_ms, s.translated_worst_gap_ms), (800, 300));
         assert_eq!((s.translated_peak, s.translated_rms), (0.75, 0.5));
         assert!(s.input_gated);
         assert_eq!(s.gated_frames, 12);

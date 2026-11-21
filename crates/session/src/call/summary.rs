@@ -1,8 +1,11 @@
 //! The summary of a call, logged once when it ends: how long it ran and, per direction, what the utterances came to. Counts and figures only; no spoken text.
 //!
 //! The figures are the pipeline's last snapshot of each direction (taken when its pipeline stops)
-//! and the path's underruns. A direction without a pipeline (audio only, or one that never
-//! started) shows only its underruns.
+//! and the path's playback figures: gaps in the translated speech (the translated lane ran dry
+//! while a clause was still being synthesised or queued, never the normal end of a clause) with
+//! their total and worst length, and, as diagnostics only, how often the sink or the capture lane
+//! ran dry. A direction without a pipeline (audio only, or one that never started) shows only
+//! the diagnostics.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,10 +21,44 @@ use crate::pipeline::{DirectionSnapshot, Percentiles};
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct DirectionTotals {
     pub pipeline: Option<Arc<DirectionSnapshot>>,
-    /// Times playback ran dry (sink and translated lane).
-    pub underruns: u64,
+    /// What the path's playback did.
+    pub playback: PlaybackTotals,
     /// The spoken notice to the other party (the outgoing direction only).
     pub disclosure: Option<DisclosureSnapshot>,
+}
+
+/// The figures of a path's playback, from its last stats.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct PlaybackTotals {
+    /// Gaps in the translated speech.
+    pub gaps: u64,
+    /// Milliseconds of silence in them, in total.
+    pub gap_ms: u64,
+    /// The longest gap, in milliseconds.
+    pub worst_gap_ms: u64,
+    /// Times the sink ran dry (diagnostic).
+    pub sink_dry: u64,
+    /// Times the capture (original) lane ran dry (diagnostic: silent while a translation plays).
+    pub lane_dry: u64,
+}
+
+impl PlaybackTotals {
+    pub(super) fn of(x: &super::host::PathStats) -> Self {
+        Self {
+            gaps: x.translated_underruns,
+            gap_ms: x.translated_gap_ms,
+            worst_gap_ms: x.translated_worst_gap_ms,
+            sink_dry: x.sink_underruns,
+            lane_dry: x.lane_underruns,
+        }
+    }
+
+    fn text(&self) -> String {
+        format!(
+            "underruns={} gap_ms(total/worst)={}/{} sink_dry={} capture_lane_dry={}",
+            self.gaps, self.gap_ms, self.worst_gap_ms, self.sink_dry, self.lane_dry
+        )
+    }
 }
 
 fn percentiles(p: Percentiles) -> String {
@@ -53,7 +90,10 @@ impl DirectionTotals {
             Some(n) => format!(" notice({})", notice_text(n)),
         };
         let Some(s) = &self.pipeline else {
-            return format!("no translation, underruns={}{notice}", self.underruns);
+            return format!(
+                "no translation, sink_dry={} capture_lane_dry={}{notice}",
+                self.playback.sink_dry, self.playback.lane_dry
+            );
         };
         let c = &s.counters;
         let other_skips = c.skipped.saturating_sub(c.backlog_skips + c.stale_skips);
@@ -65,7 +105,7 @@ impl DirectionTotals {
         format!(
             "utterances={} clauses={} played={} failed={} filler_dropped={} unspeakable_dropped={} \
              skips(stale={} backlog={} other={}) passed_through={} suspects={} flags({}) \
-             mt_retries={} synth_runaways={} underruns={} \
+             mt_retries={} synth_runaways={} {} \
              start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={}{}",
             s.ledger.utterances,
             c.clauses_committed,
@@ -81,7 +121,7 @@ impl DirectionTotals {
             if flags.is_empty() { "-".to_owned() } else { flags.join(",") },
             c.mt_retries,
             c.runaway_synth,
-            self.underruns,
+            self.playback.text(),
             percentiles(s.ledger.start_to_first_audio),
             percentiles(s.ledger.end_to_first_audio),
             notice,
@@ -94,10 +134,7 @@ impl Coordinator {
     pub(super) fn capture_totals(&mut self, d: Direction) {
         let lane = &self.lanes[slot(d)];
         let pipeline = lane.running.as_ref().and_then(|r| r.snapshot());
-        let underruns = lane
-            .stats
-            .as_ref()
-            .map_or(0, |x| x.underruns + x.translated_underruns);
+        let playback = lane.stats.as_ref().map(PlaybackTotals::of).unwrap_or_default();
         let disclosure = (d == Direction::Outgoing)
             .then(|| {
                 self.disclosure
@@ -107,7 +144,7 @@ impl Coordinator {
             .flatten();
         self.lanes[slot(d)].totals = DirectionTotals {
             pipeline,
-            underruns,
+            playback,
             disclosure,
         };
     }
@@ -167,13 +204,17 @@ mod tests {
     }
 
     #[test]
-    fn a_direction_without_a_pipeline_shows_only_its_underruns() {
+    fn a_direction_without_a_pipeline_shows_only_the_diagnostics() {
         let t = DirectionTotals {
             pipeline: None,
-            underruns: 3,
+            playback: PlaybackTotals {
+                sink_dry: 3,
+                lane_dry: 2,
+                ..PlaybackTotals::default()
+            },
             disclosure: None,
         };
-        assert_eq!(t.line(), "no translation, underruns=3");
+        assert_eq!(t.line(), "no translation, sink_dry=3 capture_lane_dry=2");
     }
 
     #[test]
@@ -194,7 +235,13 @@ mod tests {
                 runaway_synth: 1,
                 ..Counters::default()
             })),
-            underruns: 6,
+            playback: PlaybackTotals {
+                gaps: 6,
+                gap_ms: 840,
+                worst_gap_ms: 310,
+                sink_dry: 1,
+                lane_dry: 90,
+            },
             disclosure: Some(DisclosureSnapshot {
                 enabled: true,
                 state: DisclosureState::Played,
@@ -216,7 +263,7 @@ mod tests {
             "flags(wrong_language=3)",
             "mt_retries=2",
             "synth_runaways=1",
-            "underruns=6",
+            "underruns=6 gap_ms(total/worst)=840/310 sink_dry=1 capture_lane_dry=90",
             "start_to_first_audio_ms(median/p95)=2300/4100 (n=7)",
             "end_to_first_audio_ms(median/p95)=-",
             "notice(played played=2 interrupted=1)",
