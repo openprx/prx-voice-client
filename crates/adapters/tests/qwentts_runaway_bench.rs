@@ -25,7 +25,7 @@ use prxvc_adapters::tts::qwentts::{
 };
 use prxvc_media::{ClauseId, Direction, Lang, SegmentId};
 use prxvc_ports::{
-    CancellationToken, SpeechSynth, TtsItem, TtsRequest, TtsStream, VoiceSelection,
+    CancellationToken, SpeechSynth, TtsItem, TtsRequest, VoiceSelection,
 };
 
 const SENTENCES: &[&str] = &[
