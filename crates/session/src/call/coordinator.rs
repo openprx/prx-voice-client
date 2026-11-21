@@ -20,11 +20,11 @@ use super::error::{CallErrorCode, CallIssue, HostFault};
 use super::events::Recovery;
 use super::host::{ActivityJudgement, AudioPath, CallHost, PathStats, PreparedProviders};
 use super::ownership::{MicClaim, MicOwnership};
-use super::translation::Running;
 use super::snapshot::{
     CallCommand, CallSnapshot, DeviceNames, DirectionSnapshot, LocalOutputMode, OutputChange,
     RoutingSnapshot,
 };
+use super::translation::Running;
 use crate::call_state::{CallEvent, CallState};
 use crate::dir_set::DirSet;
 use crate::direction_state::DirectionState;
@@ -298,7 +298,9 @@ impl Coordinator {
     fn skip(&mut self, direction: Direction) {
         match self.lanes[slot(direction)].running.as_ref() {
             Some(running) => running.skip(),
-            None => self.reject(format!("skip {direction:?}: the direction does not translate")),
+            None => self.reject(format!(
+                "skip {direction:?}: the direction does not translate"
+            )),
         }
     }
 
@@ -323,9 +325,10 @@ impl Coordinator {
     /// whether the machine accepted it; a rejection is logged and the state kept.
     pub(super) fn feed(&mut self, event: CallEvent) -> bool {
         let state = std::mem::replace(&mut self.state, CallState::Idle);
+        let previous = state.clone();
         match state.on(event) {
             Ok((next, actions)) => {
-                self.set_state(next);
+                self.set_state(&previous, next);
                 self.apply(actions);
                 true
             }
@@ -337,9 +340,11 @@ impl Coordinator {
         }
     }
 
-    fn set_state(&mut self, next: CallState) {
-        if next != self.state {
-            tracing::info!(from = ?self.state, to = ?next, "call state");
+    /// Take `next` as the state after the transition out of `previous` (`self.state` holds a
+    /// placeholder while the machine runs, so the previous state is passed in).
+    fn set_state(&mut self, previous: &CallState, next: CallState) {
+        if let Some((from, to)) = transition(previous, &next) {
+            tracing::info!(from = ?from, to = ?to, "call state");
             self.since = self.now();
         }
         self.state = next;
@@ -468,5 +473,28 @@ impl Coordinator {
         };
         (self.sink)(&snapshot);
         self.published = Some(snapshot);
+    }
+}
+
+/// The states of a transition that changes the state, `None` when `next` is the state already.
+fn transition<'a>(
+    previous: &'a CallState,
+    next: &'a CallState,
+) -> Option<(&'a CallState, &'a CallState)> {
+    (previous != next).then_some((previous, next))
+}
+
+#[cfg(test)]
+mod transition_tests {
+    use super::*;
+
+    #[test]
+    fn a_transition_names_the_real_previous_state_and_an_unchanged_state_is_not_one() {
+        let idle = CallState::Idle;
+        let starting = CallState::Translating;
+        assert_eq!(transition(&starting, &idle), Some((&starting, &idle)));
+        assert_eq!(transition(&idle, &starting), Some((&idle, &starting)));
+        assert_eq!(transition(&starting, &starting), None);
+        assert_eq!(transition(&idle, &idle), None);
     }
 }
