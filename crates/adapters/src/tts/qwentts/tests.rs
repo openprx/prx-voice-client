@@ -21,7 +21,8 @@ use super::{LoadError, QwenTts, QwenTtsConfig};
 
 mod live_policy;
 
-const SHORT: &str = "hello there"; // cap: 40 frames (the floor), queue: 48 chunks
+const SHORT: &str = "hello there"; // cap: 32 frames (0.56 s + 2 s of headroom), queue: 40 chunks
+const SHORT_CAP: u32 = 32;
 
 fn cfg() -> QwenTtsConfig {
     QwenTtsConfig::new("test-model", "model-a")
@@ -138,8 +139,8 @@ fn the_engine_receives_the_cap_the_voice_the_language_and_the_configured_seed() 
     assert_eq!(calls[0].lang, Lang::Zh);
     assert_eq!(calls[0].seed, 42);
     assert_eq!(
-        calls[0].max_new_tokens, 40,
-        "four characters get the floor, never 2048"
+        calls[0].max_new_tokens, 38,
+        "four characters get 3 x their 1 s, never 2048"
     );
     assert_eq!(
         calls[0].speaker.len(),
@@ -354,7 +355,7 @@ fn a_queue_overflow_fails_the_request_visibly_after_the_audio_that_was_kept() {
     let items = drain(stream.as_mut());
     assert_eq!(
         chunk_values(&items).len(),
-        queue_capacity(40),
+        queue_capacity(SHORT_CAP),
         "everything queued is delivered"
     );
     assert!(
@@ -384,12 +385,12 @@ fn a_runaway_is_aborted_and_reported_with_the_audio_it_produced() {
         panic!("runaway expected: {:?}", items.last())
     };
     assert!(
-        (produced_secs - 3.12).abs() < 1e-3,
-        "39 frames of 80 ms: {produced_secs}"
+        (produced_secs - 2.48).abs() < 1e-3,
+        "31 frames of 80 ms: {produced_secs}"
     );
     assert_eq!(
         chunk_values(&items).len(),
-        39,
+        31,
         "audio up to the guard was streamed"
     );
     assert_eq!(probe.calls.lock().len(), 1, "no retry by default");

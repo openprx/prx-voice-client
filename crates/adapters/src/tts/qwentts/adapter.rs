@@ -647,7 +647,17 @@ fn run_job(inner: &Inner, job: Job) {
             Verdict::Failed(e) => break Err(e),
             Verdict::Runaway(secs) => {
                 inner.counters.runaways.fetch_add(1, Ordering::Relaxed);
-                tracing::warn!(clause = %job.clause, produced_secs = secs, attempt, "synthesis ran away");
+                // Lengths only, never the text.
+                tracing::warn!(
+                    clause = %job.clause,
+                    produced_secs = secs,
+                    attempt,
+                    cap_frames = job.cap_frames,
+                    units = cap::speakable_units(&job.text, job.lang),
+                    held = retries > 0,
+                    will_retry = attempt < retries,
+                    "synthesis ran away"
+                );
                 if attempt < retries {
                     attempt += 1;
                     inner.counters.retries.fetch_add(1, Ordering::Relaxed);

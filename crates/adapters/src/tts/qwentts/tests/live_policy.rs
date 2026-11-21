@@ -25,6 +25,31 @@ fn the_live_policy_holds_and_retries_a_short_clause_so_no_runaway_audio_is_ever_
 }
 
 #[test]
+fn the_live_policy_retries_every_clause_it_holds_not_only_the_shortest() {
+    // The call of 2026-11-21 ran away on clauses of four words (a cap just above the old floor of
+    // 40 frames) and the old rule retried only a clause at the floor: six clauses failed without
+    // a retry. Every length up to the hold limit is retried now.
+    for text in [
+        "good",
+        "hello there",
+        "we should go there",
+        "we should meet at the office tomorrow",
+        "we should meet at the office tomorrow morning",
+    ] {
+        let cap = crate::tts::qwentts::cap::cap_frames(text, Lang::En);
+        assert!(cap <= crate::tts::qwentts::cap::HOLD_CAP_FRAMES, "{text}: cap {cap}");
+        let (script, attempts) = runaway_once_then_fine();
+        let mut c = cfg();
+        c.runaway_retry = RunawayRetry::ShortOnce;
+        let (tts, _p) = ready(script, c);
+        let items = drain(open(&tts, Direction::Outgoing, text).as_mut());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2, "{text}: retried");
+        assert!(matches!(items.last(), Some(Ok(TtsItem::Done { .. }))), "{text}: {items:?}");
+        assert_eq!((tts.stats().runaways, tts.stats().retries), (1, 1), "{text}");
+    }
+}
+
+#[test]
 fn the_live_policy_streams_a_long_clause_without_a_retry() {
     let (script, attempts) = runaway_once_then_fine();
     let mut c = cfg();

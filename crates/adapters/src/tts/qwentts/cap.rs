@@ -6,7 +6,10 @@
 //! gets a cap computed from the text, and a call whose audio reaches that cap is a failure, never
 //! a success. The constants come from the measured speaking rates of the TTS benchmark
 //! (`bench/tts/REPORT.md` section 5): about 0.25 s per Chinese character and 0.28 s per English
-//! word, times a safety factor of 3 [E, to be checked against the owner's real speech].
+//! word, times a safety factor of 3, with headroom for a short text (a word or two is spoken with
+//! a lead-in and a tail that the per-word rate does not cover). The factor and the headroom were
+//! checked on 320 fragments of 1 to 10 words (`tests/qwentts_runaway_bench.rs`; the lengths are in
+//! `docs/call-translation-test-checklist.md`).
 
 use prxvc_media::Lang;
 
@@ -16,12 +19,20 @@ pub const SECS_PER_CJK_CHAR: f64 = 0.25;
 pub const SECS_PER_WORD: f64 = 0.28;
 /// Safety factor between the expected duration and the cap.
 pub const SAFETY_FACTOR: f64 = 3.0;
+/// Seconds added to the expected duration before the cap is taken: the cap is the larger of the
+/// expected duration times [`SAFETY_FACTOR`] and the expected duration plus this headroom. It is
+/// what keeps the cap of a text of one or two words above two seconds, where speech of that length ends (measured: the longest of 32 fragments of two words was 1.9 s, of three words 2.4 s).
+pub const HEADROOM_SECS: f64 = 2.0;
 /// Codec frames per second of audio (one frame is 80 ms).
 pub const FRAMES_PER_SEC: f64 = 12.5;
 /// Samples in one codec frame at the engine's 24 kHz output rate.
 pub const SAMPLES_PER_FRAME: usize = 1920;
-/// The cap of a very short text, in frames (3.2 s).
-pub const MIN_CAP_FRAMES: u32 = 40;
+/// The cap of a very short text, in frames (1.6 s).
+pub const MIN_CAP_FRAMES: u32 = 20;
+/// The longest cap, in frames (8 s), of a call that is held back and retried by
+/// [`RunawayRetry::ShortOnce`]: a clause of up to about nine words. A longer clause streams as it
+/// is produced and cannot be retried without playing its start twice.
+pub const HOLD_CAP_FRAMES: u32 = 100;
 /// The engine's own default limit, which is never used: every call sets its own cap.
 pub const ENGINE_DEFAULT_CAP_FRAMES: u32 = 2048;
 /// A call whose audio comes within this many frames of its cap counts as having reached it.
@@ -42,11 +53,10 @@ pub enum RunawayRetry {
     /// first chunk therefore arrives when the attempt ends. For uses that are not live (enrolment
     /// samples, long-form synthesis).
     Once,
-    /// As `Once`, but only for a text short enough to sit at the minimum cap ([`MIN_CAP_FRAMES`],
-    /// 3.2 s: a clause of about one second of speech, the kind on which the engine runs away, such
-    /// as "Mm."). Such a clause is held back until it ends inside its cap, so a runaway is never
-    /// heard, and retried once with another seed; the delay is at most a fraction of a second.
-    /// Longer clauses stream as `Off` does. The live call uses this.
+    /// As `Once`, but only for a text whose cap is at most [`HOLD_CAP_FRAMES`] (8 s: a clause of up
+    /// to about nine words, the kind a call translates). Such a clause is held back until it ends
+    /// inside its cap, so a runaway is never heard, and retried once with another seed; the delay
+    /// is a fraction of a second. Longer clauses stream as `Off` does. The live call uses this.
     ShortOnce,
 }
 
@@ -57,7 +67,7 @@ impl RunawayRetry {
             Self::Off => 0,
             Self::Once => 1,
             Self::ShortOnce => {
-                if cap_frames <= MIN_CAP_FRAMES {
+                if cap_frames <= HOLD_CAP_FRAMES {
                     1
                 } else {
                     0
@@ -110,10 +120,39 @@ pub fn expected_secs(text: &str, lang: Lang) -> f64 {
     secs
 }
 
-/// The generation cap of a call, in codec frames: the expected duration times [`SAFETY_FACTOR`],
-/// at least [`MIN_CAP_FRAMES`].
+/// How many speakable units `text` has, in the sense of [`expected_secs`]: a CJK character, a digit
+/// or a word each count one. For logs and traces, which carry lengths and never text.
+pub fn speakable_units(text: &str, lang: Lang) -> usize {
+    let mut units = 0;
+    let mut run = 0usize;
+    let flush = |run: &mut usize, units: &mut usize| {
+        if *run > 0 {
+            *units += match lang {
+                Lang::En => 1,
+                Lang::Zh => run.div_ceil(2),
+            };
+            *run = 0;
+        }
+    };
+    for c in text.chars() {
+        if is_cjk(c) || c.is_numeric() {
+            flush(&mut run, &mut units);
+            units += 1;
+        } else if c.is_alphabetic() || (run > 0 && matches!(c, '\'' | '\u{2019}' | '-')) {
+            run += 1;
+        } else {
+            flush(&mut run, &mut units);
+        }
+    }
+    flush(&mut run, &mut units);
+    units
+}
+
+/// The generation cap of a call, in codec frames: the larger of the expected duration times
+/// [`SAFETY_FACTOR`] and the expected duration plus [`HEADROOM_SECS`], at least [`MIN_CAP_FRAMES`].
 pub fn cap_frames(text: &str, lang: Lang) -> u32 {
-    let frames = expected_secs(text, lang) * SAFETY_FACTOR * FRAMES_PER_SEC;
+    let expected = expected_secs(text, lang);
+    let frames = (expected * SAFETY_FACTOR).max(expected + HEADROOM_SECS) * FRAMES_PER_SEC;
     // The small offset keeps products like 10 * 0.28 * 3 * 12.5 = 105.00000000000001 at 105.
     let frames = (frames - 1e-9).ceil().max(0.0);
     let frames = if frames >= f64::from(u32::MAX) {
@@ -140,10 +179,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn short_text_gets_the_floor() {
-        assert_eq!(cap_frames("hi", Lang::En), MIN_CAP_FRAMES);
-        assert_eq!(cap_frames("", Lang::En), MIN_CAP_FRAMES);
-        assert_eq!(cap_frames("\u{4f60}\u{597d}", Lang::Zh), MIN_CAP_FRAMES);
+    fn short_text_gets_headroom_and_the_floor_is_well_below_the_old_three_seconds() {
+        // No speakable text at all: the headroom alone, never below the floor.
+        assert_eq!(cap_frames("", Lang::En), 25);
+        assert!(cap_frames("...", Lang::En) >= MIN_CAP_FRAMES);
+        // One word: 0.28 s + 2 s of headroom = 2.28 s, 29 frames.
+        assert_eq!(cap_frames("hi", Lang::En), 29);
+        // Two words: 0.56 s + 2 s = 2.56 s, 32 frames; the cap used to be 40 frames (3.2 s).
+        assert_eq!(cap_frames("thank you", Lang::En), 32);
+        assert_eq!(cap_frames("\u{4f60}\u{597d}", Lang::Zh), 32);
+        assert!(f64::from(cap_frames("thank you", Lang::En)) / FRAMES_PER_SEC < 2.6);
+    }
+
+    #[test]
+    fn units_count_words_characters_and_digits() {
+        assert_eq!(speakable_units("Don't  stop, ok?!", Lang::En), 3);
+        assert_eq!(speakable_units("\u{6211}\u{4eec}\u{7528} Rust", Lang::Zh), 5);
+        assert_eq!(speakable_units("2026", Lang::En), 4);
+        assert_eq!(speakable_units("...", Lang::En), 0);
+    }
+
+    #[test]
+    fn the_cap_follows_the_text_between_the_headroom_and_the_factor() {
+        // Four words: 1.12 s; the factor (3.36 s) is larger than the headroom (3.12 s).
+        assert_eq!(cap_frames("we should go there", Lang::En), 42);
+        // Three words: 0.84 s; the headroom gives 2.84 s, the factor 2.52 s.
+        assert_eq!(cap_frames("see you later", Lang::En), 36);
     }
 
     #[test]
@@ -219,11 +280,14 @@ mod tests {
     }
 
     #[test]
-    fn the_short_text_policy_retries_only_texts_at_the_minimum_cap() {
+    fn the_short_text_policy_retries_every_text_that_is_held_back() {
         let short = cap_frames("Mm.", Lang::En);
-        let long = cap_frames("We should meet at the office tomorrow morning and then go home", Lang::En);
-        assert_eq!(short, MIN_CAP_FRAMES);
-        assert!(long > MIN_CAP_FRAMES);
+        let mid = cap_frames("We should meet at the office tomorrow", Lang::En);
+        let long = cap_frames("We should meet at the office tomorrow morning and then go home to eat", Lang::En);
+        assert!(short < 40);
+        assert!(mid > short && mid <= HOLD_CAP_FRAMES);
+        assert!(long > HOLD_CAP_FRAMES);
+        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(mid), 1);
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 1);
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(long), 0);
     }
