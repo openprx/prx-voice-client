@@ -13,7 +13,7 @@
 use crate::ConfigError;
 
 /// The schema version this build reads and writes.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 type Step = fn(&mut toml::Table) -> Result<(), ConfigError>;
 
@@ -44,6 +44,10 @@ const CHAIN: &[Link] = &[
             ("drop the selections of the retired assistant models", drop_retired_selections),
             ("drop the keys of the retired assistant stack", drop_retired_keys),
         ],
+    },
+    Link {
+        from: 3,
+        steps: &[("single-pass recognition replaces the old two-pass default", single_pass_default)],
     },
 ];
 
@@ -83,6 +87,24 @@ pub fn migrate(table: &mut toml::Table) -> Result<Option<u32>, ConfigError> {
         );
     }
     Ok(Some(from))
+}
+
+/// Version 4 makes single-pass streaming recognition the default (`pipeline.recognition_mode`
+/// was `"two_pass"`: a second decode of every clause with the 1.7B model). Every file saved
+/// by an earlier build holds the old default written out, so a saved `"two_pass"` is the old
+/// default and not a choice, and becomes `"streaming"`. A file written at version 4 or later keeps
+/// whatever it says, so choosing two-pass again is kept. Any other value is not touched.
+pub(crate) fn single_pass_default(table: &mut toml::Table) -> Result<(), ConfigError> {
+    let Some(pipeline) = table.get_mut("pipeline").and_then(|v| v.as_table_mut()) else {
+        return Ok(());
+    };
+    if pipeline.get("recognition_mode").and_then(|v| v.as_str()) == Some("two_pass") {
+        pipeline.insert(
+            "recognition_mode".to_owned(),
+            toml::Value::String("streaming".to_owned()),
+        );
+    }
+    Ok(())
 }
 
 /// `audio.echo_control` becomes `audio.echo_mode` (`true` is `"auto"`, `false`
@@ -439,7 +461,7 @@ mod tests {
             "schema_version = 2\n[network]\nlanguage = \"zh-CN\"\nuse_mock = false\n[audio]\nend_silence_ms = 650\n[call]\nstart_mode = \"on_call\"\n",
         );
         assert_eq!(migrate(&mut t).unwrap(), Some(2));
-        assert_eq!(t["schema_version"].as_integer(), Some(3));
+        assert_eq!(t["schema_version"].as_integer(), Some(4));
         assert_eq!(t["assistant"]["language"].as_str(), Some("zh-CN"));
         assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(650));
         assert!(t.get("network").is_none(), "the server section is gone");

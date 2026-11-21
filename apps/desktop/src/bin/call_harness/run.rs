@@ -287,6 +287,13 @@ pub(crate) fn run_utterance(
         .map(|c| text_of(c, prxvc_ports::TraceStage::ClauseCommitted))
         .collect::<Vec<_>>()
         .join(" ");
+    let recognised = clauses
+        .iter()
+        .map(|c| text_of(c, prxvc_ports::TraceStage::AsrFinalReady))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let recognition_error = (!reference.trim().is_empty())
+        .then(|| crate::report::error_rate(reference, &recognised, rig.params.source));
     let translation = clauses
         .iter()
         .map(|c| text_of(c, prxvc_ports::TraceStage::MtDone))
@@ -338,6 +345,8 @@ pub(crate) fn run_utterance(
         speech_end_ns: began_ns + (lead_s + bounds.1) * 1e9,
         clauses,
         source_text,
+        recognised,
+        recognition_error,
         translation,
         spoken,
         audio_seconds,

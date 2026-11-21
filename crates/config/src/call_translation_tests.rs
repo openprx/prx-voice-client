@@ -32,9 +32,9 @@ fn write_config(dir: &TempDir, text: &str) {
 }
 
 #[test]
-fn schema_version_is_three() {
-    assert_eq!(CURRENT_SCHEMA_VERSION, 3);
-    assert_eq!(AppConfig::default().schema_version, 3);
+fn schema_version_is_four() {
+    assert_eq!(CURRENT_SCHEMA_VERSION, 4);
+    assert_eq!(AppConfig::default().schema_version, 4);
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn new_call_keys_default_to_the_design_values() {
 #[test]
 fn pipeline_section_defaults_to_the_design_values() {
     let p = AppConfig::default().pipeline;
-    assert_eq!(p.recognition_mode, "two_pass");
+    assert_eq!(p.recognition_mode, "streaming");
     assert_eq!((p.clause_pause_ms, p.segment_end_pause_ms), (300, 600));
     assert_eq!((p.long_segment_after_s, p.long_segment_pause_ms), (8, 300));
     assert_eq!((p.max_clause_s, p.max_segment_s), (8, 25));
@@ -156,10 +156,10 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 1, to: 3 }]
+        vec![LoadNotice::Migrated { from: 1, to: 4 }]
     );
     let c = report.config;
-    assert_eq!(c.schema_version, 3);
+    assert_eq!(c.schema_version, 4);
 
     assert_eq!(c.audio.echo_mode, EchoMode::Always);
     assert_eq!(c.audio.input_device, "usb-mic");
@@ -189,7 +189,7 @@ fn values_a_user_set_under_the_current_version_survive_a_load_and_save() {
     let dir = TempDir::new("ct_v2_values");
     write_config(
         &dir,
-        "schema_version = 3\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
+        "schema_version = 4\n[call]\nstart_mode = \"on_call\"\noutgoing_on_failure = \"silence\"\n\
          original_gain_db = -6.5\n[pipeline]\nclause_pause_ms = 450\nrecognition_mode = \"streaming\"\n",
     );
     let m = mgr(&dir);
@@ -222,7 +222,7 @@ fn the_whole_chain_takes_an_unversioned_file_to_the_current_version() {
     let report = mgr(&dir).load_report().unwrap();
     assert_eq!(
         report.notices,
-        vec![LoadNotice::Migrated { from: 0, to: 3 }]
+        vec![LoadNotice::Migrated { from: 0, to: 4 }]
     );
     let c = report.config;
     assert_eq!(c.audio.echo_mode, EchoMode::Off, "step of version 0 -> 1");
@@ -265,3 +265,34 @@ fn round_trip_with_the_new_keys_filled_is_stable() {
         first
     );
 }
+
+#[test]
+fn the_old_two_pass_default_becomes_single_pass_and_a_later_choice_of_two_pass_is_kept() {
+    // Written by a build before version 4: the old default, spelled out by the save.
+    let dir = TempDir::new("ct_single_pass");
+    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n");
+    let report = mgr(&dir).load_report().unwrap();
+    assert_eq!(report.notices, vec![LoadNotice::Migrated { from: 3, to: 4 }]);
+    assert_eq!(report.config.pipeline.recognition_mode, "streaming");
+    assert_eq!(report.config.pipeline.clause_pause_ms, 450, "the rest is untouched");
+
+    // Other values and files without the key are left as they are.
+    let dir = TempDir::new("ct_single_pass_other");
+    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"segmented\"\n");
+    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "segmented");
+    let dir = TempDir::new("ct_single_pass_none");
+    write_config(&dir, "schema_version = 3\n[call]\nbarge_in = false\n");
+    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "streaming");
+
+    // A file written at version 4 holds a choice: two-pass stays, through a save and a load.
+    let dir = TempDir::new("ct_two_pass_chosen");
+    let m = mgr(&dir);
+    let mut c = AppConfig::default();
+    assert_eq!(c.pipeline.recognition_mode, "streaming");
+    c.pipeline.recognition_mode = "two_pass".into();
+    m.save(&c).unwrap();
+    let report = m.load_report().unwrap();
+    assert!(report.notices.is_empty());
+    assert_eq!(report.config.pipeline.recognition_mode, "two_pass");
+}
+

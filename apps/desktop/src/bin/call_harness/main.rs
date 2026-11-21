@@ -3,7 +3,7 @@
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
-//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--conversation N [--gap-ms 900]] [--no-catch-up] [--no-trim] [--file X.wav --reference "text"] [--bench-asr DIR]
+//!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--conversation N [--gap-ms 900]] [--no-catch-up] [--no-trim] [--recognition streaming|two_pass] [--file X.wav --reference "text"] [--bench-asr DIR]
 //! ```
 //!
 //! * `--set zh` takes the Mandarin utterances of `bench/asr/data` (read speech, then the
@@ -31,6 +31,9 @@
 //!   segment, the wait between a clause's synthesised audio and its playout, and how long the
 //!   translation ran on after the last speech. `--no-catch-up` switches the speed-up off
 //!   (`pipeline.catch_up`), `--no-trim` the silence trimming (`pipeline.trim_silence`).
+//! * `--recognition streaming|two_pass` sets `pipeline.recognition_mode` for the run (the default
+//!   is `streaming`, one model per direction; `two_pass` adds the refine decode of every clause).
+//!   The table then has the error rate of the text that was translated against the reference.
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
@@ -101,6 +104,7 @@ struct Options {
     gap_ms: u64,
     no_catch_up: bool,
     no_trim: bool,
+    recognition: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -131,6 +135,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         gap_ms: 900,
         no_catch_up: false,
         no_trim: false,
+        recognition: None,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -188,6 +193,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--gap-ms" => o.gap_ms = value(arg, &mut it)?.parse().map_err(|_| "bad --gap-ms")?,
             "--no-catch-up" => o.no_catch_up = true,
             "--no-trim" => o.no_trim = true,
+            "--recognition" => o.recognition = Some(value(arg, &mut it)?),
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -318,6 +324,9 @@ fn execute(o: &Options) -> Result<bool, String> {
     }
     if o.no_backlog_skip {
         config.pipeline.backlog_skipping = false;
+    }
+    if let Some(mode) = &o.recognition {
+        config.pipeline.recognition_mode.clone_from(mode);
     }
     if o.no_catch_up {
         config.pipeline.catch_up = false;
@@ -531,6 +540,11 @@ fn execute(o: &Options) -> Result<bool, String> {
                     r.audio_seconds.iter().sum::<f64>()
                 );
                 println!("    reference: {}", r.reference);
+                println!(
+                    "    recognised: {} (error rate {})",
+                    r.recognised,
+                    r.recognition_error.map_or("-".to_owned(), |e| format!("{e:.3}"))
+                );
                 for c in &r.clauses {
                     let text = |s| {
                         c.texts

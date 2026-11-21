@@ -28,6 +28,11 @@ pub(crate) struct UtteranceRun {
     pub speech_end_ns: f64,
     pub clauses: Vec<ClauseTimeline>,
     pub source_text: String,
+    /// The text that was translated (after the refine pass in two-pass mode).
+    pub recognised: String,
+    /// Error rate of `recognised` against the reference (characters for Chinese, words otherwise);
+    /// `None` without a reference.
+    pub recognition_error: Option<f64>,
     pub translation: String,
     pub spoken: String,
     /// Seconds of translated audio produced, per clause in order.
@@ -177,6 +182,14 @@ pub(crate) fn table(runs: &[UtteranceRun]) -> String {
                 values.len()
             ));
         }
+    }
+    let errors: Vec<f64> = runs.iter().filter_map(|r| r.recognition_error).collect();
+    if !errors.is_empty() {
+        let mean = errors.iter().sum::<f64>() / errors.len() as f64;
+        out.push_str(&format!(
+            "| recognition error rate of the translated text vs reference (CER zh, WER en), mean | {} | {mean:.3} | |\n",
+            errors.len()
+        ));
     }
     let n = runs.len();
     let with = |f: fn(&UtteranceRun) -> bool| runs.iter().filter(|r| f(r)).count();

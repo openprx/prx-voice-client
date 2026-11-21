@@ -352,7 +352,9 @@ impl Default for CallConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PipelineConfig {
-    /// `"two_pass"` (streaming draft, refine decode per clause) or `"streaming"`.
+    /// `"streaming"` (the default: the streaming recogniser's text goes to translation, one model
+    /// per direction) or `"two_pass"` (streaming draft, then a second decode of every clause with
+    /// the larger refine model: more accurate text, a second model in memory and later clauses).
     pub recognition_mode: String,
     /// Silence inside a segment that commits a clause, in milliseconds.
     pub clause_pause_ms: u32,
@@ -449,7 +451,7 @@ pub struct PipelineConfig {
 impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
-            recognition_mode: "two_pass".to_owned(),
+            recognition_mode: "streaming".to_owned(),
             clause_pause_ms: 300,
             segment_end_pause_ms: 600,
             long_segment_after_s: 8,
