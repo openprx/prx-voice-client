@@ -177,7 +177,7 @@ impl Default for UiSettings {
             call_local_output_mode: "translation".to_owned(),
             call_outgoing_capture: "hands_free".to_owned(),
             call_captions_show_source: true,
-            call_disclosure: true,
+            call_disclosure: false,
             call_captions_size: "medium".to_owned(),
             call_barge_in: true,
             call_translation_engine: "system".to_owned(),

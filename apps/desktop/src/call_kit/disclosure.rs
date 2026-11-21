@@ -42,8 +42,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_notice_is_on_by_default_and_in_the_language_of_the_other_party() {
-        let config = AppConfig::default();
+    fn the_notice_is_off_by_default_and_in_the_language_of_the_other_party() {
+        let mut config = AppConfig::default();
+        assert!(!disclosure_spec(&config, Lang::En).enabled);
+        config.call.disclosure = true;
         let en = disclosure_spec(&config, Lang::En);
         assert!(en.enabled);
         assert_eq!(

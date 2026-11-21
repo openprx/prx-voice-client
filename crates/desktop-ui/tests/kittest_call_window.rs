@@ -368,13 +368,13 @@ fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
     // The switch lives in the details and is the setting.
     let mut h = app_harness(state_with(CallPanel::default()), 420.0);
     h.run_steps(3);
-    assert!(h.state().settings.call_disclosure, "on by default");
-    assert!(!has_label(&h, "The other party is not being told"), "idle and on: quiet");
+    assert!(!h.state().settings.call_disclosure, "off by default");
+    assert!(!has_label(&h, "The other party is not being told"), "idle: quiet");
     h.get_by_role_and_label(Role::Button, "Details").click();
     h.run_steps(3);
     h.get_by_role_and_label(Role::Switch, "Tell the other party (spoken notice)").click();
     h.run_steps(3);
-    assert!(!h.state().settings.call_disclosure);
+    assert!(h.state().settings.call_disclosure);
     // The line is about a running call; idle, the switch is the only place that says it.
     assert!(!has_label(&h, "The other party is not being told"));
 }

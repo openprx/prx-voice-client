@@ -88,14 +88,14 @@ fn pipeline_section_defaults_to_the_design_values() {
 }
 
 #[test]
-fn the_spoken_notice_is_on_by_default_in_every_file_and_its_texts_are_empty() {
+fn the_spoken_notice_is_off_by_default_in_every_file_and_its_texts_are_empty() {
     let c = AppConfig::default();
-    assert!(c.call.disclosure);
+    assert!(!c.call.disclosure);
     assert!(c.call.disclosure_text_en.is_empty() && c.call.disclosure_text_zh.is_empty());
     let old: AppConfig = toml::from_str("[call]\nself_language = \"zh\"\n").unwrap();
-    assert!(old.call.disclosure, "a file written before the key existed gets it on");
-    let off: AppConfig = toml::from_str("[call]\ndisclosure = false\n").unwrap();
-    assert!(!off.call.disclosure);
+    assert!(!old.call.disclosure, "a file written before the key existed gets it off");
+    let on: AppConfig = toml::from_str("[call]\ndisclosure = true\n").unwrap();
+    assert!(on.call.disclosure);
 }
 
 #[test]

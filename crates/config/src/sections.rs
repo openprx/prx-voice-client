@@ -280,7 +280,7 @@ pub struct CallConfig {
     pub captions_show_source: bool,
     /// Tell the other party once, in their language, that the call is translated by a machine and
     /// that they hear a synthetic voice: a spoken notice played before the first translated
-    /// sentence of each call mode session (on by default).
+    /// sentence of each call mode session (off by default).
     pub disclosure: bool,
     /// The notice in English; empty uses the built-in text.
     pub disclosure_text_en: String,
@@ -334,7 +334,7 @@ impl Default for CallConfig {
             local_output_mode: "translation".to_owned(),
             outgoing_capture: "hands_free".to_owned(),
             captions_show_source: true,
-            disclosure: true,
+            disclosure: false,
             disclosure_text_en: String::new(),
             disclosure_text_zh: String::new(),
             captions_size: "medium".to_owned(),
