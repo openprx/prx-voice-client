@@ -21,7 +21,7 @@
 //!   into a text that ends like a statement; or a later line starts with a
 //!   note or comment label.
 
-use prxvc_media::Lang;
+use prxvc_media::{Lang, answer};
 
 use super::report::Suspect;
 
@@ -39,87 +39,6 @@ pub struct AssessInput<'a> {
     /// The server's `finish_reason`, when it sent one.
     pub finish_reason: Option<&'a str>,
 }
-
-/// `(output opener, words in the source that make the opener legitimate)`.
-type Rule = (&'static str, &'static [&'static str]);
-
-const REFUSAL_RULES: [Rule; 17] = [
-    ("i'm sorry", &["抱歉", "对不起", "不好意思", "sorry"]),
-    ("i am sorry", &["抱歉", "对不起", "不好意思", "sorry"]),
-    ("sorry,", &["抱歉", "对不起", "不好意思", "sorry"]),
-    ("i apologize", &["抱歉", "对不起", "不好意思", "apolog"]),
-    (
-        "i cannot",
-        &["无法", "不能", "不可以", "不会", "cannot", "can't"],
-    ),
-    (
-        "i can't",
-        &["无法", "不能", "不可以", "不会", "cannot", "can't"],
-    ),
-    (
-        "i can not",
-        &["无法", "不能", "不可以", "不会", "cannot", "can't"],
-    ),
-    ("i'm unable", &["无法", "不能", "不可以", "unable"]),
-    ("i am unable", &["无法", "不能", "不可以", "unable"]),
-    (
-        "as an ai",
-        &["ai", "人工智能", "语言模型", "language model"],
-    ),
-    (
-        "as a language model",
-        &["ai", "人工智能", "语言模型", "language model"],
-    ),
-    ("抱歉", &["sorry", "apolog", "excuse"]),
-    ("对不起", &["sorry", "apolog", "excuse"]),
-    ("很抱歉", &["sorry", "apolog", "excuse"]),
-    ("我无法", &["cannot", "can't", "unable", "can not"]),
-    ("我不能", &["cannot", "can't", "unable", "can not"]),
-    ("作为一个ai", &["ai", "language model", "artificial"]),
-];
-
-const ANSWER_RULES: [Rule; 15] = [
-    (
-        "sure",
-        &["好的", "当然", "没问题", "行", "可以", "确定", "sure"],
-    ),
-    ("certainly", &["当然", "肯定", "一定", "certainly"]),
-    ("of course", &["当然", "自然", "of course"]),
-    (
-        "absolutely",
-        &["当然", "完全", "绝对", "没错", "absolutely"],
-    ),
-    ("okay", &["好", "行", "可以", "嗯", "ok"]),
-    ("here is", &["这是", "这里", "给你", "以下", "here"]),
-    ("here's", &["这是", "这里", "给你", "以下", "here"]),
-    (
-        "好的",
-        &[
-            "ok", "sure", "alright", "fine", "good", "right", "yes", "yeah",
-        ],
-    ),
-    (
-        "当然",
-        &["sure", "of course", "certainly", "definitely", "absolutely"],
-    ),
-    ("没问题", &["no problem", "sure", "fine", "ok", "of course"]),
-    ("以下是", &["here", "below", "following"]),
-    ("翻译如下", &["translat"]),
-    ("我来翻译", &["translat"]),
-    ("这是翻译", &["translat"]),
-    ("好的，我", &["ok", "sure", "alright", "i will", "i'll"]),
-];
-
-/// Labels of a model's own commentary on a later line of the output.
-const NOTE_LABELS: [&str; 7] = [
-    "note:",
-    "(note",
-    "[note",
-    "注：",
-    "（注",
-    "注意：",
-    "explanation:",
-];
 
 /// Rough token count: one per Chinese character, one per digit and
 /// punctuation mark, one per three letters. Overestimates a little, which is
@@ -169,52 +88,16 @@ pub fn assess(input: &AssessInput<'_>) -> Vec<Suspect> {
     if prxvc_media::script::is_wrong_language_for(output, input.target_lang) {
         out.push(Suspect::WrongLanguage);
     }
-    let source_lower = input.source.to_lowercase();
-    if opens_with_unexplained(&lower, &source_lower, &REFUSAL_RULES) {
+    if answer::opens_like_refusal(input.source, output) {
         out.push(Suspect::Refusal);
     }
-    if opens_with_unexplained(&lower, &source_lower, &ANSWER_RULES)
-        || statement_for_question(input.source, output)
-        || has_commentary_line(&lower)
+    if answer::opens_like_answer(input.source, output)
+        || answer::answers_a_question(input.source, output)
+        || answer::has_commentary_line(output)
     {
         out.push(Suspect::AnswerLike);
     }
     out
-}
-
-fn opens_with_unexplained(output_lower: &str, source_lower: &str, rules: &[Rule]) -> bool {
-    let opening = output_lower.trim_start_matches(|c: char| !c.is_alphanumeric());
-    rules.iter().any(|(opener, excuses)| {
-        starts_with_word(opening, opener) && !excuses.iter().any(|w| source_lower.contains(w))
-    })
-}
-
-/// Whether `text` starts with `opener` and the next character does not
-/// continue a Latin word ("sure" matches "Sure, ..." but not "surely").
-fn starts_with_word(text: &str, opener: &str) -> bool {
-    match text.strip_prefix(opener) {
-        None => false,
-        Some(rest) => {
-            let ends_in_letter = opener
-                .chars()
-                .next_back()
-                .is_some_and(|c| c.is_ascii_alphabetic());
-            !(ends_in_letter && rest.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))
-        }
-    }
-}
-
-fn statement_for_question(source: &str, output: &str) -> bool {
-    let ends = |s: &str, marks: &[char]| s.trim_end().ends_with(marks);
-    ends(source, &['?', '？']) && ends(output, &['.', '。', '!', '！'])
-}
-
-fn has_commentary_line(output_lower: &str) -> bool {
-    output_lower
-        .lines()
-        .skip(1)
-        .map(str::trim_start)
-        .any(|line| NOTE_LABELS.iter().any(|label| line.starts_with(label)))
 }
 
 #[cfg(test)]

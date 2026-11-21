@@ -276,7 +276,7 @@ mod tests {
                 "model": "gemma-4-e4b",
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": "三点见。"}
+                    {"role": "user", "content": "<source>三点见。</source>"}
                 ],
                 "stream": true,
                 "stream_options": {"include_usage": true},

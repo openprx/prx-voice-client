@@ -222,3 +222,97 @@ fn a_finished_utterance_enters_the_ledger() {
     assert_eq!(snap.ledger.utterances, 1);
     assert!(rig.stop().clean);
 }
+
+#[test]
+fn a_reply_that_answers_instead_of_translating_is_asked_for_again_before_it_is_spoken() {
+    let clock = ManualClock::new();
+    let t = mt(&clock)
+        .with_script(SAID, MtScript::tokens(["Sure, ", "see you at three."]))
+        .with_strict_script(SAID, MtScript::tokens(["We meet ", "at three."]));
+    let rig = Rig::start_with(
+        &clock,
+        OUT,
+        utterances(1, 0),
+        asr_script(&[SAID]),
+        t,
+        tts(&clock),
+        |p| p.retry_wrong_language = true,
+    );
+    rig.wait_running();
+    rig.feed(55);
+    let snap = rig.wait_snapshot("retried and translated", |s| {
+        s.clauses
+            .first()
+            .is_some_and(|c| c.translation == "We meet at three.")
+    });
+    assert_eq!(snap.counters.mt_retries, 1);
+    assert!(snap.clauses[0].retried);
+    let strictness: Vec<bool> = rig
+        .fakes
+        .mt
+        .requests()
+        .iter()
+        .filter(|r| r.text == SAID)
+        .map(|r| r.strict_language)
+        .collect();
+    assert_eq!(strictness, [false, true]);
+    assert!(
+        rig.fakes.tts.requests().iter().all(|r| !r.text.contains("Sure")),
+        "nothing of the answer was spoken"
+    );
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn an_acknowledgement_the_speaker_really_said_is_not_asked_for_again() {
+    let clock = ManualClock::new();
+    let said = "好的，我们三点在机场见面";
+    let t = mt(&clock).with_script(said, MtScript::tokens(["Sure, ", "we meet at three."]));
+    let rig = Rig::start_with(
+        &clock,
+        OUT,
+        utterances(1, 0),
+        asr_script(&[said]),
+        t,
+        tts(&clock),
+        |p| p.retry_wrong_language = true,
+    );
+    rig.wait_running();
+    rig.feed(55);
+    let snap = rig.wait_snapshot("translated", |s| {
+        s.clauses
+            .first()
+            .is_some_and(|c| c.translation == "Sure, we meet at three.")
+    });
+    assert_eq!(snap.counters.mt_retries, 0);
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn a_second_reply_that_still_reads_like_an_answer_is_spoken_and_not_asked_for_a_third_time() {
+    let clock = ManualClock::new();
+    let t = mt(&clock).with_script(SAID, MtScript::tokens(["Sure, ", "see you at three."]));
+    let rig = Rig::start_with(
+        &clock,
+        OUT,
+        utterances(1, 0),
+        asr_script(&[SAID]),
+        t,
+        tts(&clock),
+        |p| p.retry_wrong_language = true,
+    );
+    rig.wait_running();
+    rig.feed(55);
+    let snap = rig.wait_snapshot("spoken after one retry", |s| {
+        s.clauses
+            .first()
+            .is_some_and(|c| c.translation == "Sure, see you at three.")
+    });
+    assert_eq!(snap.counters.mt_retries, 1);
+    assert_eq!(
+        rig.fakes.mt.requests().iter().filter(|r| r.text == SAID).count(),
+        2,
+        "one retry, no more"
+    );
+    assert!(rig.stop().clean);
+}

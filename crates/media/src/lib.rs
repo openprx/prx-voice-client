@@ -16,6 +16,7 @@
 //! * `text_units`: the comparison units of a transcript (one per CJK character, one per other word).
 //! * `envelope`: [`Envelope`] and the [`RevisionTracker`] that drops late results.
 
+pub mod answer;
 pub mod audio;
 pub mod clause_split;
 pub mod envelope;
