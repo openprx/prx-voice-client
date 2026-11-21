@@ -133,7 +133,7 @@ impl DirectionTotals {
             .collect();
         format!(
             "utterances={} clauses={} played={} failed={} filler_dropped={} unspeakable_dropped={} \
-             skips(stale={} backlog={} other={}) passed_through={} suspects={} flags({}) \
+             skips(stale={} backlog={} other={}) passed_through={} self_echo_dropped={} suspects={} flags({}) \
              mt_retries={} synth_runaways={} {} \
              start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={} \
              queue_wait_ms(median/p95)={} catch_up(clauses={} max_speed={}%){}",
@@ -147,6 +147,7 @@ impl DirectionTotals {
             c.backlog_skips,
             other_skips,
             c.in_target_passed,
+            c.self_echo_dropped,
             c.mt_suspect,
             if flags.is_empty() { "-".to_owned() } else { flags.join(",") },
             c.mt_retries,

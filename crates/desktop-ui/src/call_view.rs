@@ -172,6 +172,9 @@ pub enum SkipView {
     NotSpoken,
     /// Already in the listener's language: not translated, the original voice passes through.
     AlreadyInTarget,
+    /// Our own translated speech heard again by the microphone: dropped, never translated or
+    /// passed through.
+    OwnEcho,
 }
 
 /// A way a finished translation looks wrong (reported, the clause was spoken all the same).

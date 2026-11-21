@@ -316,3 +316,64 @@ fn a_second_reply_that_still_reads_like_an_answer_is_spoken_and_not_asked_for_a_
     );
     assert!(rig.stop().clean);
 }
+
+#[test]
+fn our_own_translation_heard_by_the_microphone_is_dropped_and_never_passed_through() {
+    // Outgoing: the speaker says something in Chinese, the other party hears the English; then the
+    // microphone hears that English again (speakers, the other phone in the room).
+    let clock = ManualClock::new();
+    let mt = FakeTranslator::new(clock.clone())
+        .with_script("Hello.", MtScript::tokens(["Hello."]))
+        .with_script("今天天气很好", MtScript::tokens(["The weather ", "is nice ", "today."]));
+    let rig = Rig::start_with(
+        &clock,
+        OUT,
+        utterances(2, 30),
+        asr_script(&["今天天气很好", "the weather is nice today"]),
+        mt,
+        tts(&clock),
+        |_| {},
+    );
+    rig.wait_running();
+    rig.feed(110);
+    let snap = rig.wait_snapshot("the echo is dropped", |s| s.counters.self_echo_dropped >= 1);
+    assert_eq!(snap.counters.self_echo_dropped, 1);
+    assert_eq!(snap.counters.in_target_passed, 0, "never passed through as the original");
+    assert_eq!(snap.counters.skipped, 0, "not a loss");
+    assert!(
+        snap.clauses.iter().any(|c| c.skipped == Some(SkipReason::SelfEcho)),
+        "visible in the captions"
+    );
+    assert!(
+        rig.fakes
+            .mt
+            .requests()
+            .iter()
+            .all(|r| r.text == "Hello." || r.text == "今天天气很好"),
+        "the echo is never translated"
+    );
+    assert!(passthroughs(&rig).iter().all(|on| !on), "{:?}", passthroughs(&rig));
+    assert!(rig.stop().clean);
+}
+
+#[test]
+fn english_the_speaker_really_said_is_still_passed_through() {
+    let clock = ManualClock::new();
+    let mt = FakeTranslator::new(clock.clone())
+        .with_script("Hello.", MtScript::tokens(["Hello."]))
+        .with_script("今天天气很好", MtScript::tokens(["The weather ", "is nice ", "today."]));
+    let rig = Rig::start_with(
+        &clock,
+        OUT,
+        utterances(2, 30),
+        asr_script(&["今天天气很好", "see you at the airport at three"]),
+        mt,
+        tts(&clock),
+        |_| {},
+    );
+    rig.wait_running();
+    rig.feed(110);
+    let snap = rig.wait_snapshot("passed through", |s| s.counters.in_target_passed >= 1);
+    assert_eq!(snap.counters.self_echo_dropped, 0);
+    assert!(rig.stop().clean);
+}

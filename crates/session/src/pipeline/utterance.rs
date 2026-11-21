@@ -93,6 +93,7 @@ pub(crate) const fn skip_name(reason: SkipReason) -> &'static str {
         SkipReason::Backlog => "backlog",
         SkipReason::QueueFull => "queue_full",
         SkipReason::SourceInTarget => "in_target",
+        SkipReason::SelfEcho => "self_echo",
     }
 }
 

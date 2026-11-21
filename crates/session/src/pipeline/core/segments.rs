@@ -153,8 +153,19 @@ impl Core {
 
     /// Start passing the original voice through while the open clause of `segment` is already in
     /// the language the listener hears, without waiting for the clause to commit.
+    /// Whether `text` is what this direction's lane said to the other party a moment ago.
+    pub(super) fn is_own_echo(&mut self, text: &str) -> bool {
+        if self.p.direction != prxvc_media::Direction::Outgoing {
+            return false;
+        }
+        let now = self.w.tracer.now();
+        let live: Vec<&str> = self.clauses.values().map(|i| i.target_text.as_str()).collect();
+        self.own.is_echo(now, text, &live)
+    }
+
     pub(super) fn hypothesis_in_target(&mut self, segment: prxvc_media::SegmentId, text: &str) {
         if self.p.skip_source_in_target
+            && !self.is_own_echo(text)
             && self.passthrough.is_none()
             && matches!(self.state, DirectionState::Running)
             && prxvc_media::script::is_written_in(text, self.p.target)
@@ -210,6 +221,11 @@ impl Core {
         if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
             c.source_text.clone_from(&text);
         }
+        if self.is_own_echo(&text) {
+            // Our own translated speech, heard again: never translated, never passed through.
+            self.cancel_with(CancelAction::CancelClause(clause), SkipReason::SelfEcho);
+            return;
+        }
         if self.p.skip_source_in_target
             && prxvc_media::script::is_written_in(&text, self.p.target)
             && self.can_pass_through(clause.segment())
@@ -263,7 +279,7 @@ impl Core {
                     .skipped
                     .entry(skip_name(reason))
                     .or_default() += 1;
-                if reason != SkipReason::SourceInTarget {
+                if !matches!(reason, SkipReason::SourceInTarget | SkipReason::SelfEcho) {
                     Stats::add(&self.w.stats.skipped, 1);
                     self.record_skip(clause, reason);
                 }
@@ -272,6 +288,7 @@ impl Core {
                     SkipReason::Stale => Stats::add(&self.w.stats.stale_skips, 1),
                     SkipReason::QueueFull => {}
                     SkipReason::SourceInTarget => Stats::add(&self.w.stats.in_target_passed, 1),
+                    SkipReason::SelfEcho => Stats::add(&self.w.stats.self_echo_dropped, 1),
                 }
                 self.w.tracer.mark(clause, prxvc_ports::TraceStage::Skipped);
                 self.emit(PipelineEvent::ClauseSkipped { clause, reason });
@@ -304,6 +321,12 @@ impl Core {
     fn drop_clause(&mut self, clause: ClauseId) {
         if let Some(info) = self.clauses.remove(&clause) {
             info.token.cancel();
+            if self.p.direction == prxvc_media::Direction::Outgoing {
+                // What was said to the other party is remembered for a while: the microphone may
+                // hear it again.
+                let now = self.w.tracer.now();
+                self.own.remember(now, &info.target_text);
+            }
         }
         self.purge_cancelled();
     }

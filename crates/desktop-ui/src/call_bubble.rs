@@ -35,6 +35,8 @@ pub(crate) struct BubbleText {
     /// "Not translated: already in <language>" for the language each side's listener hears
     /// (outgoing, incoming).
     pub in_target: [String; 2],
+    /// "Own translation heard by the microphone".
+    pub own_echo: String,
 }
 
 impl BubbleText {
@@ -53,6 +55,7 @@ impl BubbleText {
             copied: t("callwin.copied"),
             flags: CaptionFlag::ALL.map(|f| t(f.key())),
             in_target: targets.map(|n| prxvc_i18n::t_with("callwin.caption.in_target", &[n])),
+            own_echo: t("callwin.caption.own_echo"),
         }
     }
 }
@@ -227,6 +230,9 @@ fn notes(u: &Utterance, o: &BubbleOpts<'_>, p: &Palette, tk: &Tokens, width: f32
     if u.lines.iter().any(|l| l.skip == SkipView::AlreadyInTarget) {
         let side = usize::from(u.side == Side::Peer);
         parts.push((t.in_target[side].clone(), p.dim));
+    }
+    if u.lines.iter().any(|l| l.skip == SkipView::OwnEcho) {
+        parts.push((t.own_echo.clone(), p.dim));
     }
     if u.lines.iter().any(|l| l.retried) {
         parts.push((t.retried.clone(), p.dim));

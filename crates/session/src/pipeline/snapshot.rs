@@ -28,6 +28,9 @@ pub enum SkipReason {
     /// The recognised text is already in the language the listener hears: nothing to translate or
     /// speak, the original voice is passed through (`pipeline.skip_source_in_target`). Not a loss.
     SourceInTarget,
+    /// The recognised text is our own translated speech heard again by the microphone (speakers,
+    /// the other phone in the room): not translated, not passed through. Not a loss.
+    SelfEcho,
 }
 
 /// The recogniser's reading of the clause being spoken.
@@ -140,6 +143,9 @@ pub struct Counters {
     /// Clauses already in the language the listener hears: not translated, the original passed
     /// through (`pipeline.skip_source_in_target`).
     pub in_target_passed: u64,
+    /// Recognised units that were our own translated speech coming back through the microphone:
+    /// dropped, never translated and never passed through (outgoing direction only).
+    pub self_echo_dropped: u64,
     /// Translations that came back in the wrong language and were requested again.
     pub mt_retries: u64,
     /// Finished translations flagged as the wrong language (reported, not acted on).
@@ -231,6 +237,7 @@ pub(crate) struct Stats {
     pub(crate) filler_dropped: AtomicU64,
     pub(crate) unspeakable_dropped: AtomicU64,
     pub(crate) in_target_passed: AtomicU64,
+    pub(crate) self_echo_dropped: AtomicU64,
     pub(crate) mt_retries: AtomicU64,
     pub(crate) flag_wrong_language: AtomicU64,
     pub(crate) flag_too_long: AtomicU64,
@@ -271,6 +278,7 @@ impl Stats {
             filler_dropped: get(&self.filler_dropped),
             unspeakable_dropped: get(&self.unspeakable_dropped),
             in_target_passed: get(&self.in_target_passed),
+            self_echo_dropped: get(&self.self_echo_dropped),
             mt_retries: get(&self.mt_retries),
             flag_wrong_language: get(&self.flag_wrong_language),
             flag_too_long: get(&self.flag_too_long),

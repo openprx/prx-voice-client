@@ -74,6 +74,7 @@ mod queue;
 mod recognition;
 mod refine;
 mod segmenter;
+mod self_echo;
 mod snapshot;
 mod synth;
 mod trace;

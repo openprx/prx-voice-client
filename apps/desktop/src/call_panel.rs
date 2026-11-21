@@ -137,6 +137,7 @@ fn skip_view(skipped: Option<SkipReason>) -> SkipView {
     match skipped {
         None => SkipView::None,
         Some(SkipReason::SourceInTarget) => SkipView::AlreadyInTarget,
+        Some(SkipReason::SelfEcho) => SkipView::OwnEcho,
         Some(_) => SkipView::NotSpoken,
     }
 }

@@ -149,6 +149,8 @@ pub(crate) struct Core {
     /// What was last sent to the playout (the pace, with the speed only for a complete clause).
     announced: crate::pace::PlayPace,
     refine_failures: u32,
+    /// What the outgoing lane said recently (to recognise it when the microphone hears it).
+    own: super::self_echo::OwnSpeech,
     last_error: Option<ErrorSnapshot>,
     recovery: Option<Recovery>,
     backlog_ms: u64,
@@ -184,6 +186,7 @@ impl Core {
             pace: crate::pace::PlayPace::default(),
             announced: crate::pace::PlayPace::default(),
             refine_failures: 0,
+            own: super::self_echo::OwnSpeech::default(),
             last_error: None,
             recovery: None,
             backlog_ms: 0,
