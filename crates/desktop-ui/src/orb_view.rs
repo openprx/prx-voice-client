@@ -77,7 +77,7 @@ pub(crate) fn orb_animation(state: &DesktopUiState, time: f64) -> (Color32, f32)
             let s = 1.0 + 0.06 * (time * 2.5).sin() as f32;
             (theme.orb_listening, s)
         }
-        "Recognizing" | "Thinking" => {
+        "Recognizing" | "Thinking" | "Starting" => {
             let s = 1.0 + 0.03 * (time * 1.5).sin() as f32 + 0.02 * (time * 2.3).cos() as f32;
             (theme.orb_thinking, s)
         }

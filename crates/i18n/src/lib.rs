@@ -272,6 +272,7 @@ fn build_en_translations() -> HashMap<String, String> {
         ("tray.quit", "Quit"),
         // Orb UI
         ("orb.ready", "Ready to listen"),
+        ("orb.starting", "Starting..."),
         ("orb.listening", "Listening..."),
         ("orb.hearing", "Hearing you"),
         ("orb.processing", "Processing..."),
@@ -283,6 +284,7 @@ fn build_en_translations() -> HashMap<String, String> {
             "session.hint.idle",
             "Click the orb or press Ctrl+Shift+Space",
         ),
+        ("session.hint.starting", "Loading the model server, recognition and voice"),
         ("session.hint.listening", "Speak naturally"),
         ("session.hint.speaking", "Click to interrupt"),
         ("session.hint.mic_paused", "Mic paused while I speak, click to interrupt"),
@@ -513,6 +515,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ("tray.quit", "\u{9000}\u{51fa}"),
         // Orb UI
         ("orb.ready", "\u{51c6}\u{5907}\u{8046}\u{542c}"),
+        ("orb.starting", "\u{6b63}\u{5728}\u{542f}\u{52a8}..."),
         ("orb.listening", "\u{8046}\u{542c}\u{4e2d}..."),
         ("orb.hearing", "\u{6b63}\u{5728}\u{542c}\u{4f60}\u{8bf4}"),
         ("orb.processing", "\u{5904}\u{7406}\u{4e2d}..."),
@@ -524,6 +527,7 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
             "session.hint.idle",
             "\u{70b9}\u{51fb}\u{58f0}\u{7eb9}\u{7403}\u{6216}\u{6309} Ctrl+Shift+Space",
         ),
+        ("session.hint.starting", "\u{6b63}\u{5728}\u{52a0}\u{8f7d}\u{6a21}\u{578b}\u{670d}\u{52a1}\u{3001}\u{8bc6}\u{522b}\u{548c}\u{58f0}\u{97f3}"),
         ("session.hint.listening", "\u{81ea}\u{7136}\u{5730}\u{8bf4}\u{8bdd}"),
         ("session.hint.speaking", "\u{70b9}\u{51fb}\u{6253}\u{65ad}"),
         (

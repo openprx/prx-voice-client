@@ -15,6 +15,9 @@ use super::issues;
 use super::launch::{Launched, Launcher};
 use crate::call_compose::CallControl;
 
+/// The state shown while the session's engines load (not a phase of the loop).
+pub(crate) const STARTING: &str = "Starting";
+
 /// The commands of the orb the assistant handles.
 pub(crate) mod command {
     pub(crate) const CREATE: &str = "CreateSession";
@@ -93,9 +96,16 @@ impl AssistantHost {
             return;
         }
         let config = (self.load_config)();
-        match self.launcher.launch(&config) {
+        // Loading the engines takes seconds: the orb and the pill say so from now on, and a click
+        // while it goes on is ignored (never queued): the interface ignores it as well, and what
+        // was queued before it could notice is dropped below.
+        self.shared.update_session_state(STARTING, true);
+        let launched = self.launcher.launch(&config);
+        self.drop_clicks_during_start();
+        match launched {
             Ok(launched) => self.begin(launched, &config),
             Err(found) => {
+                self.shared.update_session_state(Phase::Idle.ui_name(), false);
                 for issue in &found {
                     tracing::warn!(key = %issue.key, detail = %issue.detail, "the assistant cannot start");
                 }
@@ -104,6 +114,22 @@ impl AssistantHost {
                 }
                 self.call.release_assistant();
             }
+        }
+    }
+
+    /// Forget the start, stop and create commands that arrived while the session was starting: a
+    /// second click is neither a stop nor a second start. Other commands are kept.
+    fn drop_clicks_during_start(&self) {
+        let mut dropped = 0usize;
+        for cmd in self.shared.take_commands() {
+            if matches!(cmd.as_str(), command::CREATE | command::START | command::STOP) {
+                dropped += 1;
+            } else {
+                self.shared.push_command(&cmd);
+            }
+        }
+        if dropped > 0 {
+            tracing::info!(dropped, "clicks while the assistant was starting were ignored");
         }
     }
 

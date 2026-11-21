@@ -83,7 +83,9 @@ impl eframe::App for PrxVoiceApp {
         // Check hotkey
         if let Some(ref mut hk) = self.hotkey_manager {
             if hk.was_triggered() {
-                if !self.ui_state.session_active {
+                if self.ui_state.session_state == "Starting" {
+                    // Loading: ignored, never queued behind the start.
+                } else if !self.ui_state.session_active {
                     self.shared.push_command("CreateSession");
                     self.shared.push_command("StartSession");
                 } else {

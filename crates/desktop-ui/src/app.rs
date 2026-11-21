@@ -178,7 +178,9 @@ fn handle_orb_interactions(
             session_state = %state.session_state,
             "orb clicked"
         );
-        if !state.session_active {
+        if state.session_state == "Starting" {
+            // The engines are loading: this click is ignored, not queued behind the start.
+        } else if !state.session_active {
             state.pending_commands.push("CreateSession".into());
             state.pending_commands.push("StartSession".into());
         } else if state.session_state == "AssistantSpeaking" {

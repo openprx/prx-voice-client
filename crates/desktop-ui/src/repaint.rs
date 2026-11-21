@@ -74,7 +74,10 @@ pub struct RepaintInputs<'a> {
 /// its animation is faster and is drawn every frame. `Listening` only
 /// breathes, like idle, and uses the idle rate.
 pub fn is_active_state(session_state: &str) -> bool {
-    matches!(session_state, "UserSpeaking" | "Recognizing" | "Thinking" | "AssistantSpeaking")
+    matches!(
+        session_state,
+        "Starting" | "UserSpeaking" | "Recognizing" | "Thinking" | "AssistantSpeaking"
+    )
 }
 
 /// The repaint policy.

@@ -479,3 +479,51 @@ fn a_new_session_after_one_ended_starts_fresh() {
     assert_eq!(r.history().len(), 2, "each session is a record of its own");
     assert_eq!(r.launched.load(Ordering::SeqCst), 2);
 }
+
+/// A launcher that takes "seconds", during which the user clicks the orb again.
+struct SlowLauncher {
+    shared: SharedAppState,
+    seen: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl Launcher for SlowLauncher {
+    fn launch(&mut self, _config: &AppConfig) -> Result<Launched, Vec<AssistantIssue>> {
+        self.seen
+            .lock()
+            .expect("seen")
+            .push(self.shared.snapshot_for_ui().session_state);
+        // Three more clicks and an unrelated command while the engines load.
+        for cmd in [command::CREATE, command::START, command::STOP, "ExportDiagnostics"] {
+            self.shared.push_command(cmd);
+        }
+        Err(Vec::new())
+    }
+}
+
+#[test]
+fn clicks_while_the_assistant_is_starting_are_ignored_and_the_orb_says_it_is_starting() {
+    let shared = SharedAppState::new();
+    let call = CallControl::without_coordinator(&shared);
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut host = AssistantHost::new(
+        shared.clone(),
+        call,
+        None,
+        Box::new(SlowLauncher {
+            shared: shared.clone(),
+            seen: Arc::clone(&seen),
+        }),
+        Box::new(AppConfig::default),
+    );
+    host.command(command::START);
+    assert_eq!(seen.lock().expect("seen").as_slice(), ["Starting"], "visible from the first click");
+    assert_eq!(
+        shared.take_commands(),
+        vec!["ExportDiagnostics".to_owned()],
+        "the extra start and stop were dropped, the other command kept"
+    );
+    // The start failed: the orb is idle again and nothing else is queued.
+    let snap = shared.snapshot_for_ui();
+    assert_eq!((snap.session_state.as_str(), snap.session_active), ("Idle", false));
+    assert!(!host.is_active());
+}
