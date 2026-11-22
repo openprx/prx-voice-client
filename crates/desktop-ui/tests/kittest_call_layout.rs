@@ -21,6 +21,8 @@ enum Scenario {
     IdleEmpty,
     IdleAfterCall,
     Translating,
+    /// A running call whose outgoing lane has drained ("translation sent").
+    Drained,
     Degraded,
     Blocked,
     /// A finished call, then the details opened with the disclosure button.
@@ -33,10 +35,11 @@ enum Scenario {
     Finishing,
 }
 
-const SCENARIOS: [Scenario; 9] = [
+const SCENARIOS: [Scenario; 10] = [
     Scenario::IdleEmpty,
     Scenario::IdleAfterCall,
     Scenario::Translating,
+    Scenario::Drained,
     Scenario::Degraded,
     Scenario::Blocked,
     Scenario::DetailsOpen,
@@ -80,6 +83,7 @@ fn state_for_panel(scenario: Scenario, caption_size: &str) -> DesktopUiState {
             finished_call()
         }
         Scenario::Translating | Scenario::TranslatingDetailsOpen => call_fixtures::live_panel(),
+        Scenario::Drained => call_fixtures::drained_panel(),
         Scenario::Finishing => CallPanel { finishing_s: Some(4), ..call_fixtures::live_panel() },
         Scenario::Degraded => call_fixtures::degraded_panel(),
         Scenario::Blocked => call_fixtures::blocked_panel(),

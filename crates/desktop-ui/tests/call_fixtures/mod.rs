@@ -54,10 +54,28 @@ pub fn lane(hears: Heard, languages: (&str, &str)) -> LaneView {
 pub fn live_panel() -> CallPanel {
     let mut me = lane(Heard::Translation, ("zh", "en"));
     me.clauses = vec![
-        clause(1, 0, "你好，今天的会议改到下午三点", "Hello, today's meeting has moved to three in the afternoon.", ClauseStatus::Played),
-        clause(2, 0, "我们先看一下上周的数据", "Let's start with last week's numbers.", ClauseStatus::Playing),
+        clause(
+            1,
+            0,
+            "你好，今天的会议改到下午三点",
+            "Hello, today's meeting has moved to three in the afternoon.",
+            ClauseStatus::Played,
+        ),
+        clause(
+            2,
+            0,
+            "我们先看一下上周的数据",
+            "Let's start with last week's numbers.",
+            ClauseStatus::Playing,
+        ),
         {
-            let mut c = clause(2, 1, "然后讨论新的方案和预算", "", ClauseStatus::Translating);
+            let mut c = clause(
+                2,
+                1,
+                "然后讨论新的方案和预算",
+                "",
+                ClauseStatus::Translating,
+            );
             c.retried = true;
             c
         },
@@ -67,24 +85,50 @@ pub fn live_panel() -> CallPanel {
         text: "对了，别忘了周五的评审会议".into(),
         stable_len: "对了，别忘了周五".len(),
     });
+    // The user is mid-sentence and a clause is playing: the translation is still going out.
+    me.in_flight = true;
     let mut peer = lane(Heard::Translation, ("en", "zh"));
     peer.clauses = vec![
         {
-            let mut c = clause(1, 0, "Sounds good, three works for me.", "好的，三点我可以。", ClauseStatus::Played);
+            let mut c = clause(
+                1,
+                0,
+                "Sounds good, three works for me.",
+                "好的，三点我可以。",
+                ClauseStatus::Played,
+            );
             c.flags = vec![CaptionFlag::AnswerLike];
             c
         },
         {
-            let mut c = clause(2, 0, "今天天气很好我们出去走走吧", "", ClauseStatus::Skipped);
+            let mut c = clause(
+                2,
+                0,
+                "今天天气很好我们出去走走吧",
+                "",
+                ClauseStatus::Skipped,
+            );
             c.skip = SkipView::AlreadyInTarget;
             c
         },
         {
-            let mut c = clause(3, 0, "I will send the updated deck after the call, together with the notes from last week.", "", ClauseStatus::Skipped);
+            let mut c = clause(
+                3,
+                0,
+                "I will send the updated deck after the call, together with the notes from last week.",
+                "",
+                ClauseStatus::Skipped,
+            );
             c.skip = SkipView::NotSpoken;
             c
         },
-        clause(3, 1, "Also, please check the Zoom link", "另外，请检查 Zoom 链接。", ClauseStatus::Synthesizing),
+        clause(
+            3,
+            1,
+            "Also, please check the Zoom link",
+            "另外，请检查 Zoom 链接。",
+            ClauseStatus::Synthesizing,
+        ),
     ];
     peer.partial = Some(PartialView {
         utterance: 4,
@@ -121,11 +165,30 @@ pub fn degraded_panel() -> CallPanel {
     CallPanel {
         phase: CallPhase::Degraded,
         issues: vec![
-            issue("call.issue.speaker_output", IssueSeverity::Degraded, IssueAction::OpenAudioSettings),
-            issue("call.issue.provider.server_unreachable", IssueSeverity::Blocking, IssueAction::OpenSpeechSettings),
+            issue(
+                "call.issue.speaker_output",
+                IssueSeverity::Degraded,
+                IssueAction::OpenAudioSettings,
+            ),
+            issue(
+                "call.issue.provider.server_unreachable",
+                IssueSeverity::Blocking,
+                IssueAction::OpenSpeechSettings,
+            ),
         ],
         ..live_panel()
     }
+}
+
+/// The same call after the user's last clause has played: nothing pending, the lane drained.
+pub fn drained_panel() -> CallPanel {
+    let mut panel = live_panel();
+    panel.outgoing.in_flight = false;
+    panel.outgoing.partial = None;
+    for c in &mut panel.outgoing.clauses {
+        c.status = ClauseStatus::Played;
+    }
+    panel
 }
 
 pub fn paused_panel() -> CallPanel {
@@ -176,10 +239,22 @@ pub fn undisclosed_panel() -> CallPanel {
 pub fn blocked_panel() -> CallPanel {
     CallPanel {
         issues: vec![
-            issue("call.issue.assistant_active", IssueSeverity::Blocking, IssueAction::EndAssistantAndStart),
-            issue("call.issue.mic_consent_denied", IssueSeverity::Blocking, IssueAction::OpenPermissions),
+            issue(
+                "call.issue.assistant_active",
+                IssueSeverity::Blocking,
+                IssueAction::EndAssistantAndStart,
+            ),
+            issue(
+                "call.issue.mic_consent_denied",
+                IssueSeverity::Blocking,
+                IssueAction::OpenPermissions,
+            ),
         ],
-        last_error: Some(issue("call.issue.driver_missing", IssueSeverity::Blocking, IssueAction::OpenPermissions)),
+        last_error: Some(issue(
+            "call.issue.driver_missing",
+            IssueSeverity::Blocking,
+            IssueAction::OpenPermissions,
+        )),
         ..CallPanel::default()
     }
 }
