@@ -304,7 +304,7 @@ impl Core {
             },
             &self.p.interrupt,
             at,
-            &self.book.clause_views(),
+            &self.aged_clause_views(),
             &complete,
         );
         for action in actions {

@@ -42,8 +42,7 @@ impl Core {
             return;
         }
         let list: Vec<BacklogClause> = self
-            .book
-            .clause_views()
+            .aged_clause_views()
             .into_iter()
             .map(|v| BacklogClause {
                 clause: v.clause,

@@ -10,12 +10,34 @@ use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
 use crate::direction_state::DirectionState;
 use crate::pipeline::utterance::{Ms, Utterance, notes, skip_name};
 use crate::segment_book::{SegmentAction, SegmentEvent};
-use prxvc_media::ClauseId;
-use prxvc_media::Envelope;
+use crate::segment::ClauseView;
+use prxvc_media::{ClauseId, Envelope, MonoTime, SegmentId};
 
 use crate::pipeline::messages::RefineJob;
 
 impl Core {
+    /// The clauses the book knows, aged for the barge-in and backlog rules. A unit that does not
+    /// end its source sentence was cut early, so its own speech ended earlier than the sentence it
+    /// belongs to: it is aged from the end of the newest clause of its segment, and the middle of
+    /// a long sentence is not dropped as stale while its end is still young
+    /// (incremental-retranslation 4.7.7). The rules themselves are unchanged.
+    pub(super) fn aged_clause_views(&self) -> Vec<ClauseView> {
+        let mut views = self.book.clause_views();
+        let mut newest: std::collections::HashMap<SegmentId, MonoTime> =
+            std::collections::HashMap::new();
+        for v in &views {
+            let end = newest.entry(v.clause.segment()).or_insert(v.source_end);
+            *end = (*end).max(v.source_end);
+        }
+        for v in &mut views {
+            let continues = self.clauses.get(&v.clause).is_some_and(|i| i.continues);
+            if let Some(end) = newest.get(&v.clause.segment()).filter(|_| continues) {
+                v.source_end = *end;
+            }
+        }
+        views
+    }
+
     /// Feed `event` to the segment book and execute its actions. Returns
     /// `false` when the book refused the event or dropped it as late.
     pub(super) fn apply_segment(&mut self, event: SegmentEvent) -> bool {
