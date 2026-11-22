@@ -68,6 +68,9 @@ const MAX_PENDING_REFERENCES: usize = 4;
 const MIN_TARGET_WORDS: usize = 2;
 /// Fewest Chinese characters in the part a cut speaks.
 const MIN_TARGET_CHARS: usize = 3;
+/// Units a Chinese candidate is shortened by at most when its last units add nothing to its
+/// translation (the cut then falls inside a word).
+const MAX_SHORTEN_UNITS: usize = 2;
 
 /// Join the text of two units of one sentence: no space between two CJK characters, else one space.
 /// The recognition and the translation stage both use this, so their cache keys match.
@@ -175,6 +178,9 @@ pub(crate) struct DraftPlan {
     pub candidate: Option<String>,
     /// The whole uncommitted hypothesis from the start of the sentence.
     pub reference: String,
+    /// The new candidate's text with its last one and two units left off, from the start of the
+    /// sentence: Chinese candidates only (a cut inside a word is found by comparing translations).
+    pub shorter: Vec<String>,
 }
 
 /// A successful draft translation, as the book needs it.
@@ -204,17 +210,81 @@ pub(crate) struct RetranslateCut {
     pub target_full: String,
 }
 
+/// A candidate with its last units left off (see [`MAX_SHORTEN_UNITS`]), and what became of its draft.
+struct Shorter {
+    cut: usize,
+    source_full: String,
+    /// Whether it could be a candidate itself (minimum length, not filler, no protected token split).
+    valid: bool,
+    /// `None` until its draft came back.
+    result: Option<Option<(String, bool)>>,
+}
+
+/// What the book makes of a candidate once the drafts of its shorter forms are known.
+enum Resolved<'a> {
+    /// A draft it depends on has not come back.
+    Wait,
+    /// It ends inside a word and cannot be shortened, or a draft it needs failed.
+    Drop,
+    /// The cut to use: the candidate's own, or a shorter one.
+    Use {
+        cut: usize,
+        source_full: &'a str,
+        target: &'a (String, bool),
+    },
+}
+
 struct Candidate {
     cut: usize,
     /// The round text up to the cut, to see when the recogniser rewrote it.
     prefix: String,
     source_full: String,
     target: Option<(String, bool)>,
+    /// The forms with one and two units fewer, when its last unit is Chinese.
+    shorter: Vec<Shorter>,
     /// Revision of the hypothesis that created it.
     created: u32,
     agreement: u32,
     /// The last revision whose reference was counted.
     counted: Option<u32>,
+}
+
+impl Candidate {
+    /// Whether the last unit of the candidate adds nothing to its translation: the translation of
+    /// the text without it is the same (case, punctuation and spacing ignored). Then the cut falls
+    /// inside a word, and the candidate is cut one unit earlier, at most twice.
+    fn resolve(&self) -> Resolved<'_> {
+        let Some(own) = &self.target else {
+            return Resolved::Wait;
+        };
+        let (mut cut, mut source_full, mut target) = (self.cut, self.source_full.as_str(), own);
+        for shorter in &self.shorter {
+            let Some(result) = &shorter.result else {
+                return Resolved::Wait;
+            };
+            let Some(next) = result else {
+                return Resolved::Drop;
+            };
+            if !same_units(&target.0, &next.0) {
+                break;
+            }
+            if !shorter.valid {
+                return Resolved::Drop;
+            }
+            (cut, source_full, target) = (shorter.cut, shorter.source_full.as_str(), next);
+        }
+        Resolved::Use {
+            cut,
+            source_full,
+            target,
+        }
+    }
+}
+
+/// Whether two texts have the same units (case, punctuation and spacing ignored).
+fn same_units(a: &str, b: &str) -> bool {
+    let (a, b) = (units(a), units(b));
+    a.len() == b.len() && a.iter().zip(&b).all(|(x, y)| x.key == y.key)
 }
 
 struct PendingReference {
@@ -273,7 +343,7 @@ impl DraftBook {
         self.candidates
             .retain(|c| i.round_text.starts_with(&c.prefix));
         self.push_recent(p, &all);
-        let candidate = self.add_candidate(p, i, sentence, region, &all);
+        let (candidate, shorter) = self.add_candidate(p, i, sentence, region, &all).unzip();
         let reference_text = join_sentence(sentence, &join_carry(i.carry, region.trim()));
         if self.candidates.is_empty() || region.trim().is_empty() {
             return None;
@@ -303,6 +373,7 @@ impl DraftBook {
             sentence: sentence_unknown.then(|| sentence.to_owned()),
             candidate,
             reference: reference_text,
+            shorter: shorter.unwrap_or_default(),
         })
     }
 
@@ -366,7 +437,7 @@ impl DraftBook {
         sentence: &str,
         region: &str,
         all: &[Unit],
-    ) -> Option<String> {
+    ) -> Option<(String, Vec<String>)> {
         if self.recent.len() < p.source_agreement.max(2) {
             return None;
         }
@@ -392,16 +463,19 @@ impl DraftBook {
         if self.candidates.len() >= MAX_CANDIDATES {
             self.candidates.remove(0);
         }
+        let shorter = shorter_forms(p, i, sentence, region, all, n);
+        let asked = shorter.iter().map(|s| s.source_full.clone()).collect();
         self.candidates.push(Candidate {
             cut,
             prefix: i.round_text[..cut].to_owned(),
             source_full: source_full.clone(),
             target: None,
+            shorter,
             created: i.revision,
             agreement: 0,
             counted: None,
         });
-        Some(source_full)
+        Some((source_full, asked))
     }
 
     /// Store a draft result where it belongs.
@@ -411,6 +485,14 @@ impl DraftBook {
             && let Some(t) = result
         {
             self.spoken = Some(t.text.to_owned());
+        }
+        for s in self
+            .candidates
+            .iter_mut()
+            .flat_map(|c| c.shorter.iter_mut())
+            .filter(|s| s.source_full == source)
+        {
+            s.result = Some(result.map(|t| (t.text.to_owned(), t.wrong_language)));
         }
         if let Some(at) = self.candidates.iter().position(|c| c.source_full == source) {
             match result {
@@ -461,15 +543,27 @@ impl DraftBook {
     fn decide(&mut self, p: &RetranslateParams, target: Lang) -> Option<RetranslateCut> {
         let wanted = p.agreement.max(1);
         let spoken = self.spoken.clone();
-        let mut best: Option<usize> = None;
+        let mut best: Option<RetranslateCut> = None;
         let mut dropped = Vec::new();
+        let mut unusable = Vec::new();
         for (at, c) in self.candidates.iter().enumerate() {
-            let Some((t_c, wrong)) = &c.target else {
-                continue;
-            };
             if c.agreement < wanted {
                 continue;
             }
+            let Resolved::Use {
+                cut,
+                source_full,
+                target: (t_c, wrong),
+            } = (match c.resolve() {
+                Resolved::Drop => {
+                    unusable.push(at);
+                    continue;
+                }
+                other => other,
+            })
+            else {
+                continue;
+            };
             let Some(t_s) = &spoken else {
                 continue;
             };
@@ -480,26 +574,57 @@ impl DraftBook {
             if !speakable_new_part(target, t_c, from, *wrong) {
                 continue;
             }
-            if best.is_none_or(|b| self.candidates[b].cut < c.cut) {
-                best = Some(at);
+            if best.as_ref().is_none_or(|b| b.cut < cut) {
+                best = Some(RetranslateCut {
+                    cut,
+                    source_full: source_full.to_owned(),
+                    target_full: t_c.clone(),
+                });
             }
         }
         self.rejected_spoken += dropped.len() as u64;
-        let chosen = best.map(|at| {
-            let c = &self.candidates[at];
-            RetranslateCut {
-                cut: c.cut,
-                source_full: c.source_full.clone(),
-                target_full: c.target.as_ref().map(|t| t.0.clone()).unwrap_or_default(),
-            }
-        });
-        if chosen.is_none() {
-            for at in dropped.into_iter().rev() {
+        if best.is_none() {
+            let mut gone = [dropped, unusable].concat();
+            gone.sort_unstable();
+            for at in gone.into_iter().rev() {
                 self.candidates.remove(at);
             }
         }
-        chosen
+        best
     }
+}
+
+/// The forms of a candidate of `n` units with its last one and two units left off, for a Chinese
+/// candidate (empty for any other script).
+fn shorter_forms(
+    p: &RetranslateParams,
+    i: &HypInput<'_>,
+    sentence: &str,
+    region: &str,
+    all: &[Unit],
+    n: usize,
+) -> Vec<Shorter> {
+    if !all[n - 1].key.chars().next().is_some_and(is_cjk) {
+        return Vec::new();
+    }
+    let committed = i.committed.min(i.round_text.len());
+    (1..=MAX_SHORTEN_UNITS.min(n - 1))
+        .map(|k| {
+            let m = n - k;
+            let end = all[m - 1].end;
+            let upto = end + punctuation_after(region, end).len();
+            let piece = region[..upto].trim();
+            let (chars, words) = count_units(&all[..m]);
+            Shorter {
+                cut: committed + upto,
+                source_full: join_sentence(sentence, &join_carry(i.carry, piece)),
+                valid: !(chars < p.min_chars && words < p.min_words)
+                    && !is_pure_filler(i.source, piece)
+                    && !splits_something(region, all, m),
+                result: None,
+            }
+        })
+        .collect()
 }
 
 /// Fewest Chinese characters and words (other scripts) of `units`.

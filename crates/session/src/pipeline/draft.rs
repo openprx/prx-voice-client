@@ -33,6 +33,8 @@ pub(crate) enum DraftRole {
     Sentence,
     /// A candidate unit, from the start of the sentence.
     Candidate,
+    /// A candidate with its last units left off, from the start of the sentence.
+    Shorter,
     /// The whole uncommitted hypothesis, from the start of the sentence.
     Reference,
 }
@@ -44,7 +46,7 @@ pub(crate) struct DraftText {
     pub(crate) text: String,
 }
 
-/// Texts of one hypothesis to translate (at most three, distinct).
+/// Texts of one hypothesis to translate (at most five, distinct).
 #[derive(Debug)]
 pub(crate) struct DraftJob {
     pub(crate) key: DraftKey,

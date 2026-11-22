@@ -62,12 +62,17 @@ impl RecognitionStage {
         let Some(plan) = open.book.on_hypothesis(&p, &input) else {
             return;
         };
-        let mut texts: Vec<DraftText> = Vec::with_capacity(3);
-        let candidates = [
+        let mut texts: Vec<DraftText> = Vec::with_capacity(5);
+        let mut candidates = vec![
             (DraftRole::Sentence, plan.sentence),
             (DraftRole::Candidate, plan.candidate),
-            (DraftRole::Reference, Some(plan.reference)),
         ];
+        candidates.extend(
+            plan.shorter
+                .into_iter()
+                .map(|t| (DraftRole::Shorter, Some(t))),
+        );
+        candidates.push((DraftRole::Reference, Some(plan.reference)));
         for (role, text) in candidates {
             if let Some(text) = text
                 && !texts.iter().any(|t| t.text == text)

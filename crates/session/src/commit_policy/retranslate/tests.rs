@@ -90,14 +90,10 @@ impl Rig {
             return (None, None);
         };
         let mut sources: Vec<String> = Vec::new();
-        for s in [
-            plan.sentence.clone(),
-            plan.candidate.clone(),
-            Some(plan.reference.clone()),
-        ]
-        .into_iter()
-        .flatten()
-        {
+        let mut wanted = vec![plan.sentence.clone(), plan.candidate.clone()];
+        wanted.extend(plan.shorter.iter().cloned().map(Some));
+        wanted.push(Some(plan.reference.clone()));
+        for s in wanted.into_iter().flatten() {
             if !sources.contains(&s) {
                 sources.push(s);
             }
@@ -149,6 +145,7 @@ fn candidate(cut: usize, source: &str, target: &str, agreement: u32) -> Candidat
         prefix: String::new(),
         source_full: source.to_owned(),
         target: Some((target.to_owned(), false)),
+        shorter: Vec::new(),
         created: 1,
         agreement,
         counted: None,
@@ -560,4 +557,99 @@ fn a_unit_ends_its_sentence_when_it_ends_with_a_sentence_final_mark() {
     ] {
         assert_eq!(ends_sentence(text), ends, "{text:?}");
     }
+}
+
+/// A Chinese candidate "十三个州根" (cut after 15 bytes) with its two shorter forms and their drafts.
+fn word_candidate(
+    own: &str,
+    minus1: Option<Option<&str>>,
+    minus2: Option<Option<&str>>,
+) -> Candidate {
+    let form = |cut: usize, source: &str, result: Option<Option<&str>>, valid: bool| Shorter {
+        cut,
+        source_full: source.to_owned(),
+        valid,
+        result: result.map(|r| r.map(|t| (t.to_owned(), false))),
+    };
+    Candidate {
+        shorter: vec![
+            form(12, "十三个州", minus1, true),
+            form(9, "十三个", minus2, false),
+        ],
+        ..candidate(15, "十三个州根", own, 2)
+    }
+}
+
+fn decide_cut(c: Candidate) -> (Option<(usize, String)>, usize) {
+    let mut book = book_with(vec![c], "");
+    let cut = decide(&mut book, Lang::En).map(|c| (c.cut, c.source_full));
+    (cut, book.candidates.len())
+}
+
+#[test]
+fn a_cut_inside_a_word_is_moved_one_unit_back() {
+    // T("十三个州根") == T("十三个州"): the last character added nothing, it is the start of a word.
+    let c = word_candidate(
+        "Thirteen states.",
+        Some(Some("thirteen states")),
+        Some(Some("Thirteen")),
+    );
+    assert_eq!(decide_cut(c).0, Some((12, "十三个州".to_owned())));
+}
+
+#[test]
+fn a_last_unit_that_changes_the_translation_is_cut_unchanged() {
+    let c = word_candidate(
+        "Thirteen states formed",
+        Some(Some("Thirteen states")),
+        Some(Some("Thirteen")),
+    );
+    assert_eq!(decide_cut(c).0, Some((15, "十三个州根".to_owned())));
+}
+
+#[test]
+fn a_candidate_is_shortened_at_most_twice_and_only_to_a_form_that_may_be_a_cut() {
+    // Two units add nothing, and the form two units back is allowed by the minimum length here.
+    let mut c = word_candidate(
+        "Thirteen states",
+        Some(Some("Thirteen states")),
+        Some(Some("Thirteen states")),
+    );
+    c.shorter[1].valid = true;
+    assert_eq!(decide_cut(c).0, Some((9, "十三个".to_owned())));
+    // The same, but the shorter form is below the minimum length: the candidate is dropped.
+    let c = word_candidate(
+        "Thirteen states",
+        Some(Some("Thirteen states")),
+        Some(Some("Thirteen states")),
+    );
+    assert_eq!(decide_cut(c), (None, 0));
+}
+
+#[test]
+fn a_candidate_waits_for_the_draft_of_its_shorter_form_and_is_dropped_when_it_failed() {
+    let c = word_candidate("Thirteen states", None, None);
+    assert_eq!(decide_cut(c), (None, 1), "kept, no cut yet");
+    let c = word_candidate("Thirteen states", Some(None), None);
+    assert_eq!(decide_cut(c), (None, 0), "failed draft: dropped");
+}
+
+#[test]
+fn only_a_chinese_candidate_asks_for_shorter_forms() {
+    let mut rig = Rig::english_to_chinese();
+    for text in &GROWING[..3] {
+        if let (Some(plan), _) = rig.hyp(text) {
+            assert!(plan.shorter.is_empty(), "{text}");
+        }
+    }
+    let mut zh = Rig {
+        source: Lang::Zh,
+        target: Lang::En,
+        ..Rig::english_to_chinese()
+    };
+    zh.hyp("十三个州根据");
+    let (plan, _) = zh.hyp("十三个州根据联");
+    let plan = plan.expect("a plan");
+    assert_eq!(plan.candidate.as_deref(), Some("十三个州根"));
+    assert_eq!(plan.shorter, ["十三个州", "十三个"]);
 }
