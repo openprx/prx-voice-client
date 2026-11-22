@@ -192,3 +192,95 @@ fn a_second_filler_while_one_waits_is_dropped_and_counted_once() {
     assert_eq!(snap.clauses[0].source_text, "\u{55ef}\u{55ef}\u{55ef}\u{55ef}\u{3002} \u{6211}\u{4eec}\u{53bb}\u{516c}\u{56ed}");
     assert!(rig.stop().clean);
 }
+
+const IN: Direction = Direction::Incoming;
+const SENTENCE: &str = "The weather is nice today,";
+
+fn en_script(texts: &[&'static str]) -> AsrScript {
+    let partials = |t: &'static str| vec![(t, 0); 80];
+    let mut script = AsrScript::new(partials(texts[0]).into_iter().map(|(t, _)| t), texts[0]);
+    for t in &texts[1..] {
+        script = script.then_round(partials(t), t);
+    }
+    script.then_round([], "")
+}
+
+/// One English speech run whose recogniser text first holds `first`, with that part stable, then
+/// `first` and `last` together: the first part is committed from the stable prefix and `last` is
+/// what the segment end commits. Returns the final snapshot.
+fn english_tail(first: &str, last: &str, drop_filler: bool) -> std::sync::Arc<prxvc_session::pipeline::DirectionSnapshot> {
+    let clock = ManualClock::new();
+    let (mt, tts) = providers(&clock);
+    let both = format!("{first} {last}");
+    let mut asr = AsrScript::new([], &both);
+    asr.partials = (0..60)
+        .map(|i| if i < 20 { (first.to_owned(), first.len()) } else { (both.clone(), first.len()) })
+        .collect();
+    let rig = Rig::start_with(
+        &clock,
+        IN,
+        vad_runs(&[(0.0, 10), (0.9, 40), (0.0, 25)]),
+        asr.then_round([], ""),
+        mt,
+        tts,
+        |p| {
+            p.drop_filler = drop_filler;
+            p.commit.clause_pause = std::time::Duration::from_secs(30);
+        },
+    );
+    rig.wait_running();
+    rig.feed(80);
+    let snap = rig.wait_snapshot("the segment ended", |s| {
+        s.counters.filler_dropped >= 1 || s.clauses.len() >= 2
+    });
+    assert!(rig.stop().clean);
+    snap
+}
+
+#[test]
+fn a_stray_english_fragment_ending_a_segment_is_dropped_like_a_filler() {
+    for tail in ["I.", "I'm.", "I'll.", "I've.", "But", "So.", "Still.", "Well,"] {
+        let snap = english_tail(SENTENCE, tail, true);
+        assert_eq!(snap.counters.filler_dropped, 1, "{tail:?} {:?}", snap.clauses.iter().map(|c| c.source_text.clone()).collect::<Vec<_>>());
+        assert_eq!(snap.clauses.len(), 1, "{tail:?}: only the sentence is a unit");
+    }
+}
+
+#[test]
+fn the_same_fragment_is_kept_with_the_filter_off() {
+    let snap = english_tail(SENTENCE, "Still.", false);
+    assert_eq!(snap.counters.filler_dropped, 0);
+    assert_eq!(snap.clauses.len(), 2);
+    assert_eq!(snap.clauses[1].source_text, "Still.");
+}
+
+#[test]
+fn a_one_word_utterance_that_is_the_only_unit_is_kept() {
+    for word in ["Still.", "I'm."] {
+        let clock = ManualClock::new();
+        let (mt, tts) = providers(&clock);
+        let rig = Rig::start_with(
+            &clock,
+            IN,
+            utterances(1, 0),
+            en_script(&[word]),
+            mt,
+            tts,
+            |_| {},
+        );
+        rig.wait_running();
+        rig.feed(55);
+        let snap = rig.wait_snapshot("the word is a unit", |s| !s.clauses.is_empty());
+        assert_eq!(snap.counters.filler_dropped, 0, "{word:?}");
+        assert_eq!(snap.clauses[0].source_text, word);
+        assert!(rig.stop().clean);
+    }
+}
+
+#[test]
+fn a_fragment_in_the_middle_of_a_segment_is_kept() {
+    let snap = english_tail(SENTENCE, "Still. We should go home now", true);
+    assert_eq!(snap.counters.filler_dropped, 0);
+    assert_eq!(snap.clauses.len(), 2);
+    assert_eq!(snap.clauses[1].source_text, "Still. We should go home now");
+}

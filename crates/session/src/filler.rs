@@ -11,6 +11,10 @@
 //! A text with any other token is content: "嗯嗯好的", "嗯，我想说", "Uh, okay" and "Oh no" are kept,
 //! and so are the short answers 好, 对, 是, yes, no and ok.
 //!
+//! A second rule, [`is_stray_tail`], covers the English fragments ("I.", "I'm.", "Still.") the recogniser
+//! writes for the trailing silence of an utterance: they are dropped only as the last unit of a
+//! segment that has an earlier unit, and kept as the only unit of a segment.
+//!
 //! A pure "嗯" or "Mm." that was a real acknowledgement ("uh-huh") is dropped too: the listener
 //! cannot tell it from a hum, and `pipeline.drop_filler = false` turns the rule off for those who
 //! want every unit.
@@ -27,6 +31,23 @@ const ZH: &[&str] = &["啊", "哦", "噢", "喔", "呣"];
 /// Interjections of English speech, and the single function words the recogniser leaves behind for
 /// the faintest sounds (no utterance is only "the").
 const EN: &[&str] = &["ah", "eh", "oh", "the", "a", "an", "and", "of", "to"];
+
+/// Single English tokens (apostrophes dropped, case folded) that the recogniser leaves behind on the
+/// trailing silence of an utterance: "I.", "I'm.", "Still.". They are real words, so they are not
+/// filler anywhere else; see [`is_stray_tail`]. "the", "a" and "and" are in [`EN`] already, and
+/// "okay" and "ok" are answers, not fragments.
+const EN_TAIL_FRAGMENTS: &[&str] = &["i", "im", "ill", "ive", "but", "so", "still", "well"];
+
+/// Whether `text`, recognised as `lang`, is a stray one-word fragment of the closed list for that
+/// language. The caller applies it only to the last unit of a segment that has an earlier unit:
+/// the same word alone is a real (if short) utterance. Chinese has no such list.
+pub fn is_stray_tail(lang: Lang, text: &str) -> bool {
+    if lang != Lang::En {
+        return false;
+    }
+    let mut it = tokens(text);
+    matches!((it.next(), it.next()), (Some(t), None) if EN_TAIL_FRAGMENTS.contains(&t.as_str()))
+}
 
 /// Whether `text`, recognised as `lang`, holds nothing but filler. Empty and punctuation-only text
 /// are filler as well: there is nothing in them to translate.
@@ -169,6 +190,45 @@ mod tests {
             "Mm, yes",
         ] {
             assert!(!is_pure_filler(Lang::En, text), "en {text:?}");
+        }
+    }
+
+    #[test]
+    fn stray_tail_fragments_are_single_listed_english_tokens() {
+        for text in [
+            "I.",
+            "I'm.",
+            "I'll.",
+            "I've.",
+            "But",
+            "So.",
+            "Still.",
+            "Well,",
+            "i",
+            "I\u{2019}m.",
+        ] {
+            assert!(is_stray_tail(Lang::En, text), "en {text:?}");
+        }
+        for text in [
+            "OK.",
+            "Okay.",
+            "Yes.",
+            "I am.",
+            "Still here.",
+            "So what?",
+            "",
+            "...",
+            "Hello",
+            "I.I.",
+        ] {
+            assert!(!is_stray_tail(Lang::En, text), "en {text:?}");
+        }
+        // The articles and "and" are filler already, and need no second list.
+        for text in ["The.", "A.", "And."] {
+            assert!(is_pure_filler(Lang::En, text), "en {text:?}");
+        }
+        for text in ["I.", "我。", "仍然。", "嗯。"] {
+            assert!(!is_stray_tail(Lang::Zh, text), "zh {text:?}");
         }
     }
 
