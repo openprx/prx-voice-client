@@ -11,6 +11,7 @@ use prxvc_ports::{
 };
 
 use super::core::{Core, Gate, Wiring};
+use super::draft_cache::DraftCache;
 use super::events::PipelineEvent;
 use super::input::AudioInput;
 use super::messages::{Command, Inbound, MtItem, TtsItem};
@@ -291,6 +292,7 @@ impl DirectionPipeline {
             call: tree.call().clone(),
             tracer: tracer.clone(),
             stats: Arc::clone(stats),
+            cache: DraftCache::for_params(&params.retranslate),
         };
         w.spawn(name("translate"), move || mt.run())
             .map_err(|e| spawn_error("translate", &e))?;

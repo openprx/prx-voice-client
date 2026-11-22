@@ -62,6 +62,7 @@
 
 mod align;
 mod core;
+mod draft_cache;
 mod events;
 mod faults;
 mod handle;

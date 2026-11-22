@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use prxvc_media::{ClauseId, Envelope, SegmentId, has_speakable_content};
 use prxvc_ports::{
-    CancellationToken, MtDelta, MtError, MtRequest, MtStream, TraceStage, Translator,
+    CancellationToken, MtDelta, MtError, MtFlag, MtRequest, MtStream, TraceStage, Translator,
 };
 
+use super::draft_cache::{Cached, CachedStream, DraftCache};
 use super::faults::mt_failure;
 use super::messages::{
     ClauseJob, MtItem, PieceJob, StageEvent, StageFailure, TtsItem, WorkerEvent,
@@ -30,6 +31,8 @@ pub(crate) struct MtStage {
     pub(crate) call: CancellationToken,
     pub(crate) tracer: Tracer,
     pub(crate) stats: Arc<Stats>,
+    /// Translations by exact source text, only when clause translations continue the sentence.
+    pub(crate) cache: Option<Arc<DraftCache>>,
 }
 
 /// How a request ended.
@@ -93,7 +96,7 @@ impl MtStage {
                 glossary: self.p.glossary.clone(),
                 strict_language: strict,
             };
-            let stream = match self.mt.translate(request) {
+            let stream = match self.open_stream(request) {
                 Ok(s) => s,
                 Err(e) => {
                     self.fail_open(clause, meta, &token, &e);
@@ -110,9 +113,19 @@ impl MtStage {
                 spoken: false,
                 source: &text,
                 strict,
+                flags: Vec::new(),
             };
             match run.drive(stream) {
                 (Ended::Done, translated) => {
+                    if let Some(cache) = &self.cache {
+                        cache.put(
+                            &text,
+                            Cached {
+                                text: translated.clone(),
+                                flags: run.flags.clone(),
+                            },
+                        );
+                    }
                     history.push_back((text.clone(), translated));
                     while history.len() > self.p.mt_context_clauses {
                         history.pop_front();
@@ -139,6 +152,17 @@ impl MtStage {
             }
             return;
         }
+    }
+
+    /// The stream of a request: the cached translation of exactly its text when there is one (never
+    /// for the retry with the strict instruction, which must ask the engine again), else the engine's.
+    fn open_stream(&self, request: MtRequest) -> Result<Box<dyn MtStream>, MtError> {
+        if !request.strict_language
+            && let Some(hit) = self.cache.as_ref().and_then(|c| c.get(&request.text))
+        {
+            return Ok(Box::new(CachedStream::new(hit)));
+        }
+        self.mt.translate(request)
     }
 
     fn fail_open(&self, clause: ClauseId, meta: Meta, token: &CancellationToken, e: &MtError) {
@@ -213,6 +237,8 @@ struct Run<'a> {
     source: &'a str,
     /// This is the retry with the strict instruction.
     strict: bool,
+    /// The quality flags of the finished translation.
+    flags: Vec<MtFlag>,
 }
 
 impl Run<'_> {
@@ -324,7 +350,8 @@ impl Run<'_> {
                 Some(Ok(MtDelta::Done { .. })) => {
                     let ended = self.finish();
                     if matches!(ended, Ended::Done) {
-                        self.report_flags(stream.as_ref());
+                        self.flags = stream.flags();
+                        self.report_flags();
                     }
                     return (ended, self.full.clone());
                 }
@@ -348,17 +375,16 @@ impl Run<'_> {
     }
 
     /// Report the quality flags of the finished translation (it was spoken regardless).
-    fn report_flags(&self, stream: &dyn MtStream) {
-        let flags = stream.flags();
-        if flags.is_empty() {
+    fn report_flags(&self) {
+        if self.flags.is_empty() {
             return;
         }
-        for flag in &flags {
+        for flag in &self.flags {
             self.stage.stats.add_flag(*flag);
         }
         self.event(StageEvent::MtFlagged {
             clause: self.clause,
-            flags,
+            flags: self.flags.clone(),
         });
     }
 
@@ -396,3 +422,6 @@ impl Run<'_> {
         if ok { Ended::Done } else { Ended::Cancelled }
     }
 }
+
+#[cfg(test)]
+mod tests;
