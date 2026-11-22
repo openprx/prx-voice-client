@@ -13,6 +13,17 @@ fn main() {
         return;
     }
 
+    build_macos_shims();
+}
+
+/// Compile and link the Objective-C shims. `cc` is a build dependency of macOS
+/// hosts only, so the function does not exist elsewhere.
+#[cfg(not(target_os = "macos"))]
+fn build_macos_shims() {}
+
+/// Compile and link the Objective-C shims.
+#[cfg(target_os = "macos")]
+fn build_macos_shims() {
     println!("cargo:rerun-if-changed=native/prxvc_tap.m");
     println!("cargo:rerun-if-changed=native/prxvc_tap.h");
     println!("cargo:rerun-if-changed=native/prxvc_procs.m");
