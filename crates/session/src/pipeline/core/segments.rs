@@ -184,6 +184,7 @@ impl Core {
             draft_hits = u.tally.draft_hits,
             drafts_stale = u.tally.drafts_stale,
             continued = u.tally.continued,
+            continued_approx = u.tally.continued_approx,
             diverged = u.tally.diverged,
             remainder_empty = u.tally.remainder_empty,
             src_rewrites = u.tally.src_rewrites,

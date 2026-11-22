@@ -76,6 +76,8 @@ pub(crate) fn lines(runs: &[UtteranceRun]) -> String {
             ));
             if let Some(diverged) = text(TraceStage::ContinuationDiverged) {
                 out.push_str(&format!("\tdiverged: {diverged}"));
+            } else if let Some(approx) = text(TraceStage::ContinuationApprox) {
+                out.push_str(&format!("\tapprox: {approx}"));
             }
             out.push('\n');
         }
@@ -238,6 +240,29 @@ mod tests {
             "en000\t1.1\tsegment_end\tfalse\tat the office\t在办公室\tdiverged: 我们应该 | 我们必须"
         );
         assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn an_approximate_alignment_adds_its_own_marker() {
+        let a = clause(
+            0,
+            &[
+                (TraceStage::UnitCut, "punctuation ends"),
+                (TraceStage::ClauseCommitted, "是两百五十万美元"),
+                (TraceStage::MtDone, "is $2.5 million."),
+                (
+                    TraceStage::ContinuationApprox,
+                    "The budget of | The budget for",
+                ),
+            ],
+        );
+        let text = lines(&[run(vec![a])]);
+        assert_eq!(
+            text.lines().next(),
+            Some(
+                "en000\t1.0\tpunctuation\tfalse\t是两百五十万美元\tis $2.5 million.\tapprox: The budget of | The budget for"
+            )
+        );
     }
 
     #[test]

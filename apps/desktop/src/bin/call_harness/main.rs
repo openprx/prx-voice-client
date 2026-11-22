@@ -42,9 +42,9 @@
 //!   `auto` is on for an engine without context); `--retranslate-agreement N` sets
 //!   `pipeline.retranslate_agreement` and `--redecode-ms N` sets `pipeline.asr_redecode_interval_ms`.
 //!   The line "retranslation in force" says what the pipeline will do, and the table gains the rows
-//!   `first_commit_s`, `retranslated`, `diverged` and `first_cut`. `--units-out FILE` writes one line
+//!   `first_commit_s`, `retranslated`, `approx`, `diverged` and `first_cut`. `--units-out FILE` writes one line
 //!   per unit (`id`, `segment.index`, reason of the cut, whether the sentence continues, source text,
-//!   spoken translation, and for a divergence the trace text): it holds spoken text, so it is bench
+//!   spoken translation, and for an approximate alignment or a divergence the trace text): it holds spoken text, so it is bench
 //!   material and never an app log.
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).

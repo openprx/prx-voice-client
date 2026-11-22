@@ -103,6 +103,13 @@ fn the_tally_of_a_segment_holds_the_figures_of_its_units_and_its_drafts_and_no_t
             outcome: ContinuationOutcome::Diverged,
         },
     );
+    h.stage(
+        id1,
+        StageEvent::MtContinuation {
+            clause: id1,
+            outcome: ContinuationOutcome::ContinuedApprox,
+        },
+    );
     let e = Envelope::new(
         seg(1),
         2,
@@ -135,8 +142,13 @@ fn the_tally_of_a_segment_holds_the_figures_of_its_units_and_its_drafts_and_no_t
         (5, 2, 1, 1)
     );
     assert_eq!(
-        (tally.continued, tally.diverged, tally.remainder_empty),
-        (1, 1, 0)
+        (
+            tally.continued,
+            tally.continued_approx,
+            tally.diverged,
+            tally.remainder_empty
+        ),
+        (1, 1, 1, 0)
     );
     assert!(
         !format!("{tally:?}").contains(SPOKEN),
@@ -184,6 +196,7 @@ fn the_utterance_line_names_the_new_figures_and_carries_no_spoken_text() {
         "draft_hits",
         "drafts_stale",
         "continued",
+        "continued_approx",
         "diverged",
         "remainder_empty",
         "src_rewrites",

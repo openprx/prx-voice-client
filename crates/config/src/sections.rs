@@ -503,6 +503,9 @@ pub struct PipelineConfig {
     pub retranslate_min_words: u32,
     /// Least time between two draft translations of one direction, in milliseconds.
     pub retranslate_interval_ms: u32,
+    /// Largest share of the spoken units that may differ from the start of a new full translation
+    /// for it to still count as continuing it (0.0 to 1.0; 0.0 asks for an exact start).
+    pub retranslate_align_max_ratio: f32,
 }
 
 impl Default for PipelineConfig {
@@ -553,6 +556,7 @@ impl Default for PipelineConfig {
             retranslate_min_chars: 4,
             retranslate_min_words: 3,
             retranslate_interval_ms: 300,
+            retranslate_align_max_ratio: 0.5,
         }
     }
 }

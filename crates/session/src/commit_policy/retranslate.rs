@@ -13,7 +13,7 @@ use crate::filler::is_pure_filler;
 
 /// Thresholds of re-translation, shaped like the `[pipeline]` keys `retranslation` and
 /// `retranslate_*` (the composition root fills this; the crate does not read the configuration).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RetranslateParams {
     /// The cut rule runs and the draft worker is spawned.
     pub enabled: bool,
@@ -33,6 +33,9 @@ pub struct RetranslateParams {
     pub min_words: usize,
     /// Least time between two draft submissions of one direction.
     pub interval: Duration,
+    /// Largest share of the spoken units that may differ from the start of a new full translation
+    /// for it to still count as continuing it (0.0 to 1.0; 0.0 asks for an exact start).
+    pub align_max_ratio: f32,
 }
 
 impl RetranslateParams {
@@ -49,6 +52,7 @@ impl RetranslateParams {
             min_chars: 4,
             min_words: 3,
             interval: Duration::from_millis(300),
+            align_max_ratio: 0.5,
         }
     }
 }

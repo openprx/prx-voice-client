@@ -98,6 +98,8 @@ pub(crate) struct SegmentTally {
     pub(crate) drafts_stale: u32,
     /// Units whose translation continued the sentence.
     pub(crate) continued: u32,
+    /// Units that continued the sentence from an approximate start of the new translation.
+    pub(crate) continued_approx: u32,
     /// Units whose translation no longer began with the part already spoken.
     pub(crate) diverged: u32,
     /// Units that continued the sentence with nothing left to say.

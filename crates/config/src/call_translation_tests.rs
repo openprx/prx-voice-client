@@ -337,6 +337,7 @@ fn the_re_translation_keys_default_to_the_design_values() {
     );
     assert_eq!((p.retranslate_min_chars, p.retranslate_min_words), (4, 3));
     assert_eq!(p.retranslate_interval_ms, 300);
+    assert_eq!(p.retranslate_align_max_ratio, 0.5);
 }
 
 #[test]
@@ -350,6 +351,7 @@ fn a_version_four_file_without_the_re_translation_keys_loads_with_their_defaults
     assert_eq!(report.config.pipeline.retranslation, "auto");
     assert_eq!(report.config.pipeline.retranslate_agreement, 2);
     assert_eq!(report.config.pipeline.retranslate_interval_ms, 300);
+    assert_eq!(report.config.pipeline.retranslate_align_max_ratio, 0.5);
 }
 
 #[test]
@@ -357,12 +359,13 @@ fn a_saved_off_stays_off_through_a_save_and_a_load() {
     let dir = TempDir::new("ct_retranslate_off");
     write_config(
         &dir,
-        "schema_version = 4\n[pipeline]\nretranslation = \"off\"\nretranslate_agreement = 1\n",
+        "schema_version = 4\n[pipeline]\nretranslation = \"off\"\nretranslate_agreement = 1\nretranslate_align_max_ratio = 0.25\n",
     );
     let m = mgr(&dir);
     let loaded = m.load().unwrap();
     assert_eq!(loaded.pipeline.retranslation, "off");
     assert_eq!(loaded.pipeline.retranslate_agreement, 1);
+    assert_eq!(loaded.pipeline.retranslate_align_max_ratio, 0.25);
     m.save(&loaded).unwrap();
     assert_eq!(m.load().unwrap(), loaded);
 }

@@ -138,7 +138,7 @@ impl DirectionTotals {
              start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={} \
              queue_wait_ms(median/p95)={} catch_up(clauses={} max_speed={}%) \
              retranslation(units={} drafts={} hits={} stale={} failed={} src_rewrites={} \
-             continued={} diverged={} empty={}) \
+             continued={} approx={} diverged={} empty={}) \
              first_commit_ms(median/p95)={} draft_ms(median/p95)={}{}",
             s.ledger.utterances,
             c.clauses_committed,
@@ -168,6 +168,7 @@ impl DirectionTotals {
             c.drafts_failed,
             c.retranslate_src_rewrites,
             c.continued,
+            c.continued_approx,
             c.continuation_diverged,
             c.remainder_empty,
             percentiles(s.ledger.first_commit),
@@ -330,6 +331,7 @@ mod tests {
                 drafts_failed: 2,
                 retranslate_src_rewrites: 1,
                 continued: 5,
+                continued_approx: 3,
                 continuation_diverged: 2,
                 remainder_empty: 1,
                 ..Counters::default()
@@ -372,7 +374,7 @@ mod tests {
             "end_to_first_audio_ms(median/p95)=-",
             "queue_wait_ms(median/p95)=1500/3900 (n=5)",
             "catch_up(clauses=4 max_speed=125%)",
-            "retranslation(units=3 drafts=21 hits=9 stale=4 failed=2 src_rewrites=1 continued=5 diverged=2 empty=1)",
+            "retranslation(units=3 drafts=21 hits=9 stale=4 failed=2 src_rewrites=1 continued=5 approx=3 diverged=2 empty=1)",
             "first_commit_ms(median/p95)=1900/2700 (n=6)",
             "draft_ms(median/p95)=85/130 (n=40)",
             "notice(played played=2 interrupted=1)",

@@ -20,7 +20,7 @@ use super::params::PipelineParams;
 use super::pieces::PieceSplitter;
 use super::queue::{BoundedQueue, Popped, Pushed, Wait};
 use super::trace::Tracer;
-use crate::commit_policy::{continuation_text, prefix_end};
+use crate::commit_policy::{approx_prefix_end, continuation_text, prefix_end};
 use crate::fault::{FaultKind, Stage};
 use crate::pipeline::snapshot::Stats;
 
@@ -520,7 +520,7 @@ impl Run<'_> {
     /// spoken. With a spoken part to continue, that is what follows it in the whole translation
     /// (the unit's own text must begin with nothing else): nothing speakable after it ends the unit
     /// with no text, and a translation that no longer begins with it is not spoken at all but
-    /// reported as diverged. A unit that continues its sentence has its closing mark turned into a
+    /// reported as diverged unless it is close enough to it (`approx_prefix_end`). A unit that continues its sentence has its closing mark turned into a
     /// comma.
     fn finish_buffered(&mut self) -> Ended {
         if let Some(ended) = self.check_complete() {
@@ -531,12 +531,36 @@ impl Run<'_> {
         }
         let mut text = self.full.clone();
         if let Some(spoken) = &self.prior_target {
-            let Some(from) = prefix_end(spoken, &self.full) else {
-                return Ended::Diverged;
+            let mut approx = false;
+            let from = match prefix_end(spoken, &self.full) {
+                Some(from) => from,
+                None => match approx_prefix_end(
+                    spoken,
+                    &self.full,
+                    self.stage.p.retranslate.align_max_ratio,
+                ) {
+                    Some(from) => {
+                        approx = true;
+                        from
+                    }
+                    None => return Ended::Diverged,
+                },
             };
             text = trim_stray_start(&self.full[from..]).to_owned();
             if has_speakable_content(&text) {
-                self.report = Some(ContinuationOutcome::Continued);
+                self.report = Some(if approx {
+                    ContinuationOutcome::ContinuedApprox
+                } else {
+                    ContinuationOutcome::Continued
+                });
+                if approx {
+                    let full = self.full.as_str();
+                    self.stage.tracer.mark_text(
+                        self.clause,
+                        TraceStage::ContinuationApprox,
+                        || format!("{spoken} | {full}"),
+                    );
+                }
             } else {
                 self.report = Some(ContinuationOutcome::Empty);
                 return self.finish_tail(None);

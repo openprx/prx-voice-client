@@ -77,6 +77,7 @@ pub(crate) const fn stage_name(stage: TraceStage) -> &'static str {
         TraceStage::RetranslationCut => "retranslation_cut",
         TraceStage::UnitCut => "unit_cut",
         TraceStage::ContinuationDiverged => "continuation_diverged",
+        TraceStage::ContinuationApprox => "continuation_approx",
         TraceStage::RefineDone => "refine_done",
         TraceStage::MtRequestSent => "mt_request_sent",
         TraceStage::MtFirstToken => "mt_first_token",

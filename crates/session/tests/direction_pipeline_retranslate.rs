@@ -123,6 +123,11 @@ fn long_utterance() -> (AsrScript, VadScript) {
 
 /// An incoming (English to Chinese) pipeline with re-translation on, translating through `words`.
 fn start(clock: &ManualClock, words: &Words) -> Rig {
+    start_with_ratio(clock, words, RetranslateParams::disabled().align_max_ratio)
+}
+
+/// As [`start`], with the largest share of the spoken units a new translation may word differently.
+fn start_with_ratio(clock: &ManualClock, words: &Words, align_max_ratio: f32) -> Rig {
     let (asr, vad) = long_utterance();
     let fakes = Fakes {
         vad: FakeVadProvider::new(vad),
@@ -134,6 +139,7 @@ fn start(clock: &ManualClock, words: &Words) -> Rig {
     p.retranslate = RetranslateParams {
         enabled: true,
         continuation: true,
+        align_max_ratio,
         ..RetranslateParams::disabled()
     };
     p.commit.early = EarlyCommit::Punctuation;
@@ -234,10 +240,12 @@ fn a_translation_that_stops_agreeing_with_what_was_spoken_is_translated_alone_an
  {
     let clock = ManualClock::new();
     let words = Words { diverge: true };
-    let rig = start(&clock, &words);
+    // Ratio 0.0: only an exact start continues, so one reworded word is a divergence.
+    let rig = start_with_ratio(&clock, &words, 0.0);
     rig.wait_running();
     rig.feed_settling_drafts((LEAD + SPEECH_FRAMES + TAIL) as u64);
     let snap = rig.wait_snapshot("every unit is translated", translated);
+    assert_eq!(snap.counters.continued_approx, 0);
     assert_eq!(
         snap.counters.continuation_diverged, 1,
         "{:?}",
@@ -333,4 +341,21 @@ fn the_other_direction_runs_as_before_and_with_the_rule_off_nothing_new_exists()
         .collect();
     assert_eq!(asked, ["今天天气很好"], "the clause only, as before");
     assert!(off.stop().clean);
+}
+
+#[test]
+fn a_translation_that_rewords_one_spoken_word_continues_approximately() {
+    let clock = ManualClock::new();
+    let words = Words { diverge: true };
+    let rig = start(&clock, &words);
+    rig.wait_running();
+    rig.feed_settling_drafts((LEAD + SPEECH_FRAMES + TAIL) as u64);
+    let snap = rig.wait_snapshot("every unit is translated", translated);
+    assert_eq!(
+        snap.counters.continuation_diverged, 0,
+        "{:?}",
+        snap.counters
+    );
+    assert_eq!(snap.counters.continued_approx, 1, "{:?}", snap.counters);
+    assert!(rig.stop().clean);
 }

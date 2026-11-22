@@ -187,6 +187,9 @@ pub(crate) enum StageEvent {
 pub(crate) enum ContinuationOutcome {
     /// The translation began with the part already spoken: the clause speaks what follows it.
     Continued,
+    /// It began with something close to the part already spoken (a few units worded differently):
+    /// the clause speaks what follows that.
+    ContinuedApprox,
     /// It did not: the clause's own text was translated on its own.
     Diverged,
     /// It began with the part already spoken and nothing speakable follows it.

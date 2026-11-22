@@ -131,6 +131,9 @@ pub struct Counters {
     /// Clauses whose translation continued the sentence: only what follows the part already spoken
     /// was spoken.
     pub continued: u64,
+    /// Clauses that continued the sentence from a start of the new translation that was close to,
+    /// not the same as, the part already spoken.
+    pub continued_approx: u64,
     /// Clauses whose translation from the start of the sentence no longer began with the part
     /// already spoken, so their own text was translated on its own.
     pub continuation_diverged: u64,
@@ -258,6 +261,7 @@ pub(crate) struct Stats {
     pub(crate) finals_contradicting_stable: AtomicU64,
     pub(crate) forced_cuts: AtomicU64,
     pub(crate) continued: AtomicU64,
+    pub(crate) continued_approx: AtomicU64,
     pub(crate) continuation_diverged: AtomicU64,
     pub(crate) remainder_empty: AtomicU64,
     pub(crate) drafts_requested: AtomicU64,
@@ -313,6 +317,7 @@ impl Stats {
             finals_contradicting_stable: get(&self.finals_contradicting_stable),
             forced_cuts: get(&self.forced_cuts),
             continued: get(&self.continued),
+            continued_approx: get(&self.continued_approx),
             continuation_diverged: get(&self.continuation_diverged),
             remainder_empty: get(&self.remainder_empty),
             drafts_requested: get(&self.drafts_requested),

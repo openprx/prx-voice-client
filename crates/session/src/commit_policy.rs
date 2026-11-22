@@ -4,6 +4,9 @@ use std::time::Duration;
 
 use prxvc_media::{Lang, first_clause_end};
 
+mod approx_prefix;
+pub(crate) use approx_prefix::approx_prefix_end;
+
 mod early;
 pub use early::{EarlyCommit, EarlyCut, EarlyInput, EarlyReason, decide_early_cut};
 

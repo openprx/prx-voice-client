@@ -434,3 +434,96 @@ fn without_continuation_units_are_translated_alone_and_keep_their_marks() {
     assert!(done.outcomes().is_empty(), "no continuation event");
     assert_eq!(done.text_of(clause(0)), "我们应该见面。");
 }
+
+/// A translator that words the start of the whole sentence differently the second time it is asked.
+fn rewording_mt() -> FakeTranslator {
+    FakeTranslator::new(ManualClock::new())
+        .with_script(
+            "这个项目的预算",
+            MtScript::tokens(["The budget of this project"]),
+        )
+        .with_script(
+            "这个项目的预算是两百五十万美元",
+            MtScript::tokens(["The budget for this project is $2.5 million."]),
+        )
+}
+
+/// A Chinese to English rig with the given alignment ratio.
+fn continuing_with_ratio(mt: FakeTranslator, ratio: f32) -> Rig {
+    rig_with(mt, Some(Arc::new(DraftCache::default())), |p| {
+        p.source = Lang::Zh;
+        p.target = Lang::En;
+        p.retranslate.enabled = true;
+        p.retranslate.continuation = true;
+        p.retranslate.align_max_ratio = ratio;
+    })
+}
+
+const REWORDED_JOBS: [(u16, &str, bool); 2] =
+    [(0, "这个项目的预算", true), (1, "是两百五十万美元", false)];
+
+#[test]
+fn a_near_prefix_continues_the_sentence_and_is_counted_apart() {
+    let done = continuing_with_ratio(rewording_mt(), 0.5).run_jobs(&REWORDED_JOBS);
+    assert!(!done.failed());
+    assert_eq!(done.text_of(clause(1)), "is $2.5 million.");
+    assert_eq!(
+        done.outcomes(),
+        [
+            (0, ContinuationOutcome::Standalone),
+            (1, ContinuationOutcome::ContinuedApprox)
+        ]
+    );
+}
+
+#[test]
+fn an_exact_prefix_still_counts_as_continued_whatever_the_ratio() {
+    let mt = FakeTranslator::new(ManualClock::new())
+        .with_script("我们见面", MtScript::tokens(["We meet"]))
+        .with_script("我们见面在九点", MtScript::tokens(["We meet at nine."]));
+    let done =
+        continuing_with_ratio(mt, 0.5).run_jobs(&[(0, "我们见面", true), (1, "在九点", false)]);
+    assert_eq!(done.text_of(clause(1)), "at nine.");
+    assert_eq!(done.outcomes()[1], (1, ContinuationOutcome::Continued));
+}
+
+#[test]
+fn a_zero_ratio_restores_the_exact_rule() {
+    let mt =
+        rewording_mt().with_script("是两百五十万美元", MtScript::tokens(["It is 2.5 million."]));
+    let done = continuing_with_ratio(mt, 0.0).run_jobs(&REWORDED_JOBS);
+    assert_eq!(done.outcomes()[1], (1, ContinuationOutcome::Diverged));
+    assert_eq!(done.text_of(clause(1)), "It is 2.5 million.");
+}
+
+#[test]
+fn a_really_different_translation_still_diverges() {
+    let mt = FakeTranslator::new(ManualClock::new())
+        .with_script("我们见面", MtScript::tokens(["We meet"]))
+        .with_script(
+            "我们见面在九点",
+            MtScript::tokens(["Nothing alike was said then."]),
+        )
+        .with_script("在九点", MtScript::tokens(["at nine."]));
+    let done =
+        continuing_with_ratio(mt, 0.5).run_jobs(&[(0, "我们见面", true), (1, "在九点", false)]);
+    assert_eq!(done.outcomes()[1], (1, ContinuationOutcome::Diverged));
+}
+
+#[test]
+fn an_approximate_start_with_nothing_after_it_is_an_empty_remainder() {
+    let mt = FakeTranslator::new(ManualClock::new())
+        .with_script(
+            "这个项目的预算",
+            MtScript::tokens(["The budget of this project"]),
+        )
+        .with_script(
+            "这个项目的预算是",
+            MtScript::tokens(["The budget for this project."]),
+        );
+    let done =
+        continuing_with_ratio(mt, 0.5).run_jobs(&[(0, "这个项目的预算", true), (1, "是", false)]);
+    assert!(!done.failed());
+    assert_eq!(done.text_of(clause(1)), "");
+    assert_eq!(done.outcomes()[1], (1, ContinuationOutcome::Empty));
+}

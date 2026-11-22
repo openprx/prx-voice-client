@@ -121,6 +121,24 @@ fn at_least(key: &'static str, value: u32, min: u32) -> u32 {
     value.max(min)
 }
 
+/// `value` clamped to `0.0..=1.0`, reported when it had to be (not a number counts as 0.0).
+fn ratio(key: &'static str, value: f32) -> f32 {
+    let clamped = if value.is_nan() {
+        0.0
+    } else {
+        value.clamp(0.0, 1.0)
+    };
+    if clamped.to_bits() != value.to_bits() {
+        tracing::warn!(
+            key,
+            value,
+            clamped,
+            "value outside 0.0 to 1.0; using the nearest"
+        );
+    }
+    clamped
+}
+
 /// The re-translation parameters of a direction: `[pipeline]` keys with their minimums applied,
 /// switched on or off by [`effective_retranslation`].
 pub(crate) fn retranslate_params(
@@ -143,6 +161,10 @@ pub(crate) fn retranslate_params(
         min_chars: at_least("pipeline.retranslate_min_chars", p.retranslate_min_chars, 1) as usize,
         min_words: at_least("pipeline.retranslate_min_words", p.retranslate_min_words, 1) as usize,
         interval: ms(p.retranslate_interval_ms),
+        align_max_ratio: ratio(
+            "pipeline.retranslate_align_max_ratio",
+            p.retranslate_align_max_ratio,
+        ),
     }
 }
 
@@ -521,6 +543,7 @@ mod tests {
             retranslate_min_chars: 5,
             retranslate_min_words: 4,
             retranslate_interval_ms: 250,
+            retranslate_align_max_ratio: 0.3,
             ..Default::default()
         };
         let r = retranslate_params(&p, false, EarlyCommit::Punctuation);
@@ -530,6 +553,7 @@ mod tests {
         );
         assert_eq!((r.min_chars, r.min_words), (5, 4));
         assert_eq!(r.interval, Duration::from_millis(250));
+        assert_eq!(r.align_max_ratio, 0.3);
 
         p.retranslate_agreement = 0;
         p.retranslate_lookahead = 0;
@@ -543,5 +567,17 @@ mod tests {
             "clamped"
         );
         assert_eq!((r.min_chars, r.min_words), (1, 1));
+
+        for (given, held) in [
+            (-0.2, 0.0),
+            (1.7, 1.0),
+            (f32::NAN, 0.0),
+            (0.0, 0.0),
+            (1.0, 1.0),
+        ] {
+            p.retranslate_align_max_ratio = given;
+            let r = retranslate_params(&p, false, EarlyCommit::Punctuation);
+            assert_eq!(r.align_max_ratio, held, "{given}");
+        }
     }
 }

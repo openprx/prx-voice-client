@@ -693,6 +693,7 @@ fn a_unit_that_continues_its_sentence_reaches_translation_as_such_and_its_outcom
     let id = cl(1, 0);
     for outcome in [
         ContinuationOutcome::Continued,
+        ContinuationOutcome::ContinuedApprox,
         ContinuationOutcome::Standalone,
         ContinuationOutcome::Diverged,
         ContinuationOutcome::Empty,
@@ -703,10 +704,11 @@ fn a_unit_that_continues_its_sentence_reaches_translation_as_such_and_its_outcom
     assert_eq!(
         (
             counters.continued,
+            counters.continued_approx,
             counters.continuation_diverged,
             counters.remainder_empty
         ),
-        (1, 1, 1)
+        (1, 1, 1, 1)
     );
 }
 

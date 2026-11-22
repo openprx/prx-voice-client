@@ -86,6 +86,14 @@ impl UtteranceRun {
             .count()
     }
 
+    /// Units whose translation began with something close to what was spoken and went on from there.
+    pub(crate) fn approx(&self) -> usize {
+        self.clauses
+            .iter()
+            .filter(|c| c.at(S::ContinuationApprox).is_some())
+            .count()
+    }
+
     /// Units whose translation from the start of the sentence did not begin with what was spoken.
     pub(crate) fn diverged(&self) -> usize {
         self.clauses
@@ -117,6 +125,10 @@ pub(crate) fn figures(run: &UtteranceRun) -> Vec<(&'static str, f64)> {
     out.push((
         "retranslated (units cut by the rule per utterance)",
         run.retranslated() as f64,
+    ));
+    out.push((
+        "approx (continuations aligned approximately per utterance)",
+        run.approx() as f64,
     ));
     out.push((
         "diverged (continuations translated alone per utterance)",

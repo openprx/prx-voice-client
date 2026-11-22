@@ -171,6 +171,10 @@ impl Core {
                 tally.continued += 1;
                 &self.w.stats.continued
             }
+            ContinuationOutcome::ContinuedApprox => {
+                tally.continued_approx += 1;
+                &self.w.stats.continued_approx
+            }
             ContinuationOutcome::Diverged => {
                 tally.diverged += 1;
                 &self.w.stats.continuation_diverged
