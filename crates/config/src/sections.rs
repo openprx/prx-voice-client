@@ -449,6 +449,15 @@ pub struct PipelineConfig {
     pub mt_context_clauses: u32,
     /// Playout jitter buffer, in milliseconds.
     pub jitter_buffer_ms: u32,
+    /// Most words of an English clause that synthesis holds back until the whole clause is made,
+    /// so that a runaway generation can be retried without being heard (default 3). A longer
+    /// clause streams from its first chunk. 0 restores the earlier rule: hold every clause of up
+    /// to about nine words. Values above 20 are lowered to 20. Read when the synthesis engine
+    /// loads.
+    pub tts_hold_max_words: u32,
+    /// As `tts_hold_max_words`, in characters, for a Chinese clause (default 4; 0 restores the
+    /// earlier rule: up to about ten characters).
+    pub tts_hold_max_chars: u32,
     /// Raise the start-of-clause pre-roll above `jitter_buffer_ms` when synthesis delivers audio
     /// slower than it is played (measured per call), so that a clause does not start with less
     /// queued than it needs to finish without a gap.
@@ -534,6 +543,8 @@ impl Default for PipelineConfig {
             speculative_mt: false,
             mt_context_clauses: 4,
             jitter_buffer_ms: 150,
+            tts_hold_max_words: 3,
+            tts_hold_max_chars: 4,
             adaptive_preroll: true,
             preroll_max_ms: 1_500,
             catch_up: true,

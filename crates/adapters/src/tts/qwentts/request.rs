@@ -62,6 +62,8 @@ pub(super) struct Counters {
     pub failed: AtomicU64,
     pub runaways: AtomicU64,
     pub retries: AtomicU64,
+    pub held: AtomicU64,
+    pub streamed: AtomicU64,
     pub overruns: AtomicU64,
     /// Requests the warm-up made (kept out of the counters above).
     pub warm_up_requests: AtomicU64,

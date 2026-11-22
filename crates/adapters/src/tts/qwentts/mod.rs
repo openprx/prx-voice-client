@@ -31,7 +31,7 @@ mod test_engine;
 mod tests;
 
 pub use adapter::{LoadError, PROVIDER_ID, QwenTts, QwenTtsConfig, TtsStats};
-pub use cap::RunawayRetry;
+pub use cap::{HoldLimit, RunawayRetry};
 pub use model_hash::hash_model_files;
 pub use seam::{CallControl, CallEnd, EngineError, SynthCall, SynthEngine};
 pub use voice::{CacheKey, VoiceCache, load_reference_wav};

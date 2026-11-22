@@ -8,6 +8,7 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 
 use prxvc_adapters::mt::{PromptTemplate, Timeouts};
+use prxvc_adapters::tts::qwentts::HoldLimit;
 use prxvc_media::Lang;
 use prxvc_models::{ModelId, ReadyModel};
 use prxvc_ports::{ProviderId, VoiceSelection};
@@ -227,6 +228,8 @@ pub struct TtsSpec {
     pub fingerprint: String,
     /// The voice.
     pub voice: VoicePlan,
+    /// Which clauses are held back for the runaway guard (`pipeline.tts_hold_max_*`).
+    pub hold: HoldLimit,
 }
 
 #[cfg(test)]

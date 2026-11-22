@@ -239,6 +239,7 @@ impl Resolver<'_> {
                 files,
                 fingerprint,
                 voice,
+                hold: crate::tts_loader::hold_limit(&self.cfg.pipeline),
             }),
             _ => Err(problems),
         }

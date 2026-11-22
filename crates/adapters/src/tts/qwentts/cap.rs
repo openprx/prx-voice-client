@@ -77,7 +77,73 @@ pub enum RunawayRetry {
     ShortOnce,
 }
 
+/// Which clauses [`RunawayRetry::ShortOnce`] holds back, by their length in speakable units
+/// ([`speakable_units`]): words for English, characters for Chinese.
+///
+/// A clause with at most the limit of its language is held and retried on a runaway; a longer one
+/// streams from its first chunk. A limit of 0 keeps the earlier rule for that language: hold every
+/// clause whose cap is at most [`HOLD_CAP_FRAMES`] (up to about nine words or ten characters). A
+/// clause whose cap is above [`HOLD_CAP_FRAMES`] is never held, whatever the limit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HoldLimit {
+    /// Most words of an English clause that is still held back (0: the cap rule).
+    pub max_words: u32,
+    /// Most characters of a Chinese clause that is still held back (0: the cap rule).
+    pub max_chars: u32,
+}
+
+impl HoldLimit {
+    /// The earlier rule: hold by the cap alone.
+    pub const LEGACY: Self = Self {
+        max_words: 0,
+        max_chars: 0,
+    };
+    /// The largest limit that is honoured; a larger value is lowered to it.
+    pub const MAX_UNITS: u32 = 20;
+
+    /// Limits as configured, lowered to [`Self::MAX_UNITS`].
+    pub fn clamped(max_words: u32, max_chars: u32) -> Self {
+        Self {
+            max_words: max_words.min(Self::MAX_UNITS),
+            max_chars: max_chars.min(Self::MAX_UNITS),
+        }
+    }
+
+    /// Whether a clause of `text` with the cap `cap_frames` is held back.
+    pub fn holds(self, text: &str, lang: Lang, cap_frames: u32) -> bool {
+        if cap_frames > HOLD_CAP_FRAMES {
+            return false;
+        }
+        let limit = match lang {
+            Lang::En => self.max_words,
+            Lang::Zh => self.max_chars,
+        };
+        limit == 0 || speakable_units(text, lang) <= limit as usize
+    }
+}
+
+impl Default for HoldLimit {
+    fn default() -> Self {
+        Self::LEGACY
+    }
+}
+
 impl RunawayRetry {
+    /// Extra attempts after a runaway of a clause `text` whose cap is `cap_frames`, with the hold
+    /// rule `hold` (only [`Self::ShortOnce`] looks at it).
+    pub fn extra_attempts_for(
+        self,
+        hold: HoldLimit,
+        text: &str,
+        lang: Lang,
+        cap_frames: u32,
+    ) -> u32 {
+        match self {
+            Self::ShortOnce if !hold.holds(text, lang, cap_frames) => 0,
+            other => other.extra_attempts(cap_frames),
+        }
+    }
+
     /// Number of extra attempts after a runaway of a call whose cap is `cap_frames`.
     pub const fn extra_attempts(self, cap_frames: u32) -> u32 {
         match self {
@@ -311,5 +377,35 @@ mod tests {
         assert_eq!(attempt_cap_frames(mid, 2, 1), mid, "Once never doubles");
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 2);
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(long), 0);
+    }
+
+    #[test]
+    fn the_hold_limit_holds_by_units_and_the_legacy_value_by_the_cap() {
+        let hold = HoldLimit::clamped(3, 4);
+        let held = |t, l| RunawayRetry::ShortOnce.extra_attempts_for(hold, t, l, cap_frames(t, l));
+        assert_eq!(held("see you later", Lang::En), 2, "three words are held");
+        assert_eq!(held("we should go there", Lang::En), 0, "four words stream");
+        assert_eq!(held("\u{4f60}\u{597d}\u{5417}\u{ff1f}", Lang::Zh), 2, "four characters");
+        assert_eq!(held("\u{6211}\u{4eec}\u{53bb}\u{4e86}\u{5427}", Lang::Zh), 0, "five characters");
+        // The legacy value is the cap rule: up to nine words are held, ten are not.
+        let legacy = |t, l| {
+            RunawayRetry::ShortOnce.extra_attempts_for(HoldLimit::LEGACY, t, l, cap_frames(t, l))
+        };
+        assert_eq!(legacy("we should go there", Lang::En), 2);
+        assert_eq!(legacy("we should meet at the office tomorrow", Lang::En), 2);
+        let long = "we should meet at the office tomorrow morning and then go home to eat";
+        assert_eq!(legacy(long, Lang::En), 0);
+        // A limit never holds a clause whose cap is past the hold limit.
+        assert!(!HoldLimit::clamped(20, 20).holds(long, Lang::En, HOLD_CAP_FRAMES + 1));
+        // Other policies ignore the limit.
+        assert_eq!(RunawayRetry::Off.extra_attempts_for(hold, "hi", Lang::En, 29), 0);
+        assert_eq!(RunawayRetry::Once.extra_attempts_for(hold, "see you later and go", Lang::En, 50), 1);
+    }
+
+    #[test]
+    fn the_hold_limit_is_clamped() {
+        assert_eq!(HoldLimit::clamped(999, 999), HoldLimit { max_words: 20, max_chars: 20 });
+        assert_eq!(HoldLimit::clamped(0, 0), HoldLimit::LEGACY);
+        assert_eq!(HoldLimit::default(), HoldLimit::LEGACY);
     }
 }
