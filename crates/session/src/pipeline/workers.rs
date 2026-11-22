@@ -10,6 +10,7 @@ use prxvc_media::{AudioFrame, Clock};
 use prxvc_ports::{AsrContext, AudioSource, CancellationToken, StreamingAsr, VadProvider};
 
 use super::core::{Core, Gate};
+use super::draft::DraftQueues;
 use super::faults::{asr_failure, vad_failure};
 use super::input::AudioInput;
 use super::messages::{Inbound, StageFailure, WorkerEvent};
@@ -126,6 +127,9 @@ pub(crate) struct RecognizerThread {
     pub(crate) outbox: Outbox,
     pub(crate) audio_in: Arc<BoundedQueue<AudioFrame>>,
     pub(crate) gate: Arc<Gate>,
+    /// The queues of the draft worker, when re-translation is on.
+    #[allow(dead_code, reason = "read by the recognition glue of the next task")]
+    pub(crate) draft: Option<DraftQueues>,
 }
 
 /// What the loop keeps between frames.

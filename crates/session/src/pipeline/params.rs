@@ -42,6 +42,10 @@ pub struct QueueCaps {
     pub hold: Duration,
     /// Q7, events to the caller: items.
     pub events_out: usize,
+    /// Q8, draft jobs of re-translation waiting for the draft worker: items.
+    pub draft_in: usize,
+    /// Q9, draft replies waiting for the recognition thread: items.
+    pub draft_out: usize,
 }
 
 impl Default for QueueCaps {
@@ -55,6 +59,8 @@ impl Default for QueueCaps {
             tts_in: 8,
             hold: Duration::from_secs(20),
             events_out: 256,
+            draft_in: 1,
+            draft_out: 4,
         }
     }
 }
