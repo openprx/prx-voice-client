@@ -616,9 +616,13 @@ impl RecognitionStage {
                 Stats::add(&self.stats.filler_dropped, 1);
                 self.tracer
                     .mark_text(open.clause(), TraceStage::FillerDropped, || tail.trim().to_owned());
+                open.last_commit_ts = end.max(open.last_commit_ts);
                 return Ok(());
             }
             open.carry = text;
+            // The round is over and its text waits: the length and pause clocks restart here, or
+            // the same carry would be cut again, and the recogniser finalised again, on every frame.
+            open.last_commit_ts = end.max(open.last_commit_ts);
             return Ok(());
         }
         self.emit_commit(text, end, refinable, reason, out);
