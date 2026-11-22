@@ -12,7 +12,12 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use prxvc_desktop_ui::{CallPanel, CallPhase, DesktopUiState};
 use prxvc_i18n::Locale;
 
-const SIZES: [(f32, f32); 4] = [(320.0, 360.0), (380.0, 480.0), (430.0, 630.0), (760.0, 900.0)];
+const SIZES: [(f32, f32); 4] = [
+    (320.0, 360.0),
+    (380.0, 480.0),
+    (430.0, 630.0),
+    (760.0, 900.0),
+];
 const CAPTION_SIZES: [&str; 3] = ["small", "medium", "large"];
 
 /// How a scenario gets to its state.
@@ -49,7 +54,10 @@ const SCENARIOS: [Scenario; 10] = [
 ];
 
 fn finished_call() -> CallPanel {
-    CallPanel { phase: CallPhase::Idle, ..call_fixtures::live_panel() }
+    CallPanel {
+        phase: CallPhase::Idle,
+        ..call_fixtures::live_panel()
+    }
 }
 
 /// The state with the panel the scenario shows; a finished call keeps its captions.
@@ -84,7 +92,10 @@ fn state_for_panel(scenario: Scenario, caption_size: &str) -> DesktopUiState {
         }
         Scenario::Translating | Scenario::TranslatingDetailsOpen => call_fixtures::live_panel(),
         Scenario::Drained => call_fixtures::drained_panel(),
-        Scenario::Finishing => CallPanel { finishing_s: Some(4), ..call_fixtures::live_panel() },
+        Scenario::Finishing => CallPanel {
+            finishing_s: Some(4),
+            ..call_fixtures::live_panel()
+        },
         Scenario::Degraded => call_fixtures::degraded_panel(),
         Scenario::Blocked => call_fixtures::blocked_panel(),
     };
@@ -93,7 +104,12 @@ fn state_for_panel(scenario: Scenario, caption_size: &str) -> DesktopUiState {
     st
 }
 
-fn harness(st: DesktopUiState, width: f32, height: f32, scheme: Theme) -> egui_kittest::Harness<'static, DesktopUiState> {
+fn harness(
+    st: DesktopUiState,
+    width: f32,
+    height: f32,
+    scheme: Theme,
+) -> egui_kittest::Harness<'static, DesktopUiState> {
     let mut h = common::builder(vec2(width, height), scheme).build_ui_state(
         |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_call_window(ui, st),
         st,
@@ -103,8 +119,18 @@ fn harness(st: DesktopUiState, width: f32, height: f32, scheme: Theme) -> egui_k
 }
 
 /// Run the scenario to its state at the given size.
-fn reach(scenario: Scenario, caption_size: &str, width: f32, height: f32) -> egui_kittest::Harness<'static, DesktopUiState> {
-    let mut h = harness(state_for(scenario, caption_size), width, height, Theme::Light);
+fn reach(
+    scenario: Scenario,
+    caption_size: &str,
+    width: f32,
+    height: f32,
+) -> egui_kittest::Harness<'static, DesktopUiState> {
+    let mut h = harness(
+        state_for(scenario, caption_size),
+        width,
+        height,
+        Theme::Light,
+    );
     h.run_steps(4);
     match scenario {
         Scenario::DetailsOpen => {
@@ -149,7 +175,12 @@ fn no_widget_overlaps_another_or_leaves_the_window_in_any_state_size_language_or
         }
     }
     prxvc_i18n::set_locale(Locale::En);
-    assert!(failures.is_empty(), "{} failing case(s)\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failing case(s)\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
@@ -160,13 +191,22 @@ fn the_reported_state_has_the_widgets_of_the_details_in_the_window() {
     // The two language selects are there, below the controls and each on its own row.
     let bounds = |role, key: &str| {
         let label = prxvc_i18n::t(key);
-        h.get_by_role_and_label(role, &label).accesskit_node().raw_bounds().unwrap()
+        h.get_by_role_and_label(role, &label)
+            .accesskit_node()
+            .raw_bounds()
+            .unwrap()
     };
     let a = bounds(Role::ComboBox, "callwin.own_language");
     let b = bounds(Role::ComboBox, "callwin.peer_language");
-    assert!(a.y1 <= b.y0 || b.y1 <= a.y0, "selects share a row: {a:?} {b:?}");
+    assert!(
+        a.y1 <= b.y0 || b.y1 <= a.y0,
+        "selects share a row: {a:?} {b:?}"
+    );
     let start = bounds(Role::Button, "callwin.start");
-    assert!(start.y1 <= a.y0.min(b.y0), "the controls are above the selects");
+    assert!(
+        start.y1 <= a.y0.min(b.y0),
+        "the controls are above the selects"
+    );
     prxvc_i18n::set_locale(Locale::En);
 }
 
@@ -175,7 +215,9 @@ fn the_state_is_said_once() {
     let _guard = common::lock_locale();
     prxvc_i18n::set_locale(Locale::ZhCn);
     let h = reach(Scenario::IdleAfterCall, "medium", 430.0, 630.0);
-    let n = h.query_all_by_label_contains(&prxvc_i18n::t("callwin.chip.idle")).count();
+    let n = h
+        .query_all_by_label_contains(&prxvc_i18n::t("callwin.chip.idle"))
+        .count();
     assert_eq!(n, 1, "the idle state is said {n} times");
     prxvc_i18n::set_locale(Locale::En);
 }
@@ -187,7 +229,10 @@ fn the_translate_switch_shows_its_real_state_while_a_call_runs() {
     let h = reach(Scenario::Translating, "medium", 430.0, 630.0);
     let switch = h.get_by_role_and_label(Role::Switch, "Translate");
     let on = format!("{:?}", switch.accesskit_node().toggled());
-    assert!(on.contains("True"), "the switch of a translating call is on: {on}");
+    assert!(
+        on.contains("True"),
+        "the switch of a translating call is on: {on}"
+    );
     prxvc_i18n::set_locale(Locale::En);
 }
 
@@ -199,17 +244,33 @@ fn the_guard_reports_an_overlap_and_a_widget_outside_the_window() {
         let tk = prxvc_desktop_ui::theme::tokens_for(ui.ctx());
         let rect = Rect::from_min_size(egui::pos2(10.0, 10.0), vec2(80.0, 24.0));
         for (i, name) in ["One", "Two"].into_iter().enumerate() {
-            ui.put(rect.translate(vec2(10.0 * i as f32, 0.0)), |ui: &mut egui::Ui| {
-                prxvc_desktop_ui::widgets::button(ui, &tk, prxvc_desktop_ui::widgets::ButtonKind::Secondary, name)
-            });
+            ui.put(
+                rect.translate(vec2(10.0 * i as f32, 0.0)),
+                |ui: &mut egui::Ui| {
+                    prxvc_desktop_ui::widgets::button(
+                        ui,
+                        &tk,
+                        prxvc_desktop_ui::widgets::ButtonKind::Secondary,
+                        name,
+                    )
+                },
+            );
         }
         let far = Rect::from_min_size(egui::pos2(150.0, 60.0), vec2(80.0, 24.0));
         ui.put(far, |ui: &mut egui::Ui| {
-            prxvc_desktop_ui::widgets::button(ui, &tk, prxvc_desktop_ui::widgets::ButtonKind::Secondary, "Far")
+            prxvc_desktop_ui::widgets::button(
+                ui,
+                &tk,
+                prxvc_desktop_ui::widgets::ButtonKind::Secondary,
+                "Far",
+            )
         });
     });
     h.run();
-    let found = layout_guard::problems(&h, Rect::from_min_size(egui::Pos2::ZERO, vec2(200.0, 100.0)));
+    let found = layout_guard::problems(
+        &h,
+        Rect::from_min_size(egui::Pos2::ZERO, vec2(200.0, 100.0)),
+    );
     assert!(found.iter().any(|f| f.starts_with("overlap")), "{found:?}");
     assert!(found.iter().any(|f| f.starts_with("outside")), "{found:?}");
 }

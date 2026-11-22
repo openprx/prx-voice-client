@@ -114,9 +114,10 @@ impl InterpretState {
     /// The direction of the in-progress turn, if any.
     pub fn direction(self) -> Option<Direction> {
         match self {
-            Self::Listening(d) | Self::Recognizing(d) | Self::Translating(d) | Self::Speaking(d) => {
-                Some(d)
-            }
+            Self::Listening(d)
+            | Self::Recognizing(d)
+            | Self::Translating(d)
+            | Self::Speaking(d) => Some(d),
             Self::Idle | Self::Paused | Self::Failed => None,
         }
     }
@@ -331,7 +332,10 @@ impl InterpretSession {
     /// # Errors
     /// [`InterpretError::InvalidCommand`] if the command is not valid in the
     /// current state. On error the state is left unchanged.
-    pub fn apply(&mut self, command: InterpretCommand) -> Result<Vec<InterpretEvent>, InterpretError> {
+    pub fn apply(
+        &mut self,
+        command: InterpretCommand,
+    ) -> Result<Vec<InterpretEvent>, InterpretError> {
         let from = self.state;
         let mut events = Vec::new();
 
@@ -346,7 +350,10 @@ impl InterpretSession {
                     translated_text: String::new(),
                 });
                 self.state = InterpretState::Listening(dir);
-                events.push(InterpretEvent::TurnStarted { turn, direction: dir });
+                events.push(InterpretEvent::TurnStarted {
+                    turn,
+                    direction: dir,
+                });
             }
 
             (InterpretState::Listening(dir), InterpretCommand::EndUtterance) => {
@@ -429,7 +436,13 @@ impl InterpretSession {
         }
 
         if self.state != from {
-            events.insert(0, InterpretEvent::StateChanged { from, to: self.state });
+            events.insert(
+                0,
+                InterpretEvent::StateChanged {
+                    from,
+                    to: self.state,
+                },
+            );
         }
         Ok(events)
     }
@@ -480,18 +493,43 @@ mod tests {
         let ev = run(&mut s, InterpretCommand::BeginTurn(Direction::SelfToPeer));
         assert_eq!(s.state(), InterpretState::Listening(Direction::SelfToPeer));
         assert!(matches!(ev[0], InterpretEvent::StateChanged { .. }));
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::TurnStarted { .. })));
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::TurnStarted { .. }))
+        );
 
         run(&mut s, InterpretCommand::EndUtterance);
-        assert_eq!(s.state(), InterpretState::Recognizing(Direction::SelfToPeer));
+        assert_eq!(
+            s.state(),
+            InterpretState::Recognizing(Direction::SelfToPeer)
+        );
 
-        let ev = run(&mut s, InterpretCommand::RecognitionDone { text: "hello".into() });
-        assert_eq!(s.state(), InterpretState::Translating(Direction::SelfToPeer));
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::Transcribed { .. })));
+        let ev = run(
+            &mut s,
+            InterpretCommand::RecognitionDone {
+                text: "hello".into(),
+            },
+        );
+        assert_eq!(
+            s.state(),
+            InterpretState::Translating(Direction::SelfToPeer)
+        );
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::Transcribed { .. }))
+        );
 
-        let ev = run(&mut s, InterpretCommand::TranslationDone { text: "Hello".into() });
+        let ev = run(
+            &mut s,
+            InterpretCommand::TranslationDone {
+                text: "Hello".into(),
+            },
+        );
         assert_eq!(s.state(), InterpretState::Speaking(Direction::SelfToPeer));
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::Translated { .. })));
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::Translated { .. }))
+        );
 
         let ev = run(&mut s, InterpretCommand::PlaybackDone);
         assert_eq!(s.state(), InterpretState::Idle);
@@ -500,8 +538,14 @@ mod tests {
         assert_eq!(rec.source_text, "hello");
         assert_eq!(rec.translated_text, "Hello");
         assert_eq!(rec.direction, Direction::SelfToPeer);
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::TurnCompleted { .. })));
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::FloorReleased)));
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::TurnCompleted { .. }))
+        );
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::FloorReleased))
+        );
     }
 
     #[test]
@@ -509,10 +553,16 @@ mod tests {
         let mut s = session();
         run(&mut s, InterpretCommand::BeginTurn(Direction::PeerToSelf));
         run(&mut s, InterpretCommand::EndUtterance);
-        let ev = run(&mut s, InterpretCommand::RecognitionDone { text: "   ".into() });
+        let ev = run(
+            &mut s,
+            InterpretCommand::RecognitionDone { text: "   ".into() },
+        );
         assert_eq!(s.state(), InterpretState::Idle);
         assert!(s.history().is_empty());
-        assert!(ev.iter().any(|e| matches!(e, InterpretEvent::FloorReleased)));
+        assert!(
+            ev.iter()
+                .any(|e| matches!(e, InterpretEvent::FloorReleased))
+        );
     }
 
     #[test]
@@ -521,8 +571,14 @@ mod tests {
         for dir in [Direction::SelfToPeer, Direction::PeerToSelf] {
             run(&mut s, InterpretCommand::BeginTurn(dir));
             run(&mut s, InterpretCommand::EndUtterance);
-            run(&mut s, InterpretCommand::RecognitionDone { text: "x".into() });
-            run(&mut s, InterpretCommand::TranslationDone { text: "y".into() });
+            run(
+                &mut s,
+                InterpretCommand::RecognitionDone { text: "x".into() },
+            );
+            run(
+                &mut s,
+                InterpretCommand::TranslationDone { text: "y".into() },
+            );
             run(&mut s, InterpretCommand::PlaybackDone);
         }
         assert_eq!(s.history().len(), 2);
@@ -558,7 +614,12 @@ mod tests {
     fn fail_then_reset() {
         let mut s = session();
         run(&mut s, InterpretCommand::BeginTurn(Direction::SelfToPeer));
-        run(&mut s, InterpretCommand::Fail { reason: "asr crashed".into() });
+        run(
+            &mut s,
+            InterpretCommand::Fail {
+                reason: "asr crashed".into(),
+            },
+        );
         assert_eq!(s.state(), InterpretState::Failed);
         run(&mut s, InterpretCommand::Reset);
         assert_eq!(s.state(), InterpretState::Idle);

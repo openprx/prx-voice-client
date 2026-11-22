@@ -33,7 +33,11 @@ pub struct StallWatchdog {
 impl StallWatchdog {
     /// Start watching at `now` with the counter at `count`.
     pub fn new(timeout: Duration, now: Instant, count: u64) -> Self {
-        Self { timeout, last_count: count, last_change: now }
+        Self {
+            timeout,
+            last_count: count,
+            last_change: now,
+        }
     }
 
     /// Restart the watch for a new tap (counter and clock).
@@ -50,7 +54,11 @@ impl StallWatchdog {
             return Verdict::Healthy;
         }
         let idle = now.saturating_duration_since(self.last_change);
-        if idle >= self.timeout { Verdict::Stalled { idle } } else { Verdict::Healthy }
+        if idle >= self.timeout {
+            Verdict::Stalled { idle }
+        } else {
+            Verdict::Healthy
+        }
     }
 }
 
@@ -95,7 +103,10 @@ pub struct TapPolicy {
 impl TapPolicy {
     /// A policy for a tap that is running.
     pub fn running() -> Self {
-        Self { phase: Phase::Running, gone_reported: false }
+        Self {
+            phase: Phase::Running,
+            gone_reported: false,
+        }
     }
 
     /// The current phase.
@@ -107,7 +118,10 @@ impl TapPolicy {
     pub fn step(&mut self, obs: Observation) -> Step {
         match self.phase {
             Phase::Running => self.step_running(obs),
-            Phase::Waiting => Step { create: obs.target_running, ..Step::default() },
+            Phase::Waiting => Step {
+                create: obs.target_running,
+                ..Step::default()
+            },
         }
     }
 
@@ -117,10 +131,17 @@ impl TapPolicy {
             self.gone_reported = true;
             if obs.native_restore {
                 // The tap saves the application by bundle ID and restores it.
-                return Step { emit, ..Step::default() };
+                return Step {
+                    emit,
+                    ..Step::default()
+                };
             }
             self.phase = Phase::Waiting;
-            return Step { emit, teardown: true, create: false };
+            return Step {
+                emit,
+                teardown: true,
+                create: false,
+            };
         }
         self.gone_reported = false;
         match obs.verdict {
@@ -128,7 +149,11 @@ impl TapPolicy {
             Verdict::Stalled { idle } => {
                 self.phase = Phase::Waiting;
                 let idle_ms = u64::try_from(idle.as_millis()).unwrap_or(u64::MAX);
-                Step { emit: Some(TapEvent::Stalled { idle_ms }), teardown: true, create: true }
+                Step {
+                    emit: Some(TapEvent::Stalled { idle_ms }),
+                    teardown: true,
+                    create: true,
+                }
             }
         }
     }
@@ -137,7 +162,11 @@ impl TapPolicy {
     /// one rebuild). Like a stall, creation is retried while it fails.
     pub fn rebuild(&mut self) -> Step {
         self.phase = Phase::Waiting;
-        Step { emit: None, teardown: true, create: true }
+        Step {
+            emit: None,
+            teardown: true,
+            create: true,
+        }
     }
 
     /// A native tap was created and started.
@@ -172,14 +201,20 @@ mod tests {
         let mut w = StallWatchdog::new(T, t0, 5);
         assert_eq!(w.observe(at(t0, 1_999), 5), Verdict::Healthy);
         assert_eq!(w.observe(at(t0, 2_000), 5), Verdict::Stalled { idle: T });
-        assert!(matches!(w.observe(at(t0, 9_000), 5), Verdict::Stalled { .. }));
+        assert!(matches!(
+            w.observe(at(t0, 9_000), 5),
+            Verdict::Stalled { .. }
+        ));
     }
 
     #[test]
     fn a_new_callback_clears_the_stall() {
         let t0 = Instant::now();
         let mut w = StallWatchdog::new(T, t0, 5);
-        assert!(matches!(w.observe(at(t0, 3_000), 5), Verdict::Stalled { .. }));
+        assert!(matches!(
+            w.observe(at(t0, 3_000), 5),
+            Verdict::Stalled { .. }
+        ));
         assert_eq!(w.observe(at(t0, 3_100), 6), Verdict::Healthy);
         assert_eq!(w.observe(at(t0, 4_000), 6), Verdict::Healthy);
     }
@@ -196,7 +231,11 @@ mod tests {
         Observation {
             target_running,
             native_restore,
-            verdict: if stalled { Verdict::Stalled { idle: T } } else { Verdict::Healthy },
+            verdict: if stalled {
+                Verdict::Stalled { idle: T }
+            } else {
+                Verdict::Healthy
+            },
         }
     }
 
@@ -247,7 +286,10 @@ mod tests {
         assert_eq!(p.step(obs(false, true, true)), Step::default());
         // The target returns: back to normal, and a later loss is reported again.
         assert_eq!(p.step(obs(true, true, false)), Step::default());
-        assert_eq!(p.step(obs(false, true, false)).emit, Some(TapEvent::TargetGone));
+        assert_eq!(
+            p.step(obs(false, true, false)).emit,
+            Some(TapEvent::TargetGone)
+        );
     }
 
     #[test]
@@ -262,7 +304,14 @@ mod tests {
     fn forced_rebuild_tears_down_and_creates_without_an_event() {
         let mut p = TapPolicy::running();
         let s = p.rebuild();
-        assert_eq!(s, Step { emit: None, teardown: true, create: true });
+        assert_eq!(
+            s,
+            Step {
+                emit: None,
+                teardown: true,
+                create: true
+            }
+        );
         assert_eq!(p.phase(), Phase::Waiting);
         // A failed creation is retried at the next poll while the target runs.
         assert!(p.step(obs(true, false, false)).create);

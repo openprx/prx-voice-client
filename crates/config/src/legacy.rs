@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::paths::{create_private_dir_all, project_dirs};
-use crate::{atomic, ConfigError};
+use crate::{ConfigError, atomic};
 
 /// File name of the session database inside the data directory.
 pub const DATABASE_FILE_NAME: &str = "sessions.db";
@@ -95,11 +95,7 @@ pub fn migrate_legacy_config_and_database(
         copy_group(
             legacy_data_dir,
             data_dir,
-            &[
-                DATABASE_FILE_NAME,
-                "sessions.db-wal",
-                "sessions.db-shm",
-            ],
+            &[DATABASE_FILE_NAME, "sessions.db-wal", "sessions.db-shm"],
             &mut report,
         );
     }
@@ -138,11 +134,18 @@ fn copy_group(from: &Path, to: &Path, names: &[&str], report: &mut MigrationRepo
         }
     }
     if let Err(e) = append_moved_note(from, to, &copied_here) {
-        tracing::warn!("could not write {MOVED_NOTE_NAME} in {}: {e}", from.display());
+        tracing::warn!(
+            "could not write {MOVED_NOTE_NAME} in {}: {e}",
+            from.display()
+        );
     }
 }
 
-fn append_moved_note(legacy_dir: &Path, new_dir: &Path, copied: &[(&str, PathBuf)]) -> io::Result<()> {
+fn append_moved_note(
+    legacy_dir: &Path,
+    new_dir: &Path,
+    copied: &[(&str, PathBuf)],
+) -> io::Result<()> {
     if copied.is_empty() {
         return Ok(());
     }
@@ -189,7 +192,9 @@ fn migrate_models_impl(legacy: &Path, dest: &Path, allow_rename: bool) -> Migrat
         .collect();
     files.sort();
     for src in files {
-        let Some(name) = src.file_name() else { continue };
+        let Some(name) = src.file_name() else {
+            continue;
+        };
         let dst = dest.join(name);
         if dst.exists() {
             report.kept_existing.push(src);
@@ -239,7 +244,11 @@ fn copy_verified(src: &Path, dst: &Path) -> io::Result<()> {
     let tmp = dst.with_file_name(tmp_name);
     let result = (|| {
         let mut input = File::open(src)?;
-        let mut output = OpenOptions::new().write(true).create(true).truncate(true).open(&tmp)?;
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)?;
         io::copy(&mut input, &mut output)?;
         output.sync_all()?;
         drop(output);
@@ -250,7 +259,10 @@ fn copy_verified(src: &Path, dst: &Path) -> io::Result<()> {
             )));
         }
         if dst.exists() {
-            return Err(io::Error::new(io::ErrorKind::AlreadyExists, "destination appeared"));
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "destination appeared",
+            ));
         }
         fs::rename(&tmp, dst)
     })();

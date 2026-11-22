@@ -71,11 +71,16 @@ pub(crate) fn probe_assistant(config: &AppConfig) -> AssistantData {
         .into_iter()
         .map(|c| {
             let mut one = config.clone();
-            one.providers.active.dialogue.insert(String::new(), c.id.clone());
+            one.providers
+                .active
+                .dialogue
+                .insert(String::new(), c.id.clone());
             registry.reload(&one);
             let problem = match registry.resolve_dialogue() {
                 Err(problems) => problems.first().map(problem_view),
-                Ok(resolved) => unreachable_problem(&resolved.primary.base_url, resolved.primary.locality),
+                Ok(resolved) => {
+                    unreachable_problem(&resolved.primary.base_url, resolved.primary.locality)
+                }
             };
             DialogueChoiceView {
                 id: c.id,
@@ -118,11 +123,19 @@ fn describe_assistant(
     let vad = take(registry.resolve_vad(), &mut problems, &mut warnings);
     let asr = take(registry.resolve_asr(lang), &mut problems, &mut warnings);
     let dialogue = take(registry.resolve_dialogue(), &mut problems, &mut warnings);
-    let tts = take(registry.resolve_tts(lang, choice), &mut problems, &mut warnings);
+    let tts = take(
+        registry.resolve_tts(lang, choice),
+        &mut problems,
+        &mut warnings,
+    );
     let (Some(vad), Some(asr), Some(dialogue), Some(tts)) = (vad, asr, dialogue, tts) else {
         return describe_problems(&problems);
     };
-    let mut views = vec![local_row(RoleKey::Vad, &vad.primary.id.to_string(), &runtime_name(&vad.primary.runtime))];
+    let mut views = vec![local_row(
+        RoleKey::Vad,
+        &vad.primary.id.to_string(),
+        &runtime_name(&vad.primary.runtime),
+    )];
     views.push(local_row(
         RoleKey::Asr(lang),
         asr.primary.id.as_str(),
@@ -132,13 +145,20 @@ fn describe_assistant(
         role: PipelineRole::Dialogue,
         key: String::new(),
         provider: dialogue.primary.display_name.clone(),
-        target: format!("{} \u{b7} {}", dialogue.primary.base_url, dialogue.primary.model),
+        target: format!(
+            "{} \u{b7} {}",
+            dialogue.primary.base_url, dialogue.primary.model
+        ),
         data: data_view(dialogue.primary.data_leaving()),
         locality: locality_view(dialogue.primary.locality),
         host: Some(dialogue.primary.host.clone()),
         fallback: dialogue.fallback.as_ref().map(|s| s.display_name.clone()),
     });
-    views.push(local_row(RoleKey::Tts(lang), &tts.primary.label, tts.primary.id.as_str()));
+    views.push(local_row(
+        RoleKey::Tts(lang),
+        &tts.primary.label,
+        tts.primary.id.as_str(),
+    ));
     let leaves = views
         .iter()
         .any(|r| r.data != DataLeavingView::Nothing && r.locality != LocalityView::ThisComputer);

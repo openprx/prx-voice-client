@@ -3,7 +3,10 @@
 use prxvc_desktop_ui::{HistoryEntry, SharedAppState};
 
 /// Populate the UI history list from persisted session records.
-pub(crate) fn load_history_from_storage(storage: &prxvc_storage::StorageManager, shared: &SharedAppState) {
+pub(crate) fn load_history_from_storage(
+    storage: &prxvc_storage::StorageManager,
+    shared: &SharedAppState,
+) {
     match storage.recent_sessions(20) {
         Ok(records) => {
             for record in &records {

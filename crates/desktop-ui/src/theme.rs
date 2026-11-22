@@ -19,9 +19,8 @@
 
 use crate::fonts;
 use egui::{
-    Color32, Context, CornerRadius, FontFamily, FontId, Margin, Stroke, TextStyle, Theme as EguiTheme,
-    ThemePreference,
-    epaint::Shadow,
+    Color32, Context, CornerRadius, FontFamily, FontId, Margin, Stroke, TextStyle,
+    Theme as EguiTheme, ThemePreference, epaint::Shadow,
 };
 
 // ---------------------------------------------------------------------------
@@ -435,11 +434,23 @@ pub fn style_for(tk: &Tokens, dark: bool) -> egui::Style {
 
     // Text styles: the closest egui text styles to the standard's scale.
     style.text_styles = [
-        (TextStyle::Small, FontId::new(size::META, FontFamily::Proportional)),
-        (TextStyle::Body, FontId::new(size::BODY, FontFamily::Proportional)),
+        (
+            TextStyle::Small,
+            FontId::new(size::META, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Body,
+            FontId::new(size::BODY, FontFamily::Proportional),
+        ),
         // Weight 500 for button labels, weight 600 for headings.
-        (TextStyle::Button, FontId::new(size::BUTTON, fonts::medium())),
-        (TextStyle::Heading, FontId::new(size::TITLE, fonts::semibold())),
+        (
+            TextStyle::Button,
+            FontId::new(size::BUTTON, fonts::medium()),
+        ),
+        (
+            TextStyle::Heading,
+            FontId::new(size::TITLE, fonts::semibold()),
+        ),
         (
             TextStyle::Monospace,
             FontId::new(size::SECONDARY, FontFamily::Monospace),
@@ -601,7 +612,17 @@ mod tests {
         // grounds must differ between schemes so the dark set is not a copy.
         for ((name, l), (_, d)) in LIGHT.entries().into_iter().zip(DARK.entries()) {
             assert!(!name.is_empty());
-            if ["bg", "nav", "rail", "text", "secondary", "primary", "surface"].contains(&name) {
+            if [
+                "bg",
+                "nav",
+                "rail",
+                "text",
+                "secondary",
+                "primary",
+                "surface",
+            ]
+            .contains(&name)
+            {
                 assert_ne!(l, d, "{name} must differ between schemes");
             }
         }
@@ -625,7 +646,10 @@ mod tests {
 
     #[test]
     fn spacing_scale_is_the_standards() {
-        assert_eq!(space::SCALE, [2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 32.0]);
+        assert_eq!(
+            space::SCALE,
+            [2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 20.0, 24.0, 32.0]
+        );
     }
 
     #[test]
@@ -717,7 +741,10 @@ mod tests {
         assert_eq!(light.visuals.extreme_bg_color, LIGHT.input);
         assert_eq!(light.visuals.selection.stroke.color, LIGHT.focus);
         assert_eq!(light.visuals.selection.stroke.width, border::FOCUS);
-        assert_eq!(light.visuals.widgets.inactive.corner_radius, CornerRadius::same(4));
+        assert_eq!(
+            light.visuals.widgets.inactive.corner_radius,
+            CornerRadius::same(4)
+        );
         assert_eq!(light.visuals.window_corner_radius, CornerRadius::same(12));
         assert_eq!(light.spacing.interact_size.y, layout::CONTROL_HEIGHT);
 
@@ -751,6 +778,9 @@ mod tests {
         // A different theme is applied.
         ensure_installed(&ctx, &crate::Theme::midnight());
         assert_eq!(ctx.options(|o| o.theme_preference), ThemePreference::Dark);
-        assert_eq!(ctx.global_style().visuals.window_fill, crate::Theme::midnight().tokens().overlay);
+        assert_eq!(
+            ctx.global_style().visuals.window_fill,
+            crate::Theme::midnight().tokens().overlay
+        );
     }
 }

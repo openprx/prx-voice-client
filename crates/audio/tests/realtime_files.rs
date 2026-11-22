@@ -216,7 +216,9 @@ fn tap_callback_lives_in_real_time_files() {
     let files = source_files();
     for name in TAP_RT_FILES {
         assert!(
-            files.iter().any(|p| p.file_name().is_some_and(|n| n == *name)),
+            files
+                .iter()
+                .any(|p| p.file_name().is_some_and(|n| n == *name)),
             "the process-tap real-time file {name} is missing"
         );
     }
@@ -232,7 +234,10 @@ fn tap_callback_lives_in_real_time_files() {
         .nth(2)
         .expect("the call of prxvc_tap_create after its declaration");
     assert!(
-        register.split(')').next().is_some_and(|args| args.contains("on_buffers")),
+        register
+            .split(')')
+            .next()
+            .is_some_and(|args| args.contains("on_buffers")),
         "prxvc_tap_create must be given `on_buffers` as its callback"
     );
     assert!(

@@ -4,9 +4,9 @@
 //! with a global locale store, fallback logic, and parameter substitution.
 
 mod assistant_strings;
-mod call_strings;
 mod call_captions_strings;
 mod call_finish_strings;
+mod call_strings;
 mod call_window_strings;
 mod settings_permission_strings;
 mod settings_pipeline_strings;
@@ -284,10 +284,16 @@ fn build_en_translations() -> HashMap<String, String> {
             "session.hint.idle",
             "Click the orb or press Ctrl+Shift+Space",
         ),
-        ("session.hint.starting", "Loading the model server, recognition and voice"),
+        (
+            "session.hint.starting",
+            "Loading the model server, recognition and voice",
+        ),
         ("session.hint.listening", "Speak naturally"),
         ("session.hint.speaking", "Click to interrupt"),
-        ("session.hint.mic_paused", "Mic paused while I speak, click to interrupt"),
+        (
+            "session.hint.mic_paused",
+            "Mic paused while I speak, click to interrupt",
+        ),
         // Transcript
         ("transcript.you", "YOU"),
         ("transcript.ai", "AI"),
@@ -527,8 +533,14 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
             "session.hint.idle",
             "\u{70b9}\u{51fb}\u{58f0}\u{7eb9}\u{7403}\u{6216}\u{6309} Ctrl+Shift+Space",
         ),
-        ("session.hint.starting", "\u{6b63}\u{5728}\u{52a0}\u{8f7d}\u{6a21}\u{578b}\u{670d}\u{52a1}\u{3001}\u{8bc6}\u{522b}\u{548c}\u{58f0}\u{97f3}"),
-        ("session.hint.listening", "\u{81ea}\u{7136}\u{5730}\u{8bf4}\u{8bdd}"),
+        (
+            "session.hint.starting",
+            "\u{6b63}\u{5728}\u{52a0}\u{8f7d}\u{6a21}\u{578b}\u{670d}\u{52a1}\u{3001}\u{8bc6}\u{522b}\u{548c}\u{58f0}\u{97f3}",
+        ),
+        (
+            "session.hint.listening",
+            "\u{81ea}\u{7136}\u{5730}\u{8bf4}\u{8bdd}",
+        ),
         ("session.hint.speaking", "\u{70b9}\u{51fb}\u{6253}\u{65ad}"),
         (
             "session.hint.mic_paused",
@@ -550,13 +562,28 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
             "\u{7a97}\u{53e3}\u{7684}\u{914d}\u{8272}\u{4e3b}\u{9898}\u{3002}RF \u{4e3b}\u{9898}\u{8ddf}\u{968f}\u{7cfb}\u{7edf}\u{7684}\u{6d45}\u{8272}\u{6216}\u{6df1}\u{8272}\u{8bbe}\u{7f6e}\u{3002}",
         ),
         ("settings.theme.rf", "RF\u{ff08}\u{9ed8}\u{8ba4}\u{ff09}"),
-        ("settings.language.desc", "\u{754c}\u{9762}\u{4f7f}\u{7528}\u{7684}\u{8bed}\u{8a00}\u{3002}"),
+        (
+            "settings.language.desc",
+            "\u{754c}\u{9762}\u{4f7f}\u{7528}\u{7684}\u{8bed}\u{8a00}\u{3002}",
+        ),
         ("settings.language.en", "English"),
         ("settings.language.zh", "\u{4e2d}\u{6587}"),
-        ("settings.auto_play.desc", "\u{81ea}\u{52a8}\u{64ad}\u{653e}\u{52a9}\u{624b}\u{7684}\u{8bed}\u{97f3}\u{56de}\u{590d}\u{3002}"),
-        ("settings.save_history.desc", "\u{5c06}\u{5df2}\u{7ed3}\u{675f}\u{7684}\u{4f1a}\u{8bdd}\u{4fdd}\u{5b58}\u{5728}\u{672c}\u{8bbe}\u{5907}\u{4e0a}\u{3002}"),
-        ("settings.show_transcript.desc", "\u{5728}\u{5149}\u{7403}\u{4e0b}\u{65b9}\u{663e}\u{793a}\u{5b9e}\u{65f6}\u{6587}\u{5b57}\u{8bb0}\u{5f55}\u{3002}"),
-        ("settings.hotkey.desc", "\u{4f7f}\u{7528} Ctrl+Shift+Space \u{5f00}\u{59cb}\u{6216}\u{7ed3}\u{675f}\u{4f1a}\u{8bdd}\u{3002}"),
+        (
+            "settings.auto_play.desc",
+            "\u{81ea}\u{52a8}\u{64ad}\u{653e}\u{52a9}\u{624b}\u{7684}\u{8bed}\u{97f3}\u{56de}\u{590d}\u{3002}",
+        ),
+        (
+            "settings.save_history.desc",
+            "\u{5c06}\u{5df2}\u{7ed3}\u{675f}\u{7684}\u{4f1a}\u{8bdd}\u{4fdd}\u{5b58}\u{5728}\u{672c}\u{8bbe}\u{5907}\u{4e0a}\u{3002}",
+        ),
+        (
+            "settings.show_transcript.desc",
+            "\u{5728}\u{5149}\u{7403}\u{4e0b}\u{65b9}\u{663e}\u{793a}\u{5b9e}\u{65f6}\u{6587}\u{5b57}\u{8bb0}\u{5f55}\u{3002}",
+        ),
+        (
+            "settings.hotkey.desc",
+            "\u{4f7f}\u{7528} Ctrl+Shift+Space \u{5f00}\u{59cb}\u{6216}\u{7ed3}\u{675f}\u{4f1a}\u{8bdd}\u{3002}",
+        ),
         ("app.version_label", "\u{7248}\u{672c}"),
         ("app.license_label", "\u{8bb8}\u{53ef}\u{8bc1}"),
         // Status
@@ -566,10 +593,22 @@ fn build_zh_cn_translations() -> HashMap<String, String> {
         ("status.reconnecting", "\u{91cd}\u{8fde}\u{4e2d}"),
         ("status.failed", "\u{5931}\u{8d25}"),
         // Debug sections
-        ("debug.state_machine_label", "\u{72b6}\u{6001}\u{673a}\u{ff1a}"),
-        ("debug.pending_commands_label", "\u{5f85}\u{5904}\u{7406}\u{547d}\u{4ee4}\u{ff1a}"),
-        ("debug.recent_events", "\u{6700}\u{8fd1}\u{4e8b}\u{4ef6}\u{ff1a}"),
-        ("debug.no_events_recorded", "\u{6682}\u{65e0}\u{4e8b}\u{4ef6}\u{8bb0}\u{5f55}"),
+        (
+            "debug.state_machine_label",
+            "\u{72b6}\u{6001}\u{673a}\u{ff1a}",
+        ),
+        (
+            "debug.pending_commands_label",
+            "\u{5f85}\u{5904}\u{7406}\u{547d}\u{4ee4}\u{ff1a}",
+        ),
+        (
+            "debug.recent_events",
+            "\u{6700}\u{8fd1}\u{4e8b}\u{4ef6}\u{ff1a}",
+        ),
+        (
+            "debug.no_events_recorded",
+            "\u{6682}\u{65e0}\u{4e8b}\u{4ef6}\u{8bb0}\u{5f55}",
+        ),
         ("debug.no_events_short", "\u{6682}\u{65e0}\u{4e8b}\u{4ef6}"),
     ];
     pairs

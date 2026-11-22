@@ -279,7 +279,10 @@ impl MonoResampler {
                 Some(r) => r.input_frames_next(),
                 None => break,
             };
-            let mut chunk: Vec<f32> = self.pending.drain(..needed.min(self.pending.len())).collect();
+            let mut chunk: Vec<f32> = self
+                .pending
+                .drain(..needed.min(self.pending.len()))
+                .collect();
             chunk.resize(needed, 0.0);
             self.stream_process(chunk, &mut out)?;
         }
@@ -467,14 +470,19 @@ mod tests {
         // Feed ~4 resampler chunks worth of 48k mono-as-stereo silence-ish ramp.
         let mut produced = 0usize;
         for _ in 0..8 {
-            let block: Vec<(f32, f32)> = (0..1024).map(|i| (i as f32 / 1024.0, i as f32 / 1024.0)).collect();
+            let block: Vec<(f32, f32)> = (0..1024)
+                .map(|i| (i as f32 / 1024.0, i as f32 / 1024.0))
+                .collect();
             let frame = stereo_frame(&block, 48_000);
             produced += conv.push_frame(&frame).unwrap().len();
         }
         // 8*1024 input @48k -> ~ (8*1024)/3 output @16k; allow generous slack for
         // sinc warm-up / internal buffering.
         let expected = (8 * 1024) / 3;
-        assert!(produced > expected / 2, "produced {produced}, expected ~{expected}");
+        assert!(
+            produced > expected / 2,
+            "produced {produced}, expected ~{expected}"
+        );
     }
 
     fn sine(rate: u32, hz: f32, seconds: f32) -> Vec<f32> {
@@ -490,7 +498,12 @@ mod tests {
 
     #[test]
     fn convert_block_yields_exact_length() {
-        for (src, dst) in [(16_000, 48_000), (24_000, 48_000), (22_050, 48_000), (48_000, 16_000)] {
+        for (src, dst) in [
+            (16_000, 48_000),
+            (24_000, 48_000),
+            (22_050, 48_000),
+            (48_000, 16_000),
+        ] {
             let mut r = MonoResampler::new(src, dst).unwrap();
             let out = r.convert_block(&sine(src, 440.0, 1.0)).unwrap();
             assert_eq!(out.len(), dst as usize, "{src} -> {dst}");
@@ -517,7 +530,9 @@ mod tests {
         let mut r = MonoResampler::new(16_000, 48_000).unwrap();
         let out = r.convert_block(&sine(16_000, 440.0, 0.2)).unwrap();
         let tail = &out[out.len() - 60..];
-        let max_step = tail.windows(2).fold(0.0f32, |m, w| m.max((w[1] - w[0]).abs()));
+        let max_step = tail
+            .windows(2)
+            .fold(0.0f32, |m, w| m.max((w[1] - w[0]).abs()));
         // A 440 Hz wave of amplitude 0.5 at 48 kHz moves at most ~0.03 per sample.
         assert!(max_step < 0.05, "edge step {max_step}");
     }
@@ -537,7 +552,10 @@ mod tests {
     fn peak_position(x: &[f32]) -> usize {
         x.iter()
             .enumerate()
-            .fold((0, 0.0f32), |a, (i, v)| if v.abs() > a.1 { (i, v.abs()) } else { a })
+            .fold(
+                (0, 0.0f32),
+                |a, (i, v)| if v.abs() > a.1 { (i, v.abs()) } else { a },
+            )
             .0
     }
 
@@ -545,7 +563,12 @@ mod tests {
     fn stream_keeps_the_time_alignment() {
         // An impulse at input sample 4000 must land at 4000 * target / source,
         // for streams (any chunking) and for blocks, up and down.
-        for (src, dst) in [(16_000u32, 48_000u32), (24_000, 48_000), (44_100, 48_000), (48_000, 16_000)] {
+        for (src, dst) in [
+            (16_000u32, 48_000u32),
+            (24_000, 48_000),
+            (44_100, 48_000),
+            (48_000, 16_000),
+        ] {
             let mut input = vec![0.0f32; 16_000];
             input[4_000] = 1.0;
             let want = (4_000.0 * dst as f64 / src as f64).round() as usize;
@@ -557,11 +580,20 @@ mod tests {
             }
             out.extend(streamed.stream_finish().unwrap());
             let at = peak_position(&out);
-            assert!(at.abs_diff(want) <= 1, "{src}->{dst} stream: peak at {at}, want {want}");
+            assert!(
+                at.abs_diff(want) <= 1,
+                "{src}->{dst} stream: peak at {at}, want {want}"
+            );
 
-            let block = MonoResampler::new(src, dst).unwrap().convert_block(&input).unwrap();
+            let block = MonoResampler::new(src, dst)
+                .unwrap()
+                .convert_block(&input)
+                .unwrap();
             let at = peak_position(&block);
-            assert!(at.abs_diff(want) <= 1, "{src}->{dst} block: peak at {at}, want {want}");
+            assert!(
+                at.abs_diff(want) <= 1,
+                "{src}->{dst} block: peak at {at}, want {want}"
+            );
         }
     }
 
@@ -592,8 +624,15 @@ mod tests {
             let chunked = stream_convert(&mut chunk_r, &x, &IRREGULAR);
 
             let expected = (x.len() as f64 * dst as f64 / src as f64).round() as usize;
-            assert!(whole.len().abs_diff(expected) <= 1, "{src}: whole {}", whole.len());
-            assert!(chunked.len().abs_diff(whole.len()) <= 1, "{src}: len differs");
+            assert!(
+                whole.len().abs_diff(expected) <= 1,
+                "{src}: whole {}",
+                whole.len()
+            );
+            assert!(
+                chunked.len().abs_diff(whole.len()) <= 1,
+                "{src}: len differs"
+            );
 
             let n = whole.len().min(chunked.len());
             let edge = 600;
@@ -611,7 +650,10 @@ mod tests {
                 .windows(2)
                 .map(|w| (w[1] - w[0]).abs())
                 .fold(0.0f32, f32::max);
-            assert!(max_step <= max_step_allowed, "{src}: jump {max_step} > {max_step_allowed}");
+            assert!(
+                max_step <= max_step_allowed,
+                "{src}: jump {max_step} > {max_step_allowed}"
+            );
         }
         eprintln!("worst chunked-vs-whole diff {worst:e}");
     }
@@ -624,7 +666,11 @@ mod tests {
                 let mut r = MonoResampler::new(src, dst).unwrap();
                 let out = stream_convert(&mut r, &x, &IRREGULAR);
                 let expected = (x.len() as f64 * dst as f64 / src as f64).round() as usize;
-                assert!(out.len().abs_diff(expected) <= 1, "{src} total {total}: {} vs {expected}", out.len());
+                assert!(
+                    out.len().abs_diff(expected) <= 1,
+                    "{src} total {total}: {} vs {expected}",
+                    out.len()
+                );
             }
         }
     }

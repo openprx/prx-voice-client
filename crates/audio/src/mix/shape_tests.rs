@@ -57,14 +57,20 @@ fn the_silence_at_both_ends_of_a_clause_is_cut_to_what_is_kept() {
     let q = queued_ms(&m);
     assert!((q - (60.0 + 300.0 + 120.0)).abs() < 12.0, "{q} ms queued");
     let s = m.stats().translated;
-    assert_eq!(s.enqueued_total, s.queued_samples as u64, "the counters follow the trim");
+    assert_eq!(
+        s.enqueued_total, s.queued_samples as u64,
+        "the counters follow the trim"
+    );
     assert!(s.trimmed_silence_samples as f64 / 48.0 > 700.0);
 }
 
 #[test]
 fn a_backlog_cuts_the_pauses_to_a_third() {
     let mut m = mixer();
-    m.set_translated_pace(Pace { speed: 1.0, tight: true });
+    m.set_translated_pace(Pace {
+        speed: 1.0,
+        tight: true,
+    });
     queue(&mut m, &clause(400, 300, 500));
     let q = queued_ms(&m);
     assert!((q - (20.0 + 300.0 + 40.0)).abs() < 12.0, "{q} ms queued");
@@ -86,7 +92,10 @@ fn a_speed_above_one_shortens_the_clause_and_keeps_every_sample_accounted_for() 
     let mut normal = mixer();
     queue(&mut normal, &blocks);
     let mut fast = mixer();
-    fast.set_translated_pace(Pace { speed: 1.25, tight: false });
+    fast.set_translated_pace(Pace {
+        speed: 1.25,
+        tight: false,
+    });
     queue(&mut fast, &blocks);
     let (n, f) = (queued_ms(&normal), queued_ms(&fast));
     assert!((f - n / 1.25).abs() < 40.0, "normal {n} ms, fast {f} ms");
@@ -107,7 +116,10 @@ fn the_speed_never_exceeds_what_the_mixer_allows() {
         adaptive_preroll: false,
         ..MixerConfig::default()
     });
-    m.set_translated_pace(Pace { speed: 1.9, tight: false });
+    m.set_translated_pace(Pace {
+        speed: 1.9,
+        tight: false,
+    });
     queue(&mut m, &blocks);
     assert!(queued_ms(&m) > 2_000.0 / 1.1 - 40.0);
 }
@@ -115,7 +127,10 @@ fn the_speed_never_exceeds_what_the_mixer_allows() {
 #[test]
 fn the_next_clause_starts_clean_after_a_sped_up_one() {
     let mut m = mixer();
-    m.set_translated_pace(Pace { speed: 1.25, tight: false });
+    m.set_translated_pace(Pace {
+        speed: 1.25,
+        tight: false,
+    });
     queue(&mut m, &clause(300, 500, 300));
     let mut out = vec![0.0; ms(800)];
     m.render(&mut out);
@@ -133,7 +148,11 @@ fn without_trimming_a_clause_is_queued_whole() {
         ..MixerConfig::default()
     });
     queue(&mut m, &clause(400, 300, 500));
-    assert!((queued_ms(&m) - 1_200.0).abs() < 3.0, "{} ms", queued_ms(&m));
+    assert!(
+        (queued_ms(&m) - 1_200.0).abs() < 3.0,
+        "{} ms",
+        queued_ms(&m)
+    );
 }
 
 /// A clause delivered live by a producer `rate` times as fast as real time, in 10 ms ticks.
@@ -158,7 +177,11 @@ fn a_clause_that_streams_in_live_is_not_starved_by_the_speed_up_or_the_trim() {
         for speed in [1.0f32, 1.25] {
             let mut m = mixer();
             m.set_translated_pace(Pace { speed, tight: true });
-            assert_eq!(live(&mut m, 3_000, rate), 0, "producer {rate}x, speed {speed}x");
+            assert_eq!(
+                live(&mut m, 3_000, rate),
+                0,
+                "producer {rate}x, speed {speed}x"
+            );
         }
     }
 }

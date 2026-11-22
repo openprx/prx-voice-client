@@ -91,33 +91,33 @@ pub mod playback;
 pub mod playback_buffer;
 mod playback_buffer_rt;
 pub mod playback_sink;
-pub mod resample;
-pub mod timescale;
-pub mod resampled_source;
 pub mod process_filter;
+pub mod resample;
+pub mod resampled_source;
 pub mod routing;
 pub mod stream_sink;
 pub mod supervised_mic;
+#[cfg(target_os = "macos")]
+pub mod tap_consent;
 pub mod tap_format;
+pub(crate) mod tap_format_rt;
 #[cfg(any(target_os = "macos", test))]
 pub(crate) mod tap_health;
-pub mod tap_incidents;
-pub mod tap_session_proof;
-pub(crate) mod tap_format_rt;
 pub mod tap_host_time;
+pub mod tap_incidents;
+#[cfg(target_os = "macos")]
+pub mod tap_pump_source;
 pub mod tap_ring;
 pub(crate) mod tap_ring_rt;
 #[cfg(target_os = "macos")]
 pub(crate) mod tap_rt;
-#[cfg(target_os = "macos")]
-pub mod tap_consent;
+pub mod tap_session_proof;
 #[cfg(target_os = "macos")]
 mod tap_supervisor;
-#[cfg(target_os = "macos")]
-pub mod tap_pump_source;
 pub mod tap_types;
 pub mod tap_watchdog;
 pub mod tap_zero_watchdog;
+pub mod timescale;
 #[cfg(target_os = "macos")]
 pub mod virtual_mic;
 
@@ -263,21 +263,21 @@ impl Default for DeviceProfile {
 
 pub mod prelude {
     pub use crate::buffer::AudioBuffer;
-    #[cfg(target_os = "macos")]
-    pub use crate::core_audio_tap::{CoreAudioTap, CoreAudioTapSource, TapReceiver, frame_peak_amplitude};
-    pub use crate::resample::{
-        ASR_SAMPLE_RATE, MonoResampler16k, downmix_to_mono, mono_16k_frame,
-    };
-    pub use crate::routing::ProcessFilter;
     pub use crate::capture_source::CaptureSource;
-    pub use crate::input_policy::{InputDevice, InputSelector, InputTransport, choose_input};
-    pub use crate::playback_sink::PlaybackSink;
-    pub use crate::stream_sink::StreamSink;
+    #[cfg(target_os = "macos")]
+    pub use crate::core_audio_tap::{
+        CoreAudioTap, CoreAudioTapSource, TapReceiver, frame_peak_amplitude,
+    };
     pub use crate::device::{
         AudioDeviceInfo, default_input_device_name, default_output_device_name, list_audio_devices,
     };
+    pub use crate::input_policy::{InputDevice, InputSelector, InputTransport, choose_input};
     pub use crate::mock::MockAudioSource;
     pub use crate::pipeline::{AudioPipeline, VadProcessor};
+    pub use crate::playback_sink::PlaybackSink;
+    pub use crate::resample::{ASR_SAMPLE_RATE, MonoResampler16k, downmix_to_mono, mono_16k_frame};
+    pub use crate::routing::ProcessFilter;
+    pub use crate::stream_sink::StreamSink;
     pub use crate::{
         AudioError, AudioFormat, AudioFrame, AudioState, DeviceProfile, VadDecision, WakeResult,
     };

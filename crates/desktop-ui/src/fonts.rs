@@ -182,7 +182,8 @@ mod tests {
         let ctx = Context::default();
         install(&ctx, system);
         // Fonts become active at the start of the next pass.
-        ctx.run_ui(Default::default(), |_| {}).drop_without_applying_deltas();
+        ctx.run_ui(Default::default(), |_| {})
+            .drop_without_applying_deltas();
         ctx
     }
 
@@ -248,7 +249,8 @@ mod tests {
         let ctx = Context::default();
         install(&ctx, Some(NOTO_REGULAR.to_vec()));
         ensure_installed(&ctx);
-        ctx.run_ui(Default::default(), |_| {}).drop_without_applying_deltas();
+        ctx.run_ui(Default::default(), |_| {})
+            .drop_without_applying_deltas();
         let id = FontId::new(14.0, FontFamily::Proportional);
         assert!(ctx.fonts_mut(|f| f.has_glyph(&id, '汉')));
     }

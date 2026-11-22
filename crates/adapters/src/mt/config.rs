@@ -72,7 +72,6 @@ pub enum ConfigError {
     Client(String),
 }
 
-
 /// Everything one `OpenAiChatMt` needs.
 #[derive(Clone, Debug)]
 pub struct OpenAiChatConfig {

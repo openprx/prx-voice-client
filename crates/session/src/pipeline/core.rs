@@ -39,8 +39,8 @@ use super::snapshot::{
     Stats,
 };
 use super::trace::Tracer;
-use super::utterance::{LedgerBook, SegmentTally};
 use super::tree::TokenTree;
+use super::utterance::{LedgerBook, SegmentTally};
 use crate::direction_state::DirectionState;
 use crate::interrupt::{CancelAction, InterruptTrigger, decide_interrupt};
 use crate::output::DirectionConfig;

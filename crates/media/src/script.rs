@@ -116,21 +116,55 @@ mod tests {
     #[test]
     fn short_and_loanword_inputs_are_translated_not_passed_through() {
         // The other language's script is never "in the target".
-        for text in ["OK", "yes yes", "bye", "Okay", "hello", "Zoom会议", "123", "12 34 56", "1.5", ""] {
+        for text in [
+            "OK",
+            "yes yes",
+            "bye",
+            "Okay",
+            "hello",
+            "Zoom会议",
+            "123",
+            "12 34 56",
+            "1.5",
+            "",
+        ] {
             assert!(!is_written_in(text, Lang::En), "{text:?} as English");
         }
-        for text in ["OK", "好的", "嗯好", "拜拜", "好", "Zoom会议", "ok好的", "123", ""] {
+        for text in [
+            "OK",
+            "好的",
+            "嗯好",
+            "拜拜",
+            "好",
+            "Zoom会议",
+            "ok好的",
+            "123",
+            "",
+        ] {
             assert!(!is_written_in(text, Lang::Zh), "{text:?} as Chinese");
         }
         // With enough evidence they are passed through.
-        for text in ["thank you", "See you tomorrow", "okay okay okay", "No problem."] {
+        for text in [
+            "thank you",
+            "See you tomorrow",
+            "okay okay okay",
+            "No problem.",
+        ] {
             assert!(is_written_in(text, Lang::En), "{text:?}");
         }
-        for text in ["好的好的", "谢谢你的帮助", "我们明天见", "好的，我们用Zoom开会"] {
+        for text in [
+            "好的好的",
+            "谢谢你的帮助",
+            "我们明天见",
+            "好的，我们用Zoom开会",
+        ] {
             assert!(is_written_in(text, Lang::Zh), "{text:?}");
         }
         // A sentence with Chinese in it is not English, however long its English part.
-        assert!(!is_written_in("please send the 会议 notes tomorrow", Lang::En));
+        assert!(!is_written_in(
+            "please send the 会议 notes tomorrow",
+            Lang::En
+        ));
     }
 
     #[test]

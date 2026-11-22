@@ -51,7 +51,8 @@ impl TapIncidents {
         };
         counter.fetch_add(1, Ordering::Relaxed);
         let ms = u64::try_from(interrupted.as_millis()).unwrap_or(u64::MAX);
-        self.longest_interruption_ms.fetch_max(ms, Ordering::Relaxed);
+        self.longest_interruption_ms
+            .fetch_max(ms, Ordering::Relaxed);
     }
 
     /// The counters now.
@@ -78,7 +79,12 @@ mod tests {
         c.record(RebuildReason::TargetReturned, Duration::from_millis(50));
         assert_eq!(
             c.snapshot(),
-            TapIncidentCounts { silence: 1, stall: 2, target_returned: 1, longest_interruption_ms: 1_200 }
+            TapIncidentCounts {
+                silence: 1,
+                stall: 2,
+                target_returned: 1,
+                longest_interruption_ms: 1_200
+            }
         );
     }
 }

@@ -615,7 +615,9 @@ impl RecognitionStage {
             if filler && waiting_filler && !tail.trim().is_empty() {
                 Stats::add(&self.stats.filler_dropped, 1);
                 self.tracer
-                    .mark_text(open.clause(), TraceStage::FillerDropped, || tail.trim().to_owned());
+                    .mark_text(open.clause(), TraceStage::FillerDropped, || {
+                        tail.trim().to_owned()
+                    });
                 open.last_commit_ts = end.max(open.last_commit_ts);
                 return Ok(());
             }

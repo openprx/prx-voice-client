@@ -119,7 +119,10 @@ pub fn decide_early_cut(p: &CommitParams, i: &EarlyInput<'_>) -> Option<EarlyCut
         }
         // A date and its year (`November 20th, 2026`) or a list of figures stay together: look for
         // an earlier mark.
-        upto = region[..end].char_indices().next_back().map_or(0, |(at, _)| at);
+        upto = region[..end]
+            .char_indices()
+            .next_back()
+            .map_or(0, |(at, _)| at);
     }
     if p.early != EarlyCommit::Chunk {
         return None;
@@ -395,7 +398,9 @@ const COMPOUNDS_ZH: &[&str] = &[
 ];
 
 /// Particles that attach to the word before them: a cut before one leaves it alone at the start of a unit.
-const ATTACHED_PARTICLES: &[char] = &['的', '地', '得', '了', '着', '过', '吗', '呢', '吧', '啊', '嘛'];
+const ATTACHED_PARTICLES: &[char] = &[
+    '的', '地', '得', '了', '着', '过', '吗', '呢', '吧', '啊', '嘛',
+];
 
 /// Characters a Chinese phrase cannot end on.
 pub(super) const DANGLING_ZH: &[char] = &[

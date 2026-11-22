@@ -114,7 +114,15 @@ fn render_stage(ui: &mut egui::Ui, state: &mut DesktopUiState, tk: &Tokens, time
 
     // === PAINT EVERYTHING (only needs &ui / painter, no more mutations) ===
     let painter = ui.painter();
-    paint_orb(painter, tk, center, radius, orb_color, time, orb_response.hovered());
+    paint_orb(
+        painter,
+        tk,
+        center,
+        radius,
+        orb_color,
+        time,
+        orb_response.hovered(),
+    );
     if orb_response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -215,41 +223,68 @@ fn show_tool_windows(ctx: &egui::Context, state: &mut DesktopUiState, tk: &Token
             settings_commands,
             ..
         } = &mut *state;
-        tool_window::show_raw(ctx, tk, ToolKind::Settings, &mut windows.settings, placement, |ui| {
-            settings_window::body(
-                ui,
-                tk,
-                settings_window::BodyArgs {
-                    settings: &mut *settings,
-                    data: settings_data,
-                    commands: &mut *settings_commands,
-                    view: &mut *settings_view,
-                    current_theme,
-                    pending_theme: &mut *pending_theme,
-                },
-            );
-        });
+        tool_window::show_raw(
+            ctx,
+            tk,
+            ToolKind::Settings,
+            &mut windows.settings,
+            placement,
+            |ui| {
+                settings_window::body(
+                    ui,
+                    tk,
+                    settings_window::BodyArgs {
+                        settings: &mut *settings,
+                        data: settings_data,
+                        commands: &mut *settings_commands,
+                        view: &mut *settings_view,
+                        current_theme,
+                        pending_theme: &mut *pending_theme,
+                    },
+                );
+            },
+        );
     }
 
-    let history_entries = state.windows.history.is_open().then(|| state.history_entries.clone());
-    if let Some(entries) = history_entries {
-        tool_window::show(ctx, tk, ToolKind::History, &mut state.windows.history, placement, |ui| {
-            history_rows(ui, tk, &entries);
-        });
-    }
-
-    let debug_snapshot = state
+    let history_entries = state
         .windows
-        .debug
+        .history
         .is_open()
-        .then(|| (state.debug_state_info.clone(), state.debug_events.clone(), state.call.clone()));
+        .then(|| state.history_entries.clone());
+    if let Some(entries) = history_entries {
+        tool_window::show(
+            ctx,
+            tk,
+            ToolKind::History,
+            &mut state.windows.history,
+            placement,
+            |ui| {
+                history_rows(ui, tk, &entries);
+            },
+        );
+    }
+
+    let debug_snapshot = state.windows.debug.is_open().then(|| {
+        (
+            state.debug_state_info.clone(),
+            state.debug_events.clone(),
+            state.call.clone(),
+        )
+    });
     if let Some((info, events, call)) = debug_snapshot {
         let mut open_call_window = false;
         {
             let DesktopUiState { windows, .. } = &mut *state;
-            tool_window::show(ctx, tk, ToolKind::Debug, &mut windows.debug, placement, |ui| {
-                debug_body(ui, tk, &info, &events, &call, &mut open_call_window);
-            });
+            tool_window::show(
+                ctx,
+                tk,
+                ToolKind::Debug,
+                &mut windows.debug,
+                placement,
+                |ui| {
+                    debug_body(ui, tk, &info, &events, &call, &mut open_call_window);
+                },
+            );
         }
         if open_call_window {
             state.windows.request_open(ToolKind::Call);
@@ -272,10 +307,31 @@ fn show_call_window(
     let call = state.call.clone();
     let mut actions = Vec::new();
     {
-        let DesktopUiState { windows, call_translate, settings, call_window, .. } = &mut *state;
-        tool_window::show_raw(ctx, tk, ToolKind::Call, &mut windows.call, placement, |ui| {
-            call_window_view::body(ui, tk, &call, call_translate, settings, call_window, &mut actions);
-        });
+        let DesktopUiState {
+            windows,
+            call_translate,
+            settings,
+            call_window,
+            ..
+        } = &mut *state;
+        tool_window::show_raw(
+            ctx,
+            tk,
+            ToolKind::Call,
+            &mut windows.call,
+            placement,
+            |ui| {
+                call_window_view::body(
+                    ui,
+                    tk,
+                    &call,
+                    call_translate,
+                    settings,
+                    call_window,
+                    &mut actions,
+                );
+            },
+        );
     }
     apply_call_actions(state, actions);
 }
@@ -297,10 +353,25 @@ pub fn render_call_window(ui: &mut egui::Ui, state: &mut DesktopUiState) {
     let tk = crate::theme::tokens_for(ui.ctx());
     let call = state.call.clone();
     let mut actions = Vec::new();
-    egui::CentralPanel::default().frame(tool_window::window_frame(&tk)).show(ui, |ui| {
-        let DesktopUiState { call_translate, settings, call_window, .. } = &mut *state;
-        call_window_view::body(ui, &tk, &call, call_translate, settings, call_window, &mut actions);
-    });
+    egui::CentralPanel::default()
+        .frame(tool_window::window_frame(&tk))
+        .show(ui, |ui| {
+            let DesktopUiState {
+                call_translate,
+                settings,
+                call_window,
+                ..
+            } = &mut *state;
+            call_window_view::body(
+                ui,
+                &tk,
+                &call,
+                call_translate,
+                settings,
+                call_window,
+                &mut actions,
+            );
+        });
     apply_call_actions(state, actions);
 }
 
@@ -311,7 +382,9 @@ fn schedule_repaint(ctx: &egui::Context, state: &DesktopUiState) {
         repaint::decide(&repaint::RepaintInputs {
             session_state: &state.session_state,
             orb_hidden: ctx.input(|i| i.viewport().visible()) == Some(false),
-            tool_window_open: ToolKind::ALL.iter().any(|k| state.windows.get(*k).is_open()),
+            tool_window_open: ToolKind::ALL
+                .iter()
+                .any(|k| state.windows.get(*k).is_open()),
             idle_animation: state.idle_animation,
         }),
     );

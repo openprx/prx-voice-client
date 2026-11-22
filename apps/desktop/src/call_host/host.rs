@@ -12,10 +12,10 @@ use prxvc_audio::call_activity::native::NativeActivitySource;
 use prxvc_audio::call_activity::{CallActivityEvent, CallActivityWatcher, WatcherConfig};
 use prxvc_audio::driver_status::DriverStatus;
 use prxvc_audio::echo_gate::{EchoGate, EchoGateHandle};
-use prxvc_audio::mix::MixerConfig;
 use prxvc_audio::input_devices::list_input_devices;
 use prxvc_audio::input_policy::{OWN_MIC_UID, choose_input};
 use prxvc_audio::mic_consent::ensure_microphone_consent;
+use prxvc_audio::mix::MixerConfig;
 use prxvc_audio::routing::{
     CoreAudioRouting, EnterRequest, FileJournalStore, LeaveOutcome, OsSystem, RoutingController,
 };
@@ -101,7 +101,8 @@ impl RealCallHost {
         if let Err(reason) = &controller {
             tracing::error!(%reason, "call mode cannot read or change the system audio settings");
         }
-        let providers = ProviderHost::new(Arc::clone(&config.config_source), config.translate.clone());
+        let providers =
+            ProviderHost::new(Arc::clone(&config.config_source), config.translate.clone());
         Self {
             config,
             controller,
@@ -192,10 +193,10 @@ impl CallHost for RealCallHost {
         crate::routing_recovery::set_call_mode(true);
         // The assistant's engines kept warm after its last session make room for the call's own.
         crate::assistant::launch::release_warm();
-        let outcome = match self.controller().and_then(|c| {
-            c.enter_call_mode(&request)
-                .map_err(|e| call_mode_fault(&e))
-        }) {
+        let outcome = match self
+            .controller()
+            .and_then(|c| c.enter_call_mode(&request).map_err(|e| call_mode_fault(&e)))
+        {
             Ok(o) => o,
             Err(e) => {
                 crate::routing_recovery::set_call_mode(false);
@@ -290,7 +291,8 @@ impl CallHost for RealCallHost {
     fn prepare_providers(&mut self) -> Result<PreparedProviders, ProvidersFailure> {
         // A new recorder for each call: its own file when tracing is on, and the figures of the
         // debug view in every case.
-        let options = TraceOptions::from_config(&(self.config.config_source)(), &self.config.data_dir);
+        let options =
+            TraceOptions::from_config(&(self.config.config_source)(), &self.config.data_dir);
         let trace = CallTrace::open(&options);
         self.config.trace.set(Arc::clone(&trace));
         self.providers.prepare(trace)

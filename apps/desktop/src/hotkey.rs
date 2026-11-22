@@ -7,8 +7,7 @@
 use std::sync::mpsc::{Receiver, channel};
 
 use global_hotkey::{
-    GlobalHotKeyEvent, GlobalHotKeyManager,
-    HotKeyState,
+    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
     hotkey::{Code, HotKey, Modifiers},
 };
 
@@ -64,7 +63,12 @@ impl HotkeyManager {
             .register(hotkey)
             .map_err(|e| format!("failed to register hotkey: {e}"))?;
 
-        Ok(Self { manager, hotkey, events, held: false })
+        Ok(Self {
+            manager,
+            hotkey,
+            events,
+            held: false,
+        })
     }
 
     /// Check if the hotkey was triggered since the last call (non-blocking).
@@ -94,7 +98,10 @@ mod tests {
 
     fn run(events: &[(u32, HotKeyState)]) -> usize {
         let mut held = false;
-        events.iter().filter(|(id, st)| is_trigger(ID, *id, *st, &mut held)).count()
+        events
+            .iter()
+            .filter(|(id, st)| is_trigger(ID, *id, *st, &mut held))
+            .count()
     }
 
     #[test]
@@ -109,7 +116,10 @@ mod tests {
 
     #[test]
     fn press_release_pair_triggers_once() {
-        assert_eq!(run(&[(ID, HotKeyState::Pressed), (ID, HotKeyState::Released)]), 1);
+        assert_eq!(
+            run(&[(ID, HotKeyState::Pressed), (ID, HotKeyState::Released)]),
+            1
+        );
     }
 
     #[test]
@@ -135,6 +145,12 @@ mod tests {
 
     #[test]
     fn other_hotkey_id_does_not_trigger() {
-        assert_eq!(run(&[(ID + 1, HotKeyState::Pressed), (ID + 1, HotKeyState::Released)]), 0);
+        assert_eq!(
+            run(&[
+                (ID + 1, HotKeyState::Pressed),
+                (ID + 1, HotKeyState::Released)
+            ]),
+            0
+        );
     }
 }

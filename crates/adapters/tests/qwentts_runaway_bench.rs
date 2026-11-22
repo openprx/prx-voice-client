@@ -24,9 +24,7 @@ use prxvc_adapters::tts::qwentts::{
     QwenTts, QwenTtsConfig, RunawayRetry, VoiceCache, cap, hash_model_files, load_reference_wav,
 };
 use prxvc_media::{ClauseId, Direction, Lang, SegmentId};
-use prxvc_ports::{
-    CancellationToken, SpeechSynth, TtsItem, TtsRequest, VoiceSelection,
-};
+use prxvc_ports::{CancellationToken, SpeechSynth, TtsItem, TtsRequest, VoiceSelection};
 
 const SENTENCES: &[&str] = &[
     "I think we should move the meeting to Thursday afternoon because the team is travelling.",
@@ -127,7 +125,8 @@ fn runaway_rate_by_fragment_length() {
     .expect("reference");
     let cache_dir = tempfile::tempdir().expect("temp dir");
     let cache = VoiceCache::new(cache_dir.path().join("owner-en"));
-    tts.prepare_voice_cached(&cache, &reference).expect("prepare");
+    tts.prepare_voice_cached(&cache, &reference)
+        .expect("prepare");
 
     let never = CancellationToken::new();
     // (words, runaway attempts, failed, audio secs, expected secs, cap secs, wall ms, first ms)
@@ -174,10 +173,16 @@ fn runaway_rate_by_fragment_length() {
     }
     println!(
         "mode={} fragments={}",
-        if natural { "natural(cap 8 s, no retry)" } else { "policy" },
+        if natural {
+            "natural(cap 8 s, no retry)"
+        } else {
+            "policy"
+        },
         rows.len()
     );
-    println!("words  n  runaway_attempts  failed  audio_s(mean)  audio_s(p95)  audio_s(max)  cap_s(mean)  audio/expected(mean,ok only)  wall_ms(mean)  wall_ms(max)  first_ms(mean)");
+    println!(
+        "words  n  runaway_attempts  failed  audio_s(mean)  audio_s(p95)  audio_s(max)  cap_s(mean)  audio/expected(mean,ok only)  wall_ms(mean)  wall_ms(max)  first_ms(mean)"
+    );
     let mut total = (0usize, 0u64, 0usize);
     for words in 1..=10 {
         let r: Vec<_> = rows.iter().filter(|r| r.0 == words).collect();
@@ -192,7 +197,10 @@ fn runaway_rate_by_fragment_length() {
         let maxwall = r.iter().map(|r| r.6).fold(0.0, f64::max);
         let mut lens: Vec<f64> = r.iter().filter(|r| !r.2 && r.1 == 0).map(|r| r.3).collect();
         lens.sort_by(f64::total_cmp);
-        let p95 = lens.get((lens.len() * 95 / 100).min(lens.len().saturating_sub(1))).copied().unwrap_or(0.0);
+        let p95 = lens
+            .get((lens.len() * 95 / 100).min(lens.len().saturating_sub(1)))
+            .copied()
+            .unwrap_or(0.0);
         let max = lens.last().copied().unwrap_or(0.0);
         println!(
             "{words:>5} {n:>3} {runs:>17} {failed:>7} {:>14.2} {p95:>13.2} {max:>13.2} {:>12.2} {ratio:>29.2} {:>14.0} {maxwall:>13.0} {:>15.0}",
@@ -221,23 +229,96 @@ fn runaway_rate_by_fragment_length() {
 
 /// Short and odd texts, the kind a context-free engine returns for a cut fragment, by class.
 const ODD: &[(&str, &[&str])] = &[
-    ("lone function word", &["the", "a", "and", "of", "to", "that", "in", "so"]),
-    ("function word pair", &["and the", "of the", "to be", "in a", "that the", "so we"]),
-    ("interjection", &["Mm.", "Uh,", "Ah.", "Oh,", "Hmm.", "Yeah.", "Well,", "Okay."]),
-    ("punctuation led", &[", and the", ". Then", "- the", ", so", "... and then", "; however"]),
-    ("number or letter", &["3", "2026", "10:30", "I", "A", "OK", "No. 5", "50%"]),
-    ("proper noun", &["WhatsApp", "Thursday", "Beijing", "Mr. Chen", "iPhone", "Zhang Wei"]),
-    ("two or three plain words", &["I think so.", "Thank you.", "See you later.", "It is good.", "We can go."]),
-    ("four plain words", &["We should go there.", "I do not know.", "Please send it now.", "That is what happened."]),
-    ("cjk left untranslated", &["\u{55ef}", "\u{7136}\u{540e}", "\u{6240}\u{4ee5}", "\u{6211}\u{89c9}\u{5f97}"]),
-    ("quoted or bracketed", &["\"Yes.\"", "(laughs)", "\"the end\"", "[music]"]),
-    ("repetition", &["no, no, no", "yes yes yes", "the the", "very very very good"]),
+    (
+        "lone function word",
+        &["the", "a", "and", "of", "to", "that", "in", "so"],
+    ),
+    (
+        "function word pair",
+        &["and the", "of the", "to be", "in a", "that the", "so we"],
+    ),
+    (
+        "interjection",
+        &[
+            "Mm.", "Uh,", "Ah.", "Oh,", "Hmm.", "Yeah.", "Well,", "Okay.",
+        ],
+    ),
+    (
+        "punctuation led",
+        &[
+            ", and the",
+            ". Then",
+            "- the",
+            ", so",
+            "... and then",
+            "; however",
+        ],
+    ),
+    (
+        "number or letter",
+        &["3", "2026", "10:30", "I", "A", "OK", "No. 5", "50%"],
+    ),
+    (
+        "proper noun",
+        &[
+            "WhatsApp",
+            "Thursday",
+            "Beijing",
+            "Mr. Chen",
+            "iPhone",
+            "Zhang Wei",
+        ],
+    ),
+    (
+        "two or three plain words",
+        &[
+            "I think so.",
+            "Thank you.",
+            "See you later.",
+            "It is good.",
+            "We can go.",
+        ],
+    ),
+    (
+        "four plain words",
+        &[
+            "We should go there.",
+            "I do not know.",
+            "Please send it now.",
+            "That is what happened.",
+        ],
+    ),
+    (
+        "cjk left untranslated",
+        &[
+            "\u{55ef}",
+            "\u{7136}\u{540e}",
+            "\u{6240}\u{4ee5}",
+            "\u{6211}\u{89c9}\u{5f97}",
+        ],
+    ),
+    (
+        "quoted or bracketed",
+        &["\"Yes.\"", "(laughs)", "\"the end\"", "[music]"],
+    ),
+    (
+        "repetition",
+        &[
+            "no, no, no",
+            "yes yes yes",
+            "the the",
+            "very very very good",
+        ],
+    ),
 ];
 
 #[test]
 #[ignore = "needs the TTS models and the GPU"]
 fn runaway_rate_by_class_of_short_text() {
-    let tries: usize = std::env::var("PRXVC_RUNAWAY_TRIES").ok().and_then(|v| v.parse().ok()).unwrap_or(6);
+    let tries: usize = std::env::var("PRXVC_RUNAWAY_TRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(6);
     let models = bench_root().join("tts/models");
     let talker = models.join("qwen-talker-1.7b-base-Q8_0.gguf");
     let codec = models.join("qwen-tokenizer-12hz-Q8_0.gguf");
@@ -246,10 +327,17 @@ fn runaway_rate_by_class_of_short_text() {
     cfg.workers = 1;
     cfg.cap_frames_override = Some(60);
     let tts = QwenTts::load_native(&talker, &codec, cfg).expect("load");
-    let reference = load_reference_wav(&bench_root().join("tts/refs/en_owner.wav"), "owner-en", Lang::En, None).expect("reference");
+    let reference = load_reference_wav(
+        &bench_root().join("tts/refs/en_owner.wav"),
+        "owner-en",
+        Lang::En,
+        None,
+    )
+    .expect("reference");
     let cache_dir = tempfile::tempdir().expect("temp dir");
     let cache = VoiceCache::new(cache_dir.path().join("owner-en"));
-    tts.prepare_voice_cached(&cache, &reference).expect("prepare");
+    tts.prepare_voice_cached(&cache, &reference)
+        .expect("prepare");
     let never = CancellationToken::new();
     println!("class  texts  tries  runaways  mean_audio_s");
     for (class, texts) in ODD {
@@ -262,7 +350,9 @@ fn runaway_rate_by_class_of_short_text() {
                         clause: ClauseId::new(SegmentId::first(Direction::Outgoing), 0),
                         text: (*text).to_owned(),
                         lang: Lang::En,
-                        voice: VoiceSelection::Cloned { profile_id: "owner-en".to_owned() },
+                        voice: VoiceSelection::Cloned {
+                            profile_id: "owner-en".to_owned(),
+                        },
                     })
                     .expect("open");
                 let mut samples = 0usize;
@@ -276,7 +366,11 @@ fn runaway_rate_by_class_of_short_text() {
                 secs += samples as f64 / 24_000.0;
             }
         }
-        println!("{class:<28} {:>3} {n:>5} {runs:>8} {:>8.2}", texts.len(), secs / n as f64);
+        println!(
+            "{class:<28} {:>3} {n:>5} {runs:>8} {:>8.2}",
+            texts.len(),
+            secs / n as f64
+        );
     }
 }
 
@@ -286,7 +380,10 @@ fn runaway_rate_by_class_of_short_text() {
 #[ignore = "needs the TTS models and the GPU"]
 fn runaway_rate_of_given_texts() {
     let texts = std::env::var("PRXVC_RUNAWAY_TEXTS").unwrap_or_default();
-    let tries: usize = std::env::var("PRXVC_RUNAWAY_TRIES").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+    let tries: usize = std::env::var("PRXVC_RUNAWAY_TRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8);
     let models = bench_root().join("tts/models");
     let talker = models.join("qwen-talker-1.7b-base-Q8_0.gguf");
     let codec = models.join("qwen-tokenizer-12hz-Q8_0.gguf");
@@ -295,10 +392,17 @@ fn runaway_rate_of_given_texts() {
     cfg.workers = 1;
     cfg.cap_frames_override = Some(60);
     let tts = QwenTts::load_native(&talker, &codec, cfg).expect("load");
-    let reference = load_reference_wav(&bench_root().join("tts/refs/en_owner.wav"), "owner-en", Lang::En, None).expect("reference");
+    let reference = load_reference_wav(
+        &bench_root().join("tts/refs/en_owner.wav"),
+        "owner-en",
+        Lang::En,
+        None,
+    )
+    .expect("reference");
     let cache_dir = tempfile::tempdir().expect("temp dir");
     let cache = VoiceCache::new(cache_dir.path().join("owner-en"));
-    tts.prepare_voice_cached(&cache, &reference).expect("prepare");
+    tts.prepare_voice_cached(&cache, &reference)
+        .expect("prepare");
     let never = CancellationToken::new();
     println!("text  tries  runaways  mean_audio_s");
     for text in texts.split('|').filter(|t| !t.is_empty()) {
@@ -310,7 +414,9 @@ fn runaway_rate_of_given_texts() {
                     clause: ClauseId::new(SegmentId::first(Direction::Outgoing), 0),
                     text: text.to_owned(),
                     lang: Lang::En,
-                    voice: VoiceSelection::Cloned { profile_id: "owner-en".to_owned() },
+                    voice: VoiceSelection::Cloned {
+                        profile_id: "owner-en".to_owned(),
+                    },
                 })
                 .expect("open");
             let mut samples = 0usize;
@@ -322,6 +428,9 @@ fn runaway_rate_of_given_texts() {
             runs += tts.stats().runaways - before.runaways;
             secs += samples as f64 / 24_000.0;
         }
-        println!("{text:<48} {tries:>5} {runs:>8} {:>8.2}", secs / tries as f64);
+        println!(
+            "{text:<48} {tries:>5} {runs:>8} {:>8.2}",
+            secs / tries as f64
+        );
     }
 }

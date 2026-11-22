@@ -376,13 +376,17 @@ impl DesktopUiState {
             self.settings_view.section = section;
         }
         self.windows.request_open(tool_window::ToolKind::Settings);
-        self.settings_commands.push(crate::settings_command::SettingsCommand::Refresh);
+        self.settings_commands
+            .push(crate::settings_command::SettingsCommand::Refresh);
     }
 
     /// Copy newly published settings data (devices, permissions, ...) into
     /// this state. Called once per frame by the app.
     pub fn sync_settings_feed(&mut self) {
-        if let Some(data) = self.settings_feed.take_if_changed(&mut self.settings_feed_seen) {
+        if let Some(data) = self
+            .settings_feed
+            .take_if_changed(&mut self.settings_feed_seen)
+        {
             self.settings_data = data;
         }
     }

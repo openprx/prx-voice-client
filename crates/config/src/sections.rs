@@ -349,7 +349,9 @@ impl Default for CallConfig {
             translate: false,
             output_gain_db: 0.0,
             stop_grace_ms: 6_000,
-            translation_engine: crate::TranslationEngine::build_default().as_str().to_owned(),
+            translation_engine: crate::TranslationEngine::build_default()
+                .as_str()
+                .to_owned(),
         }
     }
 }

@@ -98,13 +98,15 @@ pub struct CallWindowState {
 impl CallWindowState {
     /// Seconds since the running call began.
     pub fn elapsed_s(&self) -> u32 {
-        self.began
-            .map_or(0, |b| u32::try_from(b.elapsed().as_secs()).unwrap_or(u32::MAX))
+        self.began.map_or(0, |b| {
+            u32::try_from(b.elapsed().as_secs()).unwrap_or(u32::MAX)
+        })
     }
 
     /// How long the outgoing lane has been drained (zero while speech is pending or playing).
     pub(crate) fn drained_for(&self) -> std::time::Duration {
-        self.drained_since.map_or(std::time::Duration::ZERO, |t| t.elapsed())
+        self.drained_since
+            .map_or(std::time::Duration::ZERO, |t| t.elapsed())
     }
 
     /// Note whether the outgoing lane has speech pending or playing, as of `now`.
@@ -230,10 +232,17 @@ mod tests {
         let mut w = CallWindowState::default();
         let mut running = panel(CallPhase::Translating, "你好");
         running.outgoing.clauses[0].status = ClauseStatus::Translating;
-        running.outgoing.partial = Some(PartialView { utterance: 2, text: "还没".into(), stable_len: 0 });
+        running.outgoing.partial = Some(PartialView {
+            utterance: 2,
+            text: "还没".into(),
+            stable_len: 0,
+        });
         w.sync(&running);
         assert_eq!(w.transcript.items().len(), 2);
-        w.sync(&CallPanel { phase: CallPhase::Idle, ..CallPanel::default() });
+        w.sync(&CallPanel {
+            phase: CallPhase::Idle,
+            ..CallPanel::default()
+        });
         assert_eq!(w.transcript.items().len(), 1);
         assert_eq!(
             w.transcript.items()[0].activity(),

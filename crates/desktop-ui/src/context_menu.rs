@@ -27,14 +27,8 @@ pub(crate) fn orb_context_menu(
         ui.spacing_mut().item_spacing.y = 0.0;
 
         if state.session_active {
-            if widgets::menu_item_colored(
-                ui,
-                tk,
-                &prxvc_i18n::t("session.stop"),
-                false,
-                tk.danger,
-            )
-            .clicked()
+            if widgets::menu_item_colored(ui, tk, &prxvc_i18n::t("session.stop"), false, tk.danger)
+                .clicked()
             {
                 state.pending_commands.push("StopSession".into());
             }
@@ -46,8 +40,14 @@ pub(crate) fn orb_context_menu(
         // The settings entries open the one settings window at a named page.
         let menu_items: [(String, MenuTarget); 6] = [
             // The path to a translated call comes first.
-            (prxvc_i18n::t("callwin.title"), MenuTarget::Tool(ToolKind::Call)),
-            (prxvc_i18n::t("settings.title"), MenuTarget::Settings(SettingsSection::General)),
+            (
+                prxvc_i18n::t("callwin.title"),
+                MenuTarget::Tool(ToolKind::Call),
+            ),
+            (
+                prxvc_i18n::t("settings.title"),
+                MenuTarget::Settings(SettingsSection::General),
+            ),
             (
                 prxvc_i18n::t("settings.menu.pipeline"),
                 MenuTarget::Settings(SettingsSection::SpeechPipeline),
@@ -56,8 +56,14 @@ pub(crate) fn orb_context_menu(
                 prxvc_i18n::t("settings.menu.permissions"),
                 MenuTarget::Settings(SettingsSection::Permissions),
             ),
-            (prxvc_i18n::t("history.title"), MenuTarget::Tool(ToolKind::History)),
-            (prxvc_i18n::t("debug.title"), MenuTarget::Tool(ToolKind::Debug)),
+            (
+                prxvc_i18n::t("history.title"),
+                MenuTarget::Tool(ToolKind::History),
+            ),
+            (
+                prxvc_i18n::t("debug.title"),
+                MenuTarget::Tool(ToolKind::Debug),
+            ),
         ];
         for (label, target) in &menu_items {
             if widgets::menu_item(ui, tk, label, false).clicked() {
@@ -70,14 +76,8 @@ pub(crate) fn orb_context_menu(
         ui.add_space(space::S4);
         ui.separator();
         ui.add_space(space::S4);
-        if widgets::menu_item_colored(
-            ui,
-            tk,
-            &prxvc_i18n::t("common.close"),
-            false,
-            tk.secondary,
-        )
-        .clicked()
+        if widgets::menu_item_colored(ui, tk, &prxvc_i18n::t("common.close"), false, tk.secondary)
+            .clicked()
         {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }

@@ -127,7 +127,9 @@ pub fn find_output_device(name: &str) -> Result<cpal::Device, AudioError> {
         .map_err(|e| AudioError::InitializationFailed(format!("enumerate outputs: {e}")))?;
     let mut partial = None;
     for device in devices {
-        let Ok(device_name) = device.name() else { continue };
+        let Ok(device_name) = device.name() else {
+            continue;
+        };
         if device_name == wanted {
             return Ok(device);
         }

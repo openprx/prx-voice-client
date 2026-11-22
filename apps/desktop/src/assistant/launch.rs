@@ -13,8 +13,8 @@ use prxvc_session::assistant::{AssistantDeps, AssistantHandle, start};
 use super::audio::{PlayerOutput, echo_gate, microphone};
 use super::issues;
 use super::kit::{self, Prepared};
-use super::warm::WarmCache;
 use super::params::session_params;
+use super::warm::WarmCache;
 use crate::call_kit::trace::NullTrace;
 
 /// What a finished session leaves loaded for the next one (see `warm`).

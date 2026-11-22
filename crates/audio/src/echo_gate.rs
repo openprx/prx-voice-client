@@ -218,7 +218,12 @@ mod tests {
     fn open_when_idle() {
         let t0 = Instant::now();
         let mut g = gate();
-        assert_eq!(g.poll(t0), GateState::Open { just_reopened: false });
+        assert_eq!(
+            g.poll(t0),
+            GateState::Open {
+                just_reopened: false
+            }
+        );
     }
 
     #[test]
@@ -252,9 +257,19 @@ mod tests {
         g.update(true, ms(t0, 1_000)); // drained
         assert_eq!(g.poll(ms(t0, 1_000)), GateState::Closed);
         assert_eq!(g.poll(ms(t0, 1_299)), GateState::Closed);
-        assert_eq!(g.poll(ms(t0, 1_300)), GateState::Open { just_reopened: true });
+        assert_eq!(
+            g.poll(ms(t0, 1_300)),
+            GateState::Open {
+                just_reopened: true
+            }
+        );
         // The reopen signal fires once.
-        assert_eq!(g.poll(ms(t0, 1_310)), GateState::Open { just_reopened: false });
+        assert_eq!(
+            g.poll(ms(t0, 1_310)),
+            GateState::Open {
+                just_reopened: false
+            }
+        );
     }
 
     #[test]
@@ -276,7 +291,12 @@ mod tests {
         let mut g = EchoGate::new(false, HOLD);
         g.reply_activity(t0);
         g.update(false, ms(t0, 10));
-        assert_eq!(g.poll(ms(t0, 20)), GateState::Open { just_reopened: false });
+        assert_eq!(
+            g.poll(ms(t0, 20)),
+            GateState::Open {
+                just_reopened: false
+            }
+        );
         assert!(!g.is_closed(ms(t0, 20)));
     }
 
@@ -291,7 +311,12 @@ mod tests {
         assert_eq!(g.poll(ms(t0, 700)), GateState::Closed);
         g.update(true, ms(t0, 750));
         assert_eq!(g.poll(ms(t0, 899)), GateState::Closed);
-        assert_eq!(g.poll(ms(t0, 900)), GateState::Open { just_reopened: true });
+        assert_eq!(
+            g.poll(ms(t0, 900)),
+            GateState::Open {
+                just_reopened: true
+            }
+        );
     }
 
     #[test]
@@ -304,6 +329,11 @@ mod tests {
         g.update(true, t0 + REPLY_STALL_TIMEOUT + Duration::from_secs(1));
         // Reopens (after the hold-off, which starts at the stall detection).
         let later = t0 + REPLY_STALL_TIMEOUT + Duration::from_secs(2);
-        assert_eq!(g.poll(later), GateState::Open { just_reopened: true });
+        assert_eq!(
+            g.poll(later),
+            GateState::Open {
+                just_reopened: true
+            }
+        );
     }
 }

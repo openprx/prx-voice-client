@@ -52,9 +52,9 @@ mod settings_advanced;
 mod settings_assistant;
 mod settings_audio;
 mod settings_call;
-mod settings_engine;
 pub mod settings_command;
 pub mod settings_data;
+mod settings_engine;
 pub mod settings_feed;
 mod settings_general;
 mod settings_permissions;
@@ -79,7 +79,9 @@ mod widgets_radio;
 
 pub use app::{render_app, render_call_window};
 pub use assistant_view::{AssistantIssue, DISMISS_ISSUE};
-pub use call_view::{ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView};
+pub use call_view::{
+    ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
+};
 pub use debug_view::render_debug_page;
 pub use history_view::render_history_panel;
 pub use orb_view::render_orb;
@@ -89,9 +91,7 @@ pub use settings_feed::SettingsFeed;
 pub use settings_section::SettingsSection;
 pub use settings_window::SettingsViewState;
 pub use shared::{EventSnapshot, SharedAppState, UiSnapshot};
-pub use state::{
-    DesktopUiState, HistoryEntry, Page, SessionViewModel, TranscriptLine, UiSettings,
-};
+pub use state::{DesktopUiState, HistoryEntry, Page, SessionViewModel, TranscriptLine, UiSettings};
 pub use theme::{Scheme, Tokens};
 pub use theme_presets::Theme;
 pub use transcript_view::render_transcript;
@@ -101,7 +101,7 @@ pub mod prelude {
     pub use crate::shared::{EventSnapshot, SharedAppState, UiSnapshot};
     pub use crate::{
         DesktopUiState, HistoryEntry, Page, Scheme, SessionViewModel, Theme, Tokens,
-        TranscriptLine, UiSettings, render_app, render_debug_page,
-        render_history_panel, render_orb, render_transcript,
+        TranscriptLine, UiSettings, render_app, render_debug_page, render_history_panel,
+        render_orb, render_transcript,
     };
 }

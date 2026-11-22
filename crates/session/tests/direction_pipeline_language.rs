@@ -84,7 +84,10 @@ fn english_heard_by_an_english_listener_is_the_same_in_the_outgoing_direction() 
 #[test]
 fn with_the_rule_off_the_clause_is_translated_as_before() {
     let clock = ManualClock::new();
-    let t = mt(&clock).with_script("今天天气很好我们出去走走", MtScript::tokens(["今天天气很好。"]));
+    let t = mt(&clock).with_script(
+        "今天天气很好我们出去走走",
+        MtScript::tokens(["今天天气很好。"]),
+    );
     let rig = Rig::start_with(
         &clock,
         IN,
@@ -140,7 +143,11 @@ fn a_reply_in_the_wrong_language_is_asked_for_again_before_anything_is_spoken() 
         .collect();
     assert_eq!(strictness, [false, true]);
     assert!(
-        rig.fakes.tts.requests().iter().all(|r| !r.text.contains('我')),
+        rig.fakes
+            .tts
+            .requests()
+            .iter()
+            .all(|r| !r.text.contains('我')),
         "nothing of the wrong-language reply was spoken"
     );
     assert!(rig.stop().clean);
@@ -193,7 +200,10 @@ fn the_flags_of_a_finished_translation_are_counted_and_shown() {
     let snap = rig.wait_snapshot("flagged", |s| {
         s.counters.flags_total() >= 2 && s.clauses.first().is_some_and(|c| c.flags.len() == 2)
     });
-    assert_eq!((snap.counters.flag_refusal, snap.counters.flag_too_long), (1, 1));
+    assert_eq!(
+        (snap.counters.flag_refusal, snap.counters.flag_too_long),
+        (1, 1)
+    );
     assert_eq!(snap.clauses[0].flags, [MtFlag::Refusal, MtFlag::TooLong]);
     assert_eq!(snap.counters.mt_suspect, 0, "reported, not a failure");
     assert!(rig.stop().clean);
@@ -257,7 +267,11 @@ fn a_reply_that_answers_instead_of_translating_is_asked_for_again_before_it_is_s
         .collect();
     assert_eq!(strictness, [false, true]);
     assert!(
-        rig.fakes.tts.requests().iter().all(|r| !r.text.contains("Sure")),
+        rig.fakes
+            .tts
+            .requests()
+            .iter()
+            .all(|r| !r.text.contains("Sure")),
         "nothing of the answer was spoken"
     );
     assert!(rig.stop().clean);
@@ -310,7 +324,12 @@ fn a_second_reply_that_still_reads_like_an_answer_is_spoken_and_not_asked_for_a_
     });
     assert_eq!(snap.counters.mt_retries, 1);
     assert_eq!(
-        rig.fakes.mt.requests().iter().filter(|r| r.text == SAID).count(),
+        rig.fakes
+            .mt
+            .requests()
+            .iter()
+            .filter(|r| r.text == SAID)
+            .count(),
         2,
         "one retry, no more"
     );
@@ -324,7 +343,10 @@ fn our_own_translation_heard_by_the_microphone_is_dropped_and_never_passed_throu
     let clock = ManualClock::new();
     let mt = FakeTranslator::new(clock.clone())
         .with_script("Hello.", MtScript::tokens(["Hello."]))
-        .with_script("今天天气很好", MtScript::tokens(["The weather ", "is nice ", "today."]));
+        .with_script(
+            "今天天气很好",
+            MtScript::tokens(["The weather ", "is nice ", "today."]),
+        );
     let rig = Rig::start_with(
         &clock,
         OUT,
@@ -347,10 +369,15 @@ fn our_own_translation_heard_by_the_microphone_is_dropped_and_never_passed_throu
     rig.feed(52);
     let snap = rig.wait_snapshot("the echo is dropped", |s| s.counters.self_echo_dropped >= 1);
     assert_eq!(snap.counters.self_echo_dropped, 1);
-    assert_eq!(snap.counters.in_target_passed, 0, "never passed through as the original");
+    assert_eq!(
+        snap.counters.in_target_passed, 0,
+        "never passed through as the original"
+    );
     assert_eq!(snap.counters.skipped, 0, "not a loss");
     assert!(
-        snap.clauses.iter().any(|c| c.skipped == Some(SkipReason::SelfEcho)),
+        snap.clauses
+            .iter()
+            .any(|c| c.skipped == Some(SkipReason::SelfEcho)),
         "visible in the captions"
     );
     assert!(
@@ -361,7 +388,11 @@ fn our_own_translation_heard_by_the_microphone_is_dropped_and_never_passed_throu
             .all(|r| r.text == "Hello." || r.text == "今天天气很好"),
         "the echo is never translated"
     );
-    assert!(passthroughs(&rig).iter().all(|on| !on), "{:?}", passthroughs(&rig));
+    assert!(
+        passthroughs(&rig).iter().all(|on| !on),
+        "{:?}",
+        passthroughs(&rig)
+    );
     assert!(rig.stop().clean);
 }
 
@@ -370,7 +401,10 @@ fn english_the_speaker_really_said_is_still_passed_through() {
     let clock = ManualClock::new();
     let mt = FakeTranslator::new(clock.clone())
         .with_script("Hello.", MtScript::tokens(["Hello."]))
-        .with_script("今天天气很好", MtScript::tokens(["The weather ", "is nice ", "today."]));
+        .with_script(
+            "今天天气很好",
+            MtScript::tokens(["The weather ", "is nice ", "today."]),
+        );
     let rig = Rig::start_with(
         &clock,
         OUT,

@@ -1,6 +1,6 @@
 use super::*;
-use crate::test_util::TempDir;
 use crate::AppConfig;
+use crate::test_util::TempDir;
 
 #[test]
 fn app_id_and_bundle_identifier() {
@@ -40,9 +40,20 @@ fn override_and_models_dir_setting() {
 #[test]
 fn ensure_dirs_creates_private_directories() {
     let f = TempDir::new("ensure");
-    let paths = AppPaths::from_roots(f.path().join("c"), f.path().join("d"), f.path().join("d/models"), &AppConfig::default());
+    let paths = AppPaths::from_roots(
+        f.path().join("c"),
+        f.path().join("d"),
+        f.path().join("d/models"),
+        &AppConfig::default(),
+    );
     paths.ensure_dirs().unwrap();
-    for d in [&paths.config_dir, &paths.data_dir, &paths.models_dir, &paths.voices_dir, &paths.logs_dir] {
+    for d in [
+        &paths.config_dir,
+        &paths.data_dir,
+        &paths.models_dir,
+        &paths.voices_dir,
+        &paths.logs_dir,
+    ] {
         assert!(d.is_dir());
         #[cfg(unix)]
         {

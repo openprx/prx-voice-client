@@ -1,16 +1,16 @@
 //! Executes the actions of the segment book: clause bookkeeping, cancellation of a scope, ordered release.
 
 use super::{ClauseInfo, Core, Stats};
+use crate::direction_state::DirectionState;
 use crate::interrupt::CancelAction;
 use crate::pipeline::events::PipelineEvent;
 use crate::pipeline::messages::{CommitReason, MtItem, TtsItem};
 use crate::pipeline::queue::Pushed;
 use crate::pipeline::snapshot::{ClauseSnapshot, SkipReason};
-use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
-use crate::direction_state::DirectionState;
 use crate::pipeline::utterance::{Ms, Utterance, notes, skip_name};
-use crate::segment_book::{SegmentAction, SegmentEvent};
 use crate::segment::ClauseView;
+use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
+use crate::segment_book::{SegmentAction, SegmentEvent};
 use prxvc_media::{ClauseId, Envelope, MonoTime, SegmentId};
 
 use crate::pipeline::messages::RefineJob;
@@ -208,7 +208,11 @@ impl Core {
             return false;
         }
         let now = self.w.tracer.now();
-        let live: Vec<&str> = self.clauses.values().map(|i| i.target_text.as_str()).collect();
+        let live: Vec<&str> = self
+            .clauses
+            .values()
+            .map(|i| i.target_text.as_str())
+            .collect();
         self.own.is_echo(now, text, &live)
     }
 
@@ -229,8 +233,7 @@ impl Core {
     /// original never passed would be lost entirely, so it is translated instead; and it never
     /// switches the direction to the original again, which nothing would switch back.
     fn can_pass_through(&self, segment: prxvc_media::SegmentId) -> bool {
-        self.book.segment_state(segment) == Some(SegmentState::Open)
-            || self.passed == Some(segment)
+        self.book.segment_state(segment) == Some(SegmentState::Open) || self.passed == Some(segment)
     }
 
     /// Record and announce that the original voice passes through (`Some`) or no longer does.

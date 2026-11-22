@@ -33,7 +33,11 @@ mod tests {
     #[test]
     fn the_hint_names_the_limit_in_both_languages() {
         for table in [EN, ZH_CN] {
-            let hint = table.iter().find(|(k, _)| *k == "callwin.finishing.hint").unwrap().1;
+            let hint = table
+                .iter()
+                .find(|(k, _)| *k == "callwin.finishing.hint")
+                .unwrap()
+                .1;
             assert!(hint.contains("{0}"));
         }
     }

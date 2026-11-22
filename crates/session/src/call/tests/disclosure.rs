@@ -144,7 +144,11 @@ fn say_it_again_queues_the_notice_on_the_outgoing_lane() {
     let played = rig.world.played("outgoing");
     assert!(played.contains(&Played::End(notice(0))), "{played:?}");
     rig.coord.handle(CallCommand::SayDisclosure);
-    assert!(rig.world.played("outgoing").contains(&Played::End(notice(1))));
+    assert!(
+        rig.world
+            .played("outgoing")
+            .contains(&Played::End(notice(1)))
+    );
     assert!(
         rig.world.played("incoming").iter().all(|p| !matches!(
             p,
@@ -168,13 +172,21 @@ fn a_pause_before_the_first_sentence_changes_nothing_and_a_pause_during_the_noti
     rig.until("resumed", |s| {
         s.direction(Direction::Outgoing).hears == OutputSource::Translation
     });
-    assert_eq!(notice_state(&rig).plays, 0, "nothing was played while paused");
+    assert_eq!(
+        notice_state(&rig).plays,
+        0,
+        "nothing was played while paused"
+    );
     let first = clause(Direction::Outgoing, 1, 0);
     speak(&rig, "outgoing", 55);
     rig.until_world("the first clause reached the lane", |w| {
         w.played("outgoing").contains(&Played::End(first))
     });
-    assert!(rig.world.played("outgoing").contains(&Played::End(notice(0))));
+    assert!(
+        rig.world
+            .played("outgoing")
+            .contains(&Played::End(notice(0)))
+    );
     // It starts audible, then the direction is paused before it ends: it was not heard.
     rig.world.report_playback(
         "outgoing",
@@ -195,7 +207,10 @@ fn a_pause_before_the_first_sentence_changes_nothing_and_a_pause_during_the_noti
         },
     );
     let s = rig.until("the cut notice is noted", |s| s.disclosure.interrupted == 1);
-    assert_eq!(s.disclosure.plays, 0, "a notice nobody heard is not a played notice");
+    assert_eq!(
+        s.disclosure.plays, 0,
+        "a notice nobody heard is not a played notice"
+    );
 }
 
 #[test]
@@ -225,7 +240,10 @@ fn the_notice_is_in_the_language_of_the_other_party_and_never_reaches_translatio
             .iter()
             .find(|r| r.text == NOTICE_TEXT)
             .expect("the notice was synthesised");
-        assert_eq!(spoken.lang, target, "the notice follows the other party's language");
+        assert_eq!(
+            spoken.lang, target,
+            "the notice follows the other party's language"
+        );
         assert!(
             mt_requests.iter().all(|r| r.text != NOTICE_TEXT),
             "the notice is never translated"
@@ -300,10 +318,14 @@ fn the_notice_starts_when_the_owner_begins_to_speak_before_any_translation_exist
     });
     let played = rig.world.played("outgoing");
     let notice_end = position(&played, |p| *p == Played::End(notice(0))).unwrap();
-    let first_chunk = position(&played, |p| matches!(p, Played::Chunk(c, _) if *c == first)).unwrap();
+    let first_chunk =
+        position(&played, |p| matches!(p, Played::Chunk(c, _) if *c == first)).unwrap();
     assert!(notice_end < first_chunk);
     assert_eq!(
-        played.iter().filter(|p| matches!(p, Played::End(c) if c.segment().seq() == u64::MAX)).count(),
+        played
+            .iter()
+            .filter(|p| matches!(p, Played::End(c) if c.segment().seq() == u64::MAX))
+            .count(),
         1,
         "once per session"
     );
@@ -321,16 +343,23 @@ fn a_notice_cut_before_it_was_heard_is_owed_again_at_the_next_speech_start() {
     });
     // The lane is flushed (the direction was skipped) before the notice was heard.
     rig.coord.handle(CallCommand::Pause(DirSet::BOTH));
-    rig.until("paused", |s| s.direction(Direction::Outgoing).hears == OutputSource::Original);
+    rig.until("paused", |s| {
+        s.direction(Direction::Outgoing).hears == OutputSource::Original
+    });
     rig.world.report_playback(
         "outgoing",
-        PlaybackReport::Started { clause: notice(0), at: MonoTime::from_millis(5) },
+        PlaybackReport::Started {
+            clause: notice(0),
+            at: MonoTime::from_millis(5),
+        },
     );
     rig.world.report_playback(
         "outgoing",
-        PlaybackReport::Finished { clause: notice(0), at: MonoTime::from_millis(1_000) },
+        PlaybackReport::Finished {
+            clause: notice(0),
+            at: MonoTime::from_millis(1_000),
+        },
     );
     let s = rig.until("the cut notice is noted", |s| s.disclosure.interrupted == 1);
     assert_eq!(s.disclosure.plays, 0);
 }
-

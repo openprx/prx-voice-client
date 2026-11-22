@@ -94,7 +94,10 @@ fn the_spoken_notice_is_off_by_default_in_every_file_and_its_texts_are_empty() {
     assert!(!c.call.disclosure);
     assert!(c.call.disclosure_text_en.is_empty() && c.call.disclosure_text_zh.is_empty());
     let old: AppConfig = toml::from_str("[call]\nself_language = \"zh\"\n").unwrap();
-    assert!(!old.call.disclosure, "a file written before the key existed gets it off");
+    assert!(
+        !old.call.disclosure,
+        "a file written before the key existed gets it off"
+    );
     let on: AppConfig = toml::from_str("[call]\ndisclosure = true\n").unwrap();
     assert!(on.call.disclosure);
 }
@@ -103,10 +106,9 @@ fn the_spoken_notice_is_off_by_default_in_every_file_and_its_texts_are_empty() {
 fn the_language_rules_default_on_in_an_old_file_and_can_be_switched_off() {
     let c: AppConfig = toml::from_str("[pipeline]\nmax_segment_s = 20\n").unwrap();
     assert!(c.pipeline.skip_source_in_target && c.pipeline.retry_wrong_language);
-    let c: AppConfig = toml::from_str(
-        "[pipeline]\nskip_source_in_target = false\nretry_wrong_language = false\n",
-    )
-    .unwrap();
+    let c: AppConfig =
+        toml::from_str("[pipeline]\nskip_source_in_target = false\nretry_wrong_language = false\n")
+            .unwrap();
     assert!(!c.pipeline.skip_source_in_target && !c.pipeline.retry_wrong_language);
 }
 
@@ -179,11 +181,19 @@ fn a_version_1_file_keeps_every_value_and_gains_the_new_keys() {
     assert_eq!(c.call.barge_in_max_lag_ms, 3_000);
     assert_eq!(c.pipeline, PipelineConfig::default());
     // The migration is written once; the original stays beside it.
-    assert!(fs::read_to_string(dir.path().join("config.toml")).unwrap().contains("schema_version = 4"));
+    assert!(
+        fs::read_to_string(dir.path().join("config.toml"))
+            .unwrap()
+            .contains("schema_version = 4")
+    );
     let backup = fs::read_dir(dir.path())
         .unwrap()
         .flatten()
-        .find(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-schema1-"))
+        .find(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("config.toml.bak-schema1-")
+        })
         .expect("a backup of the original");
     assert_eq!(fs::read_to_string(backup.path()).unwrap(), V1_FILE);
 }
@@ -233,7 +243,11 @@ fn the_whole_chain_takes_an_unversioned_file_to_the_current_version() {
     assert!(c.privacy.save_transcript, "step of version 0 -> 1");
     assert!(!c.call.barge_in);
     assert_eq!(c.call.start_mode, "manual", "step of version 1 -> 2");
-    assert_eq!(c.assistant, AssistantConfig::default(), "step of version 2 -> 3 adds nothing");
+    assert_eq!(
+        c.assistant,
+        AssistantConfig::default(),
+        "step of version 2 -> 3 adds nothing"
+    );
 }
 
 #[test]
@@ -274,19 +288,37 @@ fn round_trip_with_the_new_keys_filled_is_stable() {
 fn the_old_two_pass_default_becomes_single_pass_and_a_later_choice_of_two_pass_is_kept() {
     // Written by a build before version 4: the old default, spelled out by the save.
     let dir = TempDir::new("ct_single_pass");
-    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n");
+    write_config(
+        &dir,
+        "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n",
+    );
     let report = mgr(&dir).load_report().unwrap();
-    assert_eq!(report.notices, vec![LoadNotice::Migrated { from: 3, to: 4 }]);
+    assert_eq!(
+        report.notices,
+        vec![LoadNotice::Migrated { from: 3, to: 4 }]
+    );
     assert_eq!(report.config.pipeline.recognition_mode, "streaming");
-    assert_eq!(report.config.pipeline.clause_pause_ms, 450, "the rest is untouched");
+    assert_eq!(
+        report.config.pipeline.clause_pause_ms, 450,
+        "the rest is untouched"
+    );
 
     // Other values and files without the key are left as they are.
     let dir = TempDir::new("ct_single_pass_other");
-    write_config(&dir, "schema_version = 3\n[pipeline]\nrecognition_mode = \"segmented\"\n");
-    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "segmented");
+    write_config(
+        &dir,
+        "schema_version = 3\n[pipeline]\nrecognition_mode = \"segmented\"\n",
+    );
+    assert_eq!(
+        mgr(&dir).load().unwrap().pipeline.recognition_mode,
+        "segmented"
+    );
     let dir = TempDir::new("ct_single_pass_none");
     write_config(&dir, "schema_version = 3\n[call]\nbarge_in = false\n");
-    assert_eq!(mgr(&dir).load().unwrap().pipeline.recognition_mode, "streaming");
+    assert_eq!(
+        mgr(&dir).load().unwrap().pipeline.recognition_mode,
+        "streaming"
+    );
 
     // A file written at version 4 holds a choice: two-pass stays, through a save and a load.
     let dir = TempDir::new("ct_two_pass_chosen");
@@ -300,11 +332,11 @@ fn the_old_two_pass_default_becomes_single_pass_and_a_later_choice_of_two_pass_i
     assert_eq!(report.config.pipeline.recognition_mode, "two_pass");
 }
 
-
 #[test]
 fn a_migration_is_written_once_with_a_backup_and_the_next_load_is_silent() {
     let dir = TempDir::new("ct_persist_migration");
-    let original = "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n";
+    let original =
+        "schema_version = 3\n[pipeline]\nrecognition_mode = \"two_pass\"\nclause_pause_ms = 450\n";
     write_config(&dir, original);
     let m = mgr(&dir);
     let first = m.load_report().unwrap();
@@ -316,7 +348,11 @@ fn a_migration_is_written_once_with_a_backup_and_the_next_load_is_silent() {
     let backups: Vec<_> = fs::read_dir(dir.path())
         .unwrap()
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().starts_with("config.toml.bak-schema3-"))
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("config.toml.bak-schema3-")
+        })
         .collect();
     assert_eq!(backups.len(), 1);
     assert_eq!(fs::read_to_string(backups[0].path()).unwrap(), original);
@@ -374,9 +410,21 @@ fn a_saved_off_stays_off_through_a_save_and_a_load() {
 #[test]
 fn the_synthesis_hold_keys_default_when_absent_and_read_from_the_pipeline_section() {
     let old: AppConfig = toml::from_str("[pipeline]\njitter_buffer_ms = 150\n").unwrap();
-    assert_eq!((old.pipeline.tts_hold_max_words, old.pipeline.tts_hold_max_chars), (3, 4));
+    assert_eq!(
+        (
+            old.pipeline.tts_hold_max_words,
+            old.pipeline.tts_hold_max_chars
+        ),
+        (3, 4)
+    );
     assert_eq!(old.pipeline.jitter_buffer_ms, 150, "a saved value is kept");
     let legacy: AppConfig =
         toml::from_str("[pipeline]\ntts_hold_max_words = 0\ntts_hold_max_chars = 0\n").unwrap();
-    assert_eq!((legacy.pipeline.tts_hold_max_words, legacy.pipeline.tts_hold_max_chars), (0, 0));
+    assert_eq!(
+        (
+            legacy.pipeline.tts_hold_max_words,
+            legacy.pipeline.tts_hold_max_chars
+        ),
+        (0, 0)
+    );
 }

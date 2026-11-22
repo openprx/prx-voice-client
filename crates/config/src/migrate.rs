@@ -30,26 +30,41 @@ const CHAIN: &[Link] = &[
         from: 0,
         steps: &[
             ("echo_control to echo_mode", echo_control_to_echo_mode),
-            ("pin save_transcript of existing files", pin_legacy_save_transcript),
+            (
+                "pin save_transcript of existing files",
+                pin_legacy_save_transcript,
+            ),
         ],
     },
     Link {
         from: 1,
-        steps: &[("pin the call-translation keys of [call]", pin_call_translation_keys)],
+        steps: &[(
+            "pin the call-translation keys of [call]",
+            pin_call_translation_keys,
+        )],
     },
     Link {
         from: 2,
         steps: &[
             ("move the assistant keys into [assistant]", assistant_keys),
-            ("drop the selections of the retired assistant models", drop_retired_selections),
-            ("drop the keys of the retired assistant stack", drop_retired_keys),
+            (
+                "drop the selections of the retired assistant models",
+                drop_retired_selections,
+            ),
+            (
+                "drop the keys of the retired assistant stack",
+                drop_retired_keys,
+            ),
         ],
     },
     Link {
         from: 3,
         steps: &[
             ("choose the translation engine", pin_translation_engine),
-            ("single-pass recognition replaces the old two-pass default", single_pass_default),
+            (
+                "single-pass recognition replaces the old two-pass default",
+                single_pass_default,
+            ),
         ],
     },
 ];
@@ -77,10 +92,9 @@ pub fn migrate(table: &mut toml::Table) -> Result<Option<u32>, ConfigError> {
         return Ok(None);
     }
     for version in from..CURRENT_SCHEMA_VERSION {
-        let link = CHAIN
-            .iter()
-            .find(|l| l.from == version)
-            .ok_or_else(|| ConfigError::MigrationError(format!("no migration from schema {version}")))?;
+        let link = CHAIN.iter().find(|l| l.from == version).ok_or_else(|| {
+            ConfigError::MigrationError(format!("no migration from schema {version}"))
+        })?;
         for (name, step) in link.steps {
             step(table).map_err(|e| ConfigError::MigrationError(format!("{name}: {e}")))?;
         }
@@ -156,7 +170,11 @@ pub(crate) fn pin_translation_engine(table: &mut toml::Table) -> Result<(), Conf
         .as_table_mut()
         .ok_or_else(|| ConfigError::MigrationError("`call` is not a table".to_owned()))?;
     call.entry("translation_engine").or_insert_with(|| {
-        toml::Value::String(crate::TranslationEngine::migrated_default().as_str().to_owned())
+        toml::Value::String(
+            crate::TranslationEngine::migrated_default()
+                .as_str()
+                .to_owned(),
+        )
     });
     Ok(())
 }
@@ -241,7 +259,10 @@ pub(crate) fn assistant_keys(table: &mut toml::Table) -> Result<(), ConfigError>
 /// (`whisper-small`, `silero-vad-5.1.2`), so that the catalogue's recommendation applies again, and
 /// the update-dialog entries for them. Selections of every other model are not touched.
 pub(crate) fn drop_retired_selections(table: &mut toml::Table) -> Result<(), ConfigError> {
-    if let Some(providers) = table.get_mut("providers").and_then(toml::Value::as_table_mut) {
+    if let Some(providers) = table
+        .get_mut("providers")
+        .and_then(toml::Value::as_table_mut)
+    {
         for slot in ["active", "fallback"] {
             let Some(roles) = providers.get_mut(slot).and_then(toml::Value::as_table_mut) else {
                 continue;
@@ -332,7 +353,10 @@ mod tests {
         assert_eq!(missing["privacy"]["save_transcript"].as_bool(), Some(true));
         let mut no_section = parse("");
         pin_legacy_save_transcript(&mut no_section).unwrap();
-        assert_eq!(no_section["privacy"]["save_transcript"].as_bool(), Some(true));
+        assert_eq!(
+            no_section["privacy"]["save_transcript"].as_bool(),
+            Some(true)
+        );
         let mut present = parse("[privacy]\nsave_transcript = false\n");
         pin_legacy_save_transcript(&mut present).unwrap();
         assert_eq!(present["privacy"]["save_transcript"].as_bool(), Some(false));
@@ -408,7 +432,10 @@ mod tests {
             "schema_version = 1\n[audio]\necho_control = false\n[privacy]\nsave_transcript = false\n",
         );
         assert_eq!(migrate(&mut t).unwrap(), Some(1));
-        assert_eq!(t["schema_version"].as_integer(), Some(CURRENT_SCHEMA_VERSION.into()));
+        assert_eq!(
+            t["schema_version"].as_integer(),
+            Some(CURRENT_SCHEMA_VERSION.into())
+        );
         assert!(
             t["audio"].get("echo_mode").is_none(),
             "version 0 steps do not run again"
@@ -434,7 +461,10 @@ mod tests {
 
         let mut neither = parse("[audio]\nsample_rate = 16000\n");
         assistant_keys(&mut neither).unwrap();
-        assert!(neither.get("assistant").is_none(), "defaults apply, nothing is pinned");
+        assert!(
+            neither.get("assistant").is_none(),
+            "defaults apply, nothing is pinned"
+        );
         let mut bad = parse("assistant = 3\n[network]\nlanguage = \"en\"\n");
         assert!(assistant_keys(&mut bad).is_err());
     }
@@ -451,8 +481,18 @@ mod tests {
         let asr = t["providers"]["active"]["asr"].as_table().unwrap();
         assert!(asr.get("zh").is_none());
         assert_eq!(asr["en"].as_str(), Some("qwen3-asr-0.6b-q8"));
-        assert!(t["providers"]["active"]["vad"].as_table().unwrap().is_empty());
-        assert!(t["providers"]["fallback"]["asr"].as_table().unwrap().is_empty());
+        assert!(
+            t["providers"]["active"]["vad"]
+                .as_table()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            t["providers"]["fallback"]["asr"]
+                .as_table()
+                .unwrap()
+                .is_empty()
+        );
         let skipped = t["models"]["skipped_updates"].as_array().unwrap();
         assert_eq!(skipped.len(), 1);
         assert_eq!(skipped[0].as_str(), Some("qwen3-asr-0.6b-q8@def"));
@@ -469,7 +509,11 @@ mod tests {
         );
         drop_retired_keys(&mut t).unwrap();
         assert!(t.get("network").is_none());
-        assert_eq!(t["audio"].as_table().unwrap().len(), 1, "only sample_rate is left");
+        assert_eq!(
+            t["audio"].as_table().unwrap().len(),
+            1,
+            "only sample_rate is left"
+        );
         let mut none = parse("[ui]\nlanguage = \"en\"\n");
         drop_retired_keys(&mut none).unwrap();
         assert_eq!(none, parse("[ui]\nlanguage = \"en\"\n"));
@@ -485,7 +529,11 @@ mod tests {
         assert_eq!(migrate(&mut t).unwrap(), Some(3));
         let expected = crate::TranslationEngine::migrated_default().as_str();
         assert_eq!(t["call"]["translation_engine"].as_str(), Some(expected));
-        assert_eq!(t["call"]["start_mode"].as_str(), Some("on_call"), "other keys untouched");
+        assert_eq!(
+            t["call"]["start_mode"].as_str(),
+            Some("on_call"),
+            "other keys untouched"
+        );
         assert_eq!(
             t["providers"]["active"]["mt"]["zh>en"].as_str(),
             Some("hy-mt2-7b-q4km"),
@@ -513,7 +561,11 @@ mod tests {
         assert_eq!(t["assistant"]["end_silence_ms"].as_integer(), Some(650));
         assert!(t.get("network").is_none(), "the server section is gone");
         assert!(t["audio"].get("end_silence_ms").is_none());
-        assert_eq!(t["call"]["start_mode"].as_str(), Some("on_call"), "earlier keys untouched");
+        assert_eq!(
+            t["call"]["start_mode"].as_str(),
+            Some("on_call"),
+            "earlier keys untouched"
+        );
         let once = t.clone();
         assert_eq!(migrate(&mut t).unwrap(), None);
         assert_eq!(t, once);

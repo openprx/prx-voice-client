@@ -124,7 +124,8 @@ impl World {
 
     /// Provider objects handed to pipelines and not yet dropped.
     pub fn live_providers(&self) -> usize {
-        self.live_providers.load(std::sync::atomic::Ordering::SeqCst)
+        self.live_providers
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Change the fakes the pipelines are built from (before the providers are prepared).
@@ -168,11 +169,21 @@ impl World {
     }
 
     pub fn played(&self, name: &'static str) -> Vec<Played> {
-        self.paths.lock().played.get(name).cloned().unwrap_or_default()
+        self.paths
+            .lock()
+            .played
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn modes(&self, name: &'static str) -> Vec<LocalOutputMode> {
-        self.paths.lock().modes.get(name).cloned().unwrap_or_default()
+        self.paths
+            .lock()
+            .modes
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn log(&self) -> Vec<String> {
@@ -487,8 +498,14 @@ impl CallHost for FakeHost {
         translate: bool,
     ) -> Result<Box<dyn AudioPath>, HostFault> {
         self.world.step("start_incoming")?;
-        self.world
-            .record(format!("incoming.mode:{}", if translate { "translated" } else { "audio_only" }));
+        self.world.record(format!(
+            "incoming.mode:{}",
+            if translate {
+                "translated"
+            } else {
+                "audio_only"
+            }
+        ));
         Ok(Box::new(FakePath {
             name: "incoming",
             world: self.world.clone(),
@@ -535,50 +552,48 @@ impl CallHost for FakeHost {
         let dirs = self.world.script.lock().translated.unwrap_or(DirSet::BOTH);
         let t = self.world.translation.lock();
         let clock = self.world.clock.clone();
-        let directions = dirs
-            .iter()
-            .map(|d| {
-                let (source, target) = match d {
-                    Direction::Outgoing => (Lang::Zh, Lang::En),
-                    Direction::Incoming => (Lang::En, Lang::Zh),
-                };
-                let mut params = PipelineParams::new(
-                    d,
-                    source,
-                    target,
-                    VoiceSelection::Preset {
-                        name: "preset-a".to_owned(),
-                    },
-                );
-                (t.params)(&mut params);
-                let vad = t
-                    .vad
-                    .get(&d)
-                    .cloned()
-                    .unwrap_or_else(|| VadScript::probabilities(std::iter::repeat_n(0.0, 4000)));
-                let asr = t
-                    .asr
-                    .get(&d)
-                    .cloned()
-                    .unwrap_or_else(|| AsrScript::new([], ""));
-                DirectionBuild {
-                    params,
-                    providers: PipelineProviders {
-                        vad: Arc::new(FakeVadProvider::new(vad)),
-                        asr: Arc::new(FakeStreamingAsr::new(clock.clone(), asr)),
-                        refine: None,
-                        mt: Arc::new(CountedTranslator::new(
-                            t.mt.clone(),
-                            Arc::clone(&self.world.live_providers),
-                        )),
-                        tts: Arc::new(t.tts.clone()),
-                    },
-                    disclosure: (d == Direction::Outgoing)
-                        .then(|| t.disclosure.clone())
-                        .flatten(),
-                }
-            })
-            .collect();
+        let directions =
+            dirs.iter()
+                .map(|d| {
+                    let (source, target) = match d {
+                        Direction::Outgoing => (Lang::Zh, Lang::En),
+                        Direction::Incoming => (Lang::En, Lang::Zh),
+                    };
+                    let mut params = PipelineParams::new(
+                        d,
+                        source,
+                        target,
+                        VoiceSelection::Preset {
+                            name: "preset-a".to_owned(),
+                        },
+                    );
+                    (t.params)(&mut params);
+                    let vad = t.vad.get(&d).cloned().unwrap_or_else(|| {
+                        VadScript::probabilities(std::iter::repeat_n(0.0, 4000))
+                    });
+                    let asr = t
+                        .asr
+                        .get(&d)
+                        .cloned()
+                        .unwrap_or_else(|| AsrScript::new([], ""));
+                    DirectionBuild {
+                        params,
+                        providers: PipelineProviders {
+                            vad: Arc::new(FakeVadProvider::new(vad)),
+                            asr: Arc::new(FakeStreamingAsr::new(clock.clone(), asr)),
+                            refine: None,
+                            mt: Arc::new(CountedTranslator::new(
+                                t.mt.clone(),
+                                Arc::clone(&self.world.live_providers),
+                            )),
+                            tts: Arc::new(t.tts.clone()),
+                        },
+                        disclosure: (d == Direction::Outgoing)
+                            .then(|| t.disclosure.clone())
+                            .flatten(),
+                    }
+                })
+                .collect();
         Ok(PreparedProviders {
             directions,
             trace: Arc::new(t.trace.clone()),

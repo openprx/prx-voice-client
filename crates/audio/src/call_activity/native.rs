@@ -53,7 +53,11 @@ unsafe extern "C" {
 
 /// A NUL-terminated C char array as text (the part before the first NUL).
 fn text(raw: &[c_char]) -> String {
-    let bytes: Vec<u8> = raw.iter().map(|&c| c as u8).take_while(|&b| b != 0).collect();
+    let bytes: Vec<u8> = raw
+        .iter()
+        .map(|&c| c as u8)
+        .take_while(|&b| b != 0)
+        .collect();
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
@@ -99,7 +103,11 @@ extern "C" fn collect_row(ctx: *mut c_void, row: *const RawRow) {
 }
 
 /// Rows of the process objects matching the filter.
-fn enumerate(bundle_id: Option<&str>, pid: i32, with_devices: bool) -> Result<Vec<AppAudioActivity>, ActivityError> {
+fn enumerate(
+    bundle_id: Option<&str>,
+    pid: i32,
+    with_devices: bool,
+) -> Result<Vec<AppAudioActivity>, ActivityError> {
     let bundle = match bundle_id {
         Some(id) => Some(CString::new(id).map_err(|_| ActivityError::ReadFailed { status: -1 })?),
         None => None,
@@ -158,7 +166,9 @@ pub struct NativeActivitySource {
 impl NativeActivitySource {
     /// A source for the application with `bundle_id`.
     pub fn new(bundle_id: impl Into<String>) -> Self {
-        Self { bundle_id: bundle_id.into() }
+        Self {
+            bundle_id: bundle_id.into(),
+        }
     }
 }
 

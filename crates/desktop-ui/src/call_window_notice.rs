@@ -116,11 +116,22 @@ mod tests {
             plays: 0,
             last_played_s: Some(75),
         };
-        assert_eq!(line(&running(notice(NoticeState::Preparing, true))).unwrap().1, false);
-        assert_eq!(line(&running(notice(NoticeState::Ready, true))).unwrap().1, true);
+        assert_eq!(
+            line(&running(notice(NoticeState::Preparing, true)))
+                .unwrap()
+                .1,
+            false
+        );
+        assert_eq!(
+            line(&running(notice(NoticeState::Ready, true))).unwrap().1,
+            true
+        );
         let (text, again) = line(&running(notice(NoticeState::Played, true))).unwrap();
         assert!(again && text.contains("1:15"), "{text}");
-        assert_eq!(line(&running(notice(NoticeState::Failed, true))).unwrap().1, false);
+        assert_eq!(
+            line(&running(notice(NoticeState::Failed, true))).unwrap().1,
+            false
+        );
         let off = line(&running(notice(NoticeState::Off, false))).unwrap();
         assert!(!off.1);
         // A call without translation tells nobody anything.

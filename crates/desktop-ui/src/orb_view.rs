@@ -23,7 +23,15 @@ pub fn render_orb(ui: &mut egui::Ui, state: &DesktopUiState, time: f64) -> egui:
     let response = ui.allocate_rect(orb_rect, egui::Sense::click());
 
     let painter = ui.painter();
-    paint_orb(painter, &tk, center, radius, orb_color, time, response.hovered());
+    paint_orb(
+        painter,
+        &tk,
+        center,
+        radius,
+        orb_color,
+        time,
+        response.hovered(),
+    );
     response
 }
 

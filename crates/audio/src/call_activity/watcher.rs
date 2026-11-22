@@ -79,7 +79,11 @@ pub struct Debouncer<T> {
 impl<T: Clone + PartialEq> Debouncer<T> {
     /// A debouncer with the given hold time.
     pub fn new(hold: Duration) -> Self {
-        Self { hold, reported: None, candidate: None }
+        Self {
+            hold,
+            reported: None,
+            candidate: None,
+        }
     }
 
     /// Feed the value seen at `now`; returns it when it becomes the reported one.
@@ -111,18 +115,32 @@ pub struct WatcherCore {
 
 impl WatcherCore {
     /// A core reading `source` and judging against `our_microphone_uid`.
-    pub fn new(source: Box<dyn ActivitySource>, our_microphone_uid: impl Into<String>, hold: Duration) -> Self {
-        Self { source, our_microphone_uid: our_microphone_uid.into(), debouncer: Debouncer::new(hold) }
+    pub fn new(
+        source: Box<dyn ActivitySource>,
+        our_microphone_uid: impl Into<String>,
+        hold: Duration,
+    ) -> Self {
+        Self {
+            source,
+            our_microphone_uid: our_microphone_uid.into(),
+            debouncer: Debouncer::new(hold),
+        }
     }
 
     /// Poll once at `now`; returns an event when the debounced state changed.
     pub fn tick(&mut self, now: Instant) -> Option<CallActivityEvent> {
         let (observed, activity) = match self.source.read() {
-            Ok(activity) => (Ok(judge_call(&activity, &self.our_microphone_uid)), Some(activity)),
+            Ok(activity) => (
+                Ok(judge_call(&activity, &self.our_microphone_uid)),
+                Some(activity),
+            ),
             Err(error) => (Err(error), None),
         };
         match (self.debouncer.feed(now, observed)?, activity) {
-            (Ok(judgement), Some(activity)) => Some(CallActivityEvent::Changed { judgement, activity }),
+            (Ok(judgement), Some(activity)) => Some(CallActivityEvent::Changed {
+                judgement,
+                activity,
+            }),
             (Err(error), _) => Some(CallActivityEvent::Unavailable { error }),
             // A confirmed judgement always comes from a successful read.
             (Ok(_), None) => None,
@@ -172,12 +190,23 @@ impl CallActivityWatcher {
         let dropped = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let core = WatcherCore::new(source, config.our_microphone_uid, config.hold);
-        let shared = Shared { tx, latest: Arc::clone(&latest), dropped: Arc::clone(&dropped), stop: Arc::clone(&stop) };
+        let shared = Shared {
+            tx,
+            latest: Arc::clone(&latest),
+            dropped: Arc::clone(&dropped),
+            stop: Arc::clone(&stop),
+        };
         let interval = config.poll_interval;
         let thread = std::thread::Builder::new()
             .name("prxvc-call-activity".into())
             .spawn(move || run(core, &shared, interval))?;
-        Ok(Self { events, latest, dropped, stop, thread: Some(thread) })
+        Ok(Self {
+            events,
+            latest,
+            dropped,
+            stop,
+            thread: Some(thread),
+        })
     }
 
     /// Change events since the last read.

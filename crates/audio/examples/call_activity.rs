@@ -20,7 +20,8 @@ fn main() {
 
     use prxvc_audio::call_activity::native::{NativeActivitySource, read_app_activity};
     use prxvc_audio::call_activity::{
-        AppAudioActivity, CallActivityEvent, CallActivityWatcher, CallJudgement, WatcherConfig, judge_call,
+        AppAudioActivity, CallActivityEvent, CallActivityWatcher, CallJudgement, WatcherConfig,
+        judge_call,
     };
 
     const DEFAULT_UID: &str = "org.openprx.prx-voice-client.microphone";
@@ -28,15 +29,24 @@ fn main() {
     fn print_activity(a: &AppAudioActivity, judgement: &CallJudgement) {
         println!("application     : {}", a.bundle_id);
         println!("known to audio  : {}", a.present);
-        println!("pid             : {}", a.pid.map_or("-".to_owned(), |p| p.to_string()));
+        println!(
+            "pid             : {}",
+            a.pid.map_or("-".to_owned(), |p| p.to_string())
+        );
         println!("audio running   : {}", a.audio_running);
         println!("input running   : {}", a.input_running);
         println!("output running  : {}", a.output_running);
         for d in &a.input_devices {
-            println!("  input device  : \"{}\" uid={} (in {} ch, out {} ch)", d.name, d.uid, d.input_channels, d.output_channels);
+            println!(
+                "  input device  : \"{}\" uid={} (in {} ch, out {} ch)",
+                d.name, d.uid, d.input_channels, d.output_channels
+            );
         }
         for d in &a.output_devices {
-            println!("  output device : \"{}\" uid={} (in {} ch, out {} ch)", d.name, d.uid, d.input_channels, d.output_channels);
+            println!(
+                "  output device : \"{}\" uid={} (in {} ch, out {} ch)",
+                d.name, d.uid, d.input_channels, d.output_channels
+            );
         }
         println!("judgement       : {judgement:?}");
         println!("call active     : {}", judgement.call_active());
@@ -88,12 +98,18 @@ fn main() {
             break;
         }
         match watcher.events().recv_timeout(Duration::from_millis(250)) {
-            Ok(CallActivityEvent::Changed { judgement, activity }) => {
+            Ok(CallActivityEvent::Changed {
+                judgement,
+                activity,
+            }) => {
                 println!("\n[{:>5.1} s] changed", started.elapsed().as_secs_f32());
                 print_activity(&activity, &judgement);
             }
             Ok(CallActivityEvent::Unavailable { error }) => {
-                println!("\n[{:>5.1} s] detection unavailable: {error}", started.elapsed().as_secs_f32());
+                println!(
+                    "\n[{:>5.1} s] detection unavailable: {error}",
+                    started.elapsed().as_secs_f32()
+                );
             }
             Err(_) => {}
         }

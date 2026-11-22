@@ -10,7 +10,13 @@ const OUR_UID: &str = "org.openprx.prx-voice-client.microphone";
 const WHATSAPP: &str = "net.whatsapp.WhatsApp";
 
 fn device(object_id: u32, uid: &str, name: &str, input: u32, output: u32) -> ProcessDevice {
-    ProcessDevice { object_id, uid: uid.into(), name: name.into(), input_channels: input, output_channels: output }
+    ProcessDevice {
+        object_id,
+        uid: uid.into(),
+        name: name.into(),
+        input_channels: input,
+        output_channels: output,
+    }
 }
 
 fn our_mic() -> ProcessDevice {
@@ -22,10 +28,21 @@ fn speakers() -> ProcessDevice {
 }
 
 fn builtin_mic() -> ProcessDevice {
-    device(75, "BuiltInMicrophoneDevice", "MacBook Pro Microphone", 1, 0)
+    device(
+        75,
+        "BuiltInMicrophoneDevice",
+        "MacBook Pro Microphone",
+        1,
+        0,
+    )
 }
 
-fn app(input: bool, output: bool, inputs: Vec<ProcessDevice>, outputs: Vec<ProcessDevice>) -> AppAudioActivity {
+fn app(
+    input: bool,
+    output: bool,
+    inputs: Vec<ProcessDevice>,
+    outputs: Vec<ProcessDevice>,
+) -> AppAudioActivity {
     AppAudioActivity {
         bundle_id: WHATSAPP.into(),
         present: true,
@@ -56,7 +73,12 @@ fn fixture_live_call() -> AppAudioActivity {
 
 /// A call on the built-in microphone, with the same echo-reference entry.
 fn fixture_call_on_builtin_microphone() -> AppAudioActivity {
-    app(true, true, vec![builtin_mic(), speakers()], vec![speakers()])
+    app(
+        true,
+        true,
+        vec![builtin_mic(), speakers()],
+        vec![speakers()],
+    )
 }
 
 #[test]
@@ -69,27 +91,45 @@ fn idle_application_is_not_a_call() {
 #[test]
 fn voice_message_on_our_microphone_counts_as_active_on_it() {
     let j = judge_call(&fixture_voice_message_on_our_microphone(), OUR_UID);
-    assert_eq!(j, CallJudgement::ActiveOnOurMicrophone { output_running: false });
+    assert_eq!(
+        j,
+        CallJudgement::ActiveOnOurMicrophone {
+            output_running: false
+        }
+    );
     assert!(j.call_active() && j.uses_our_microphone());
 }
 
 #[test]
 fn live_call_fixture_is_active_on_our_microphone_despite_the_echo_reference() {
     let j = judge_call(&fixture_live_call(), OUR_UID);
-    assert_eq!(j, CallJudgement::ActiveOnOurMicrophone { output_running: true });
+    assert_eq!(
+        j,
+        CallJudgement::ActiveOnOurMicrophone {
+            output_running: true
+        }
+    );
 }
 
 #[test]
 fn live_call_without_our_microphone_in_the_list_is_not_ours_and_the_speakers_are_ignored() {
     // The same call with the echo reference only: nothing is a microphone.
     let a = app(true, true, vec![speakers()], vec![speakers()]);
-    assert_eq!(judge_call(&a, OUR_UID), CallJudgement::ActiveOnOtherMicrophone { devices: vec![] });
+    assert_eq!(
+        judge_call(&a, OUR_UID),
+        CallJudgement::ActiveOnOtherMicrophone { devices: vec![] }
+    );
 }
 
 #[test]
 fn call_on_the_builtin_microphone_is_reported_separately_with_the_microphone_named() {
     let j = judge_call(&fixture_call_on_builtin_microphone(), OUR_UID);
-    assert_eq!(j, CallJudgement::ActiveOnOtherMicrophone { devices: vec![builtin_mic()] });
+    assert_eq!(
+        j,
+        CallJudgement::ActiveOnOtherMicrophone {
+            devices: vec![builtin_mic()]
+        }
+    );
     assert!(j.call_active() && !j.uses_our_microphone());
 }
 
@@ -103,15 +143,28 @@ fn application_not_running_is_not_running() {
 #[test]
 fn input_running_with_an_empty_device_list_is_a_call_on_an_unknown_microphone() {
     let a = app(true, true, vec![], vec![speakers()]);
-    assert_eq!(judge_call(&a, OUR_UID), CallJudgement::ActiveOnOtherMicrophone { devices: vec![] });
+    assert_eq!(
+        judge_call(&a, OUR_UID),
+        CallJudgement::ActiveOnOtherMicrophone { devices: vec![] }
+    );
 }
 
 #[test]
 fn our_microphone_is_never_taken_for_an_echo_reference_even_when_it_can_render() {
     // A loopback style device has output streams too.
     let ours = device(120, OUR_UID, "PRX Voice Microphone", 1, 1);
-    let a = app(true, true, vec![ours.clone(), speakers()], vec![speakers(), ours]);
-    assert_eq!(judge_call(&a, OUR_UID), CallJudgement::ActiveOnOurMicrophone { output_running: true });
+    let a = app(
+        true,
+        true,
+        vec![ours.clone(), speakers()],
+        vec![speakers(), ours],
+    );
+    assert_eq!(
+        judge_call(&a, OUR_UID),
+        CallJudgement::ActiveOnOurMicrophone {
+            output_running: true
+        }
+    );
 }
 
 #[test]
@@ -119,7 +172,10 @@ fn a_headset_used_for_input_and_output_is_ignored_as_a_microphone_but_the_call_i
     let headset = device(90, "AirPods", "AirPods", 1, 1);
     let a = app(true, true, vec![headset.clone()], vec![headset]);
     let j = judge_call(&a, OUR_UID);
-    assert_eq!(j, CallJudgement::ActiveOnOtherMicrophone { devices: vec![] });
+    assert_eq!(
+        j,
+        CallJudgement::ActiveOnOtherMicrophone { devices: vec![] }
+    );
     assert!(!j.uses_our_microphone());
 }
 
@@ -127,14 +183,24 @@ fn a_headset_used_for_input_and_output_is_ignored_as_a_microphone_but_the_call_i
 fn an_input_entry_equal_to_an_output_device_is_ignored_even_if_its_streams_are_unknown() {
     let in_entry = device(80, "BuiltInSpeakerDevice", "MacBook Pro Speakers", 0, 0);
     let a = app(true, true, vec![builtin_mic(), in_entry], vec![speakers()]);
-    assert_eq!(judge_call(&a, OUR_UID), CallJudgement::ActiveOnOtherMicrophone { devices: vec![builtin_mic()] });
+    assert_eq!(
+        judge_call(&a, OUR_UID),
+        CallJudgement::ActiveOnOtherMicrophone {
+            devices: vec![builtin_mic()]
+        }
+    );
 }
 
 #[test]
 fn an_empty_our_uid_never_matches() {
     let unnamed = device(1, "", "Some device", 1, 0);
     let a = app(true, false, vec![unnamed.clone()], vec![]);
-    assert_eq!(judge_call(&a, ""), CallJudgement::ActiveOnOtherMicrophone { devices: vec![unnamed] });
+    assert_eq!(
+        judge_call(&a, ""),
+        CallJudgement::ActiveOnOtherMicrophone {
+            devices: vec![unnamed]
+        }
+    );
 }
 
 #[test]
@@ -146,7 +212,11 @@ fn process_objects_of_one_application_merge() {
     assert!(main.input_running && main.output_running && main.audio_running);
     assert_eq!(main.pid, Some(23453));
     assert_eq!(main.input_devices, vec![our_mic()]);
-    assert_eq!(main.output_devices, vec![speakers()], "the same device is not listed twice");
+    assert_eq!(
+        main.output_devices,
+        vec![speakers()],
+        "the same device is not listed twice"
+    );
 }
 
 #[test]
@@ -212,7 +282,10 @@ impl ActivitySource for Script {
         match self.0.len() {
             0 => Err(ActivityError::Unsupported),
             1 => self.0[0].clone(),
-            _ => self.0.pop_front().unwrap_or(Err(ActivityError::Unsupported)),
+            _ => self
+                .0
+                .pop_front()
+                .unwrap_or(Err(ActivityError::Unsupported)),
         }
     }
 }
@@ -249,7 +322,9 @@ fn watcher_core_reports_the_baseline_then_a_debounced_call_start_and_end() {
         vec![
             Some(CallJudgement::Idle),
             None,
-            Some(CallJudgement::ActiveOnOurMicrophone { output_running: true }),
+            Some(CallJudgement::ActiveOnOurMicrophone {
+                output_running: true
+            }),
             None,
             None,
             Some(CallJudgement::Idle),
@@ -261,11 +336,18 @@ fn watcher_core_reports_the_baseline_then_a_debounced_call_start_and_end() {
 fn watcher_core_does_not_report_a_one_poll_blip() {
     let t0 = Instant::now();
     let mut core = WatcherCore::new(
-        script(vec![Ok(fixture_idle()), Ok(fixture_live_call()), Ok(fixture_idle()), Ok(fixture_idle())]),
+        script(vec![
+            Ok(fixture_idle()),
+            Ok(fixture_live_call()),
+            Ok(fixture_idle()),
+            Ok(fixture_idle()),
+        ]),
         OUR_UID,
         Duration::from_secs(1),
     );
-    let events: Vec<_> = (0..4u64).filter_map(|i| core.tick(at(t0, i * 1_000))).collect();
+    let events: Vec<_> = (0..4u64)
+        .filter_map(|i| core.tick(at(t0, i * 1_000)))
+        .collect();
     assert_eq!(events.len(), 1, "only the baseline: {events:?}");
 }
 
@@ -273,14 +355,33 @@ fn watcher_core_does_not_report_a_one_poll_blip() {
 fn watcher_core_reports_loss_of_detection_and_its_return() {
     let t0 = Instant::now();
     let mut core = WatcherCore::new(
-        script(vec![Ok(fixture_idle()), Err(ActivityError::Unsupported), Err(ActivityError::Unsupported), Ok(fixture_idle()), Ok(fixture_idle())]),
+        script(vec![
+            Ok(fixture_idle()),
+            Err(ActivityError::Unsupported),
+            Err(ActivityError::Unsupported),
+            Ok(fixture_idle()),
+            Ok(fixture_idle()),
+        ]),
         OUR_UID,
         Duration::from_secs(1),
     );
-    let events: Vec<_> = (0..5u64).filter_map(|i| core.tick(at(t0, i * 1_000))).collect();
+    let events: Vec<_> = (0..5u64)
+        .filter_map(|i| core.tick(at(t0, i * 1_000)))
+        .collect();
     assert_eq!(events.len(), 3);
-    assert!(matches!(events[1], CallActivityEvent::Unavailable { error: ActivityError::Unsupported }));
-    assert!(matches!(&events[2], CallActivityEvent::Changed { judgement: CallJudgement::Idle, .. }));
+    assert!(matches!(
+        events[1],
+        CallActivityEvent::Unavailable {
+            error: ActivityError::Unsupported
+        }
+    ));
+    assert!(matches!(
+        &events[2],
+        CallActivityEvent::Changed {
+            judgement: CallJudgement::Idle,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -292,10 +393,18 @@ fn watcher_thread_delivers_events_and_stops_on_drop() {
         hold: Duration::ZERO,
     };
     let watcher = CallActivityWatcher::spawn(source, config).expect("thread starts");
-    let event = watcher.events().recv_timeout(Duration::from_secs(10)).expect("baseline event");
+    let event = watcher
+        .events()
+        .recv_timeout(Duration::from_secs(10))
+        .expect("baseline event");
     assert!(matches!(
         event,
-        CallActivityEvent::Changed { judgement: CallJudgement::ActiveOnOurMicrophone { output_running: true }, .. }
+        CallActivityEvent::Changed {
+            judgement: CallJudgement::ActiveOnOurMicrophone {
+                output_running: true
+            },
+            ..
+        }
     ));
     assert_eq!(watcher.latest(), Some(event));
     assert_eq!(watcher.dropped_events(), 0);

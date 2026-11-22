@@ -7,7 +7,9 @@ struct Fixture {
 
 impl Fixture {
     fn new(label: &str) -> Self {
-        Self { root: TempDir::new(label) }
+        Self {
+            root: TempDir::new(label),
+        }
     }
     fn p(&self, rel: &str) -> PathBuf {
         self.root.path().join(rel)
@@ -44,15 +46,30 @@ fn config_and_database_are_copied_with_a_note() {
     let report = f.run_config_db();
     assert!(report.failures.is_empty(), "{report:?}");
     assert_eq!(report.copied.len(), 3);
-    assert_eq!(fs::read(f.p("new/config/config.toml")).unwrap(), b"[ui]\nlanguage = \"zh-CN\"\n");
-    assert_eq!(fs::read(f.p("new/data/sessions.db")).unwrap(), b"SQLITE-main");
-    assert_eq!(fs::read(f.p("new/data/sessions.db-wal")).unwrap(), b"wal-bytes");
+    assert_eq!(
+        fs::read(f.p("new/config/config.toml")).unwrap(),
+        b"[ui]\nlanguage = \"zh-CN\"\n"
+    );
+    assert_eq!(
+        fs::read(f.p("new/data/sessions.db")).unwrap(),
+        b"SQLITE-main"
+    );
+    assert_eq!(
+        fs::read(f.p("new/data/sessions.db-wal")).unwrap(),
+        b"wal-bytes"
+    );
     // Originals stay, with a note naming the new location.
     assert!(f.p("old_app/config.toml").is_file());
     assert!(f.p("old_app/sessions.db").is_file());
     let note = fs::read_to_string(f.p("old_app/MOVED.txt")).unwrap();
-    assert!(note.contains(&f.p("new/config").join("config.toml").display().to_string()), "{note}");
-    assert!(note.contains(&f.p("new/data").join("sessions.db").display().to_string()), "{note}");
+    assert!(
+        note.contains(&f.p("new/config").join("config.toml").display().to_string()),
+        "{note}"
+    );
+    assert!(
+        note.contains(&f.p("new/data").join("sessions.db").display().to_string()),
+        "{note}"
+    );
     assert!(!f.p("new/config/config.toml.migrating").exists());
 }
 
@@ -81,9 +98,15 @@ fn existing_destination_config_is_kept() {
     let report = f.run_config_db();
     assert!(report.copied.is_empty());
     assert_eq!(report.kept_existing.len(), 2);
-    assert_eq!(fs::read(f.p("new/config/config.toml")).unwrap(), b"already here");
+    assert_eq!(
+        fs::read(f.p("new/config/config.toml")).unwrap(),
+        b"already here"
+    );
     assert_eq!(fs::read(f.p("new/data/sessions.db")).unwrap(), b"new db");
-    assert!(!f.p("new/data/sessions.db-wal").exists(), "a wal must not travel to someone else's database");
+    assert!(
+        !f.p("new/data/sessions.db-wal").exists(),
+        "a wal must not travel to someone else's database"
+    );
     assert!(!f.p("old_app/MOVED.txt").exists());
 }
 
@@ -106,7 +129,10 @@ fn failed_copy_leaves_sources_and_no_partial_destination() {
     let report = f.run_config_db();
     assert_eq!(report.failures.len(), 1, "{report:?}");
     assert!(!f.p("new/config/config.toml").exists());
-    assert_eq!(fs::read(f.p("old_app/config.toml")).unwrap(), b"[ui]\nlanguage = \"zh-CN\"\n");
+    assert_eq!(
+        fs::read(f.p("old_app/config.toml")).unwrap(),
+        b"[ui]\nlanguage = \"zh-CN\"\n"
+    );
     // The database group is independent and still copied.
     assert!(f.p("new/data/sessions.db").is_file());
     // After the obstacle is gone, a rerun completes the job.
@@ -124,8 +150,14 @@ fn models_move_to_the_new_root_and_the_old_folders_go() {
     let report = migrate_legacy_models(&old_models, &dest);
     assert!(report.failures.is_empty(), "{report:?}");
     assert_eq!(report.moved.len(), 2);
-    assert_eq!(fs::read(dest.join("ggml-small.bin")).unwrap(), vec![1u8; 5000]);
-    assert_eq!(fs::read(dest.join("ggml-silero-vad.bin")).unwrap(), vec![2u8; 300]);
+    assert_eq!(
+        fs::read(dest.join("ggml-small.bin")).unwrap(),
+        vec![1u8; 5000]
+    );
+    assert_eq!(
+        fs::read(dest.join("ggml-silero-vad.bin")).unwrap(),
+        vec![2u8; 300]
+    );
     assert!(!old_models.exists());
     assert!(!f.p("old_models").exists(), "empty parent is removed too");
     assert_eq!(report.removed_dirs.len(), 2);
@@ -151,10 +183,19 @@ fn models_existing_destination_file_is_kept_and_source_stays() {
     fs::write(dest.join("ggml-small.bin"), b"newer").unwrap();
     let report = migrate_legacy_models(&old_models, &dest);
     assert_eq!(fs::read(dest.join("ggml-small.bin")).unwrap(), b"newer");
-    assert_eq!(fs::read(old_models.join("ggml-small.bin")).unwrap(), vec![1u8; 5000]);
-    assert_eq!(report.kept_existing, vec![old_models.join("ggml-small.bin")]);
+    assert_eq!(
+        fs::read(old_models.join("ggml-small.bin")).unwrap(),
+        vec![1u8; 5000]
+    );
+    assert_eq!(
+        report.kept_existing,
+        vec![old_models.join("ggml-small.bin")]
+    );
     assert_eq!(report.moved.len(), 1);
-    assert!(old_models.is_dir(), "a folder that still holds a file is not removed");
+    assert!(
+        old_models.is_dir(),
+        "a folder that still holds a file is not removed"
+    );
 }
 
 #[test]
@@ -164,7 +205,10 @@ fn models_unmatched_content_and_subfolders_are_left_alone() {
     f.write("old_models/models/sub/inner.bin", b"inner");
     let report = migrate_legacy_models(&old_models, &f.p("new/models"));
     assert_eq!(report.moved.len(), 2);
-    assert_eq!(fs::read(old_models.join("sub/inner.bin")).unwrap(), b"inner");
+    assert_eq!(
+        fs::read(old_models.join("sub/inner.bin")).unwrap(),
+        b"inner"
+    );
     assert!(report.removed_dirs.is_empty());
 }
 
@@ -180,15 +224,24 @@ fn models_copy_path_verifies_then_removes_and_failure_midway_keeps_sources() {
     let report = migrate_models_impl(&old_models, &dest, false);
     assert_eq!(report.moved, vec![dest.join("ggml-silero-vad.bin")]);
     assert_eq!(report.failures.len(), 1, "{report:?}");
-    assert!(!old_models.join("ggml-silero-vad.bin").exists(), "moved file's source is removed after the verified copy");
-    assert_eq!(fs::read(old_models.join("ggml-small.bin")).unwrap(), vec![1u8; 5000]);
+    assert!(
+        !old_models.join("ggml-silero-vad.bin").exists(),
+        "moved file's source is removed after the verified copy"
+    );
+    assert_eq!(
+        fs::read(old_models.join("ggml-small.bin")).unwrap(),
+        vec![1u8; 5000]
+    );
     assert!(!dest.join("ggml-small.bin").exists());
     assert!(old_models.is_dir());
     // Retry once the obstacle is gone.
     fs::remove_dir_all(dest.join("ggml-small.bin.migrating")).unwrap();
     let again = migrate_models_impl(&old_models, &dest, false);
     assert!(again.failures.is_empty());
-    assert_eq!(fs::read(dest.join("ggml-small.bin")).unwrap(), vec![1u8; 5000]);
+    assert_eq!(
+        fs::read(dest.join("ggml-small.bin")).unwrap(),
+        vec![1u8; 5000]
+    );
     assert!(!old_models.exists());
 }
 
@@ -196,7 +249,9 @@ fn models_copy_path_verifies_then_removes_and_failure_midway_keeps_sources() {
 fn missing_legacy_folders_are_a_noop() {
     let f = Fixture::new("missing");
     assert!(migrate_legacy_models(&f.p("nope"), &f.p("dest")).is_noop());
-    assert!(migrate_legacy_config_and_database(&f.p("a"), &f.p("a"), &f.p("c"), &f.p("d")).is_noop());
+    assert!(
+        migrate_legacy_config_and_database(&f.p("a"), &f.p("a"), &f.p("c"), &f.p("d")).is_noop()
+    );
     assert!(!f.p("dest").exists());
 }
 

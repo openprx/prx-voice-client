@@ -61,9 +61,9 @@ use crate::call_pump::{Level, LevelMeter};
 pub use lane::LaneStats;
 use lane::{Lane, LaneConfig};
 pub use preroll::{PrerollConfig, PrerollModel};
-pub use shape::{Pace, ShapeConfig};
 use ramp::GainRamp;
 pub use ramp::db_to_linear;
+pub use shape::{Pace, ShapeConfig};
 
 /// Which inputs a listener hears.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -186,7 +186,11 @@ impl Mixer {
                 out_rate: rate.hz(),
                 depth: rate.samples_in(depth),
                 fade: rate.samples_in(cfg.fade),
-                dry_fade: if timed { 0 } else { rate.samples_in(cfg.dry_fade) },
+                dry_fade: if timed {
+                    0
+                } else {
+                    rate.samples_in(cfg.dry_fade)
+                },
                 capacity: rate.samples_in(cfg.max_buffer),
                 timed,
                 preroll: adaptive.then(|| PrerollConfig {
@@ -197,8 +201,16 @@ impl Mixer {
                     max_stall: rate.samples_in(cfg.preroll_max.min(Duration::from_millis(600))),
                 }),
                 shape: (!timed).then(|| ShapeConfig {
-                    lead_keep: if cfg.trim_silence { rate.samples_in(cfg.silence_keep) } else { usize::MAX },
-                    trail_keep: if cfg.trim_silence { rate.samples_in(cfg.silence_keep) * 2 } else { usize::MAX },
+                    lead_keep: if cfg.trim_silence {
+                        rate.samples_in(cfg.silence_keep)
+                    } else {
+                        usize::MAX
+                    },
+                    trail_keep: if cfg.trim_silence {
+                        rate.samples_in(cfg.silence_keep) * 2
+                    } else {
+                        usize::MAX
+                    },
                     threshold: 0.004,
                     max_speed: cfg.catch_up_max_speed,
                 }),

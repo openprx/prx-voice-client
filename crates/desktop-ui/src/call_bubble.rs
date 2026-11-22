@@ -7,7 +7,9 @@
 use std::hash::{Hash, Hasher};
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{Align2, Color32, CornerRadius, FontId, Label, Rect, Sense, Stroke, WidgetInfo, pos2, vec2};
+use egui::{
+    Align2, Color32, CornerRadius, FontId, Label, Rect, Sense, Stroke, WidgetInfo, pos2, vec2,
+};
 
 use crate::call_transcript::{Activity, Line, Side, Utterance};
 use crate::call_view::{CaptionFlag, ClauseStatus, SkipView};
@@ -115,7 +117,13 @@ fn is_current(l: &Line) -> bool {
 }
 
 /// The primary text of `u`, `None` when there is nothing to show yet.
-fn primary(u: &Utterance, p: &Palette, px: f32, width: f32, show_source: bool) -> Option<LayoutJob> {
+fn primary(
+    u: &Utterance,
+    p: &Palette,
+    px: f32,
+    width: f32,
+    show_source: bool,
+) -> Option<LayoutJob> {
     let mut j = job(width);
     let mut any = false;
     let gap = |j: &mut LayoutJob, any: bool, text: &str| {
@@ -214,7 +222,13 @@ fn secondary(u: &Utterance, p: &Palette, px: f32, width: f32) -> Option<LayoutJo
 
 /// The notes row: the live indicator, what was not spoken or retried, flags, and the notice of a
 /// clause already in the listener's language.
-fn notes(u: &Utterance, o: &BubbleOpts<'_>, p: &Palette, tk: &Tokens, width: f32) -> Option<LayoutJob> {
+fn notes(
+    u: &Utterance,
+    o: &BubbleOpts<'_>,
+    p: &Palette,
+    tk: &Tokens,
+    width: f32,
+) -> Option<LayoutJob> {
     let t = o.text;
     let mut j = job(width);
     let mut parts: Vec<(String, Color32)> = Vec::new();
@@ -262,7 +276,15 @@ pub(crate) struct Drawn {
 /// The cache key of an utterance's layout: anything that changes its height changes the key.
 pub(crate) fn layout_key(u: &Utterance, width: f32, o: &BubbleOpts<'_>, head: bool) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (u.id, u.rev, width.round() as i32, o.size.px().to_bits(), o.show_source, head).hash(&mut h);
+    (
+        u.id,
+        u.rev,
+        width.round() as i32,
+        o.size.px().to_bits(),
+        o.show_source,
+        head,
+    )
+        .hash(&mut h);
     (prxvc_i18n::current_locale() as u8).hash(&mut h);
     h.finish()
 }
@@ -299,8 +321,16 @@ pub(crate) fn utterance(
         .fold(0.0_f32, f32::max);
     let bubble_w = (content_w + 2.0 * f32::from(layout::BUBBLE_PAD_X)).min(max_bubble);
     let gap = space::S4;
-    let text_h: f32 = primary_g.iter().chain(secondary_g.iter()).map(|g| g.size().y).sum::<f32>()
-        + if primary_g.is_some() && secondary_g.is_some() { gap } else { 0.0 };
+    let text_h: f32 = primary_g
+        .iter()
+        .chain(secondary_g.iter())
+        .map(|g| g.size().y)
+        .sum::<f32>()
+        + if primary_g.is_some() && secondary_g.is_some() {
+            gap
+        } else {
+            0.0
+        };
     let has_bubble = text_h > 0.0;
     let bubble_h = if has_bubble {
         text_h + 2.0 * f32::from(layout::BUBBLE_PAD_Y)
@@ -317,7 +347,10 @@ pub(crate) fn utterance(
     // parent's cursor back up.
     let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(rect));
     if !ui.is_rect_visible(rect) {
-        return Drawn { height: total, copy };
+        return Drawn {
+            height: total,
+            copy,
+        };
     }
     let me = u.side == Side::Me;
     let x_of = |w: f32| if me { rect.right() - w } else { rect.left() };
@@ -326,9 +359,14 @@ pub(crate) fn utterance(
     if head {
         let who = if me { &o.text.me } else { &o.text.peer };
         let label = format!("{who}  {}", crate::call_transcript::mmss(u.at_s));
-        let g = ui.painter().layout_no_wrap(label, FontId::proportional(size::CAPTION), tk.secondary);
+        let g =
+            ui.painter()
+                .layout_no_wrap(label, FontId::proportional(size::CAPTION), tk.secondary);
         let at = pos2(x_of(g.size().x), y);
-        cui.put(Rect::from_min_size(at, g.size()), Label::new(g).selectable(false));
+        cui.put(
+            Rect::from_min_size(at, g.size()),
+            Label::new(g).selectable(false),
+        );
         y += head_h;
     }
     let mut bubble_rect = Rect::NOTHING;
@@ -355,9 +393,13 @@ pub(crate) fn utterance(
     let row_left = x_of(row_w);
     if let Some(g) = &notes_g {
         let at = pos2(row_left, y);
-        cui.put(Rect::from_min_size(at, g.size()), Label::new(g.clone()).selectable(false));
+        cui.put(
+            Rect::from_min_size(at, g.size()),
+            Label::new(g.clone()).selectable(false),
+        );
     }
-    let copy_rect = Rect::from_min_size(pos2(row_left + row_w - copy_w, y), vec2(copy_w, ROW_HEIGHT));
+    let copy_rect =
+        Rect::from_min_size(pos2(row_left + row_w - copy_w, y), vec2(copy_w, ROW_HEIGHT));
     let id = ui.make_persistent_id(("call_copy", u.id));
     let response = ui.interact(copy_rect, id, Sense::click());
     let label = o.text.copy.as_str();
@@ -365,7 +407,11 @@ pub(crate) fn utterance(
     let row_hot = ui.rect_contains_pointer(rect) || response.has_focus();
     if row_hot {
         let copied = o.copied == Some(u.id);
-        let color = if response.hovered() || copied { tk.text } else { tk.secondary };
+        let color = if response.hovered() || copied {
+            tk.text
+        } else {
+            tk.secondary
+        };
         let shown = if copied { &o.text.copied } else { &o.text.copy };
         ui.painter().text(
             copy_rect.right_center(),
@@ -385,7 +431,10 @@ pub(crate) fn utterance(
         copy = Some(copy_text(u, o.show_source));
     }
     let _ = bubble_rect;
-    Drawn { height: total, copy }
+    Drawn {
+        height: total,
+        copy,
+    }
 }
 
 /// What the Copy action puts on the clipboard: the translation, and the original under it when
@@ -410,7 +459,12 @@ mod tests {
         let mut t = Transcript::default();
         t.absorb(
             Side::Me,
-            &LaneView { clauses: lines, partial, translating: true, ..LaneView::default() },
+            &LaneView {
+                clauses: lines,
+                partial,
+                translating: true,
+                ..LaneView::default()
+            },
             0,
         );
         t.items()[0].clone()
@@ -421,7 +475,14 @@ mod tests {
     }
 
     fn cv(index: u16, src: &str, tr: &str, status: ClauseStatus) -> CaptionView {
-        CaptionView { utterance: 1, index, source: src.into(), translation: tr.into(), status, ..CaptionView::default() }
+        CaptionView {
+            utterance: 1,
+            index,
+            source: src.into(),
+            translation: tr.into(),
+            status,
+            ..CaptionView::default()
+        }
     }
 
     #[test]
@@ -444,7 +505,11 @@ mod tests {
             None,
         );
         let j = primary(&u, &p, 15.0, 300.0, true).expect("text");
-        let hello = j.sections.iter().find(|s| section_text(&j, s) == "Hello.").unwrap();
+        let hello = j
+            .sections
+            .iter()
+            .find(|s| section_text(&j, s) == "Hello.")
+            .unwrap();
         assert_eq!(hello.format.background, p.highlight);
         let struck = j
             .sections
@@ -458,7 +523,11 @@ mod tests {
     fn a_live_partial_has_a_full_colour_stable_part_and_a_dim_tail() {
         let tk = crate::theme::LIGHT;
         let p = palette(&tk, Side::Peer);
-        let part = PartialView { utterance: 1, text: "see you at thr".into(), stable_len: 11 };
+        let part = PartialView {
+            utterance: 1,
+            text: "see you at thr".into(),
+            stable_len: 11,
+        };
         let u = one(vec![], Some(part));
         let j = primary(&u, &p, 15.0, 300.0, false).expect("text");
         assert_eq!(j.sections.len(), 2);
@@ -474,7 +543,12 @@ mod tests {
     fn a_utterance_with_flags_and_a_retry_has_a_notes_row() {
         let tk = crate::theme::LIGHT;
         let text = BubbleText::resolve(["English", "中文"]);
-        let o = BubbleOpts { size: CaptionSize::Medium, show_source: true, text: &text, copied: None };
+        let o = BubbleOpts {
+            size: CaptionSize::Medium,
+            show_source: true,
+            text: &text,
+            copied: None,
+        };
         let mut c = cv(0, "a", "b", ClauseStatus::Played);
         c.flags = vec![CaptionFlag::Refusal];
         c.retried = true;

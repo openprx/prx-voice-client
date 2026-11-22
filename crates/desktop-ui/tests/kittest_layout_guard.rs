@@ -16,18 +16,27 @@ fn the_settings_sections_have_no_overlapping_or_escaping_widgets() {
         prxvc_i18n::set_locale(locale.clone());
         for width in [520.0, 760.0, 1200.0] {
             for section in SettingsSection::ALL {
-                let mut h = common::window_harness(width, Theme::Light, common::WindowState::new(section));
+                let mut h =
+                    common::window_harness(width, Theme::Light, common::WindowState::new(section));
                 h.run_steps(3);
                 let window = Rect::from_min_size(egui::Pos2::ZERO, vec2(width, 2600.0));
                 let found = layout_guard::problems(&h, window);
                 if !found.is_empty() {
-                    failures.push(format!("{section:?} {locale:?} {width}: {}", found.join("\n  ")));
+                    failures.push(format!(
+                        "{section:?} {locale:?} {width}: {}",
+                        found.join("\n  ")
+                    ));
                 }
             }
         }
     }
     prxvc_i18n::set_locale(Locale::En);
-    assert!(failures.is_empty(), "{} failing case(s)\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failing case(s)\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
@@ -47,10 +56,18 @@ fn the_orb_window_has_no_overlapping_or_escaping_widgets() {
             let window = Rect::from_min_size(egui::Pos2::ZERO, vec2(width, height));
             let found = layout_guard::problems(&h, window);
             if !found.is_empty() {
-                failures.push(format!("orb {locale:?} {width}x{height}: {}", found.join("\n  ")));
+                failures.push(format!(
+                    "orb {locale:?} {width}x{height}: {}",
+                    found.join("\n  ")
+                ));
             }
         }
     }
     prxvc_i18n::set_locale(Locale::En);
-    assert!(failures.is_empty(), "{} failing case(s)\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} failing case(s)\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

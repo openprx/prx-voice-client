@@ -70,7 +70,13 @@ fn run(mut sup: Supervisor) {
     let mut last_failure: Option<TapError> = None;
 
     if let Some(native) = &sup.native {
-        send(&sup, TapEvent::Started { restored: false, bundle_form: native.bundle_form });
+        send(
+            &sup,
+            TapEvent::Started {
+                restored: false,
+                bundle_form: native.bundle_form,
+            },
+        );
     }
 
     while !sup.stop.load(Ordering::Acquire) {
@@ -103,12 +109,23 @@ fn run(mut sup: Supervisor) {
                     sup.native = Some(native);
                     health.created(Instant::now(), &counters.snapshot());
                     last_failure = None;
-                    send(&sup, TapEvent::Started { restored: true, bundle_form });
+                    send(
+                        &sup,
+                        TapEvent::Started {
+                            restored: true,
+                            bundle_form,
+                        },
+                    );
                 }
                 Err(error) => {
                     // Report a persisting failure once, not at every poll.
                     if last_failure.as_ref() != Some(&error) {
-                        send(&sup, TapEvent::RestartFailed { error: error.clone() });
+                        send(
+                            &sup,
+                            TapEvent::RestartFailed {
+                                error: error.clone(),
+                            },
+                        );
                     }
                     last_failure = Some(error);
                 }
@@ -116,7 +133,12 @@ fn run(mut sup: Supervisor) {
         }
         if stats.bad_buffers > reported_bad {
             reported_bad = stats.bad_buffers;
-            send(&sup, TapEvent::FormatMismatch { dropped: reported_bad });
+            send(
+                &sup,
+                TapEvent::FormatMismatch {
+                    dropped: reported_bad,
+                },
+            );
         }
     }
     sup.native = None;

@@ -1,7 +1,7 @@
 //! Composition root: builds the configuration, storage, call control and shared state, starts the assistant's host and wires the concrete types together.
 
-use prxvc_desktop_ui::tool_window::{Geometry, ToolKind};
 use prxvc_desktop_ui::SharedAppState;
+use prxvc_desktop_ui::tool_window::{Geometry, ToolKind};
 
 use crate::app::PrxVoiceApp;
 use crate::config_load::{app_paths, initialize_config};
@@ -53,7 +53,9 @@ pub(crate) fn build_app(cc: &eframe::CreationContext<'_>) -> PrxVoiceApp {
 
     let shared = SharedAppState::new();
     shared.set_repaint_context(cc.egui_ctx.clone());
-    shared.set_outside_app_bundle(cfg!(target_os = "macos") && crate::bundle::current().is_outside_bundle());
+    shared.set_outside_app_bundle(
+        cfg!(target_os = "macos") && crate::bundle::current().is_outside_bundle(),
+    );
     // First thing that touches audio: put the default input back if the last run
     // ended in call mode without restoring it (pipeline-design PD-4.2.3).
     crate::routing_recovery::recover_at_start(&shared);

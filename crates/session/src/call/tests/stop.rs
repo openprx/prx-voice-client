@@ -201,17 +201,25 @@ fn a_translated_start_after_an_audio_only_call_carries_nothing_over() {
     super::translation::translating_both(&mut rig);
     let s = rig.last();
     assert_eq!(s.state, CallState::Translating);
-    assert!(s.issues.is_empty(), "issues of the first call are gone: {:?}", s.issues);
+    assert!(
+        s.issues.is_empty(),
+        "issues of the first call are gone: {:?}",
+        s.issues
+    );
     assert!(s.last_error.is_none());
-    assert!(s
-        .last_output_change
-        .as_ref()
-        .is_some_and(|c| c.cause == crate::output::OutputCause::TranslationStarted));
+    assert!(
+        s.last_output_change
+            .as_ref()
+            .is_some_and(|c| c.cause == crate::output::OutputCause::TranslationStarted)
+    );
     for d in [Direction::Outgoing, Direction::Incoming] {
         let dir = s.direction(d);
         assert_eq!(dir.hears, OutputSource::Translation);
         let pipeline = dir.pipeline.as_ref().expect("a pipeline of this call");
-        assert_eq!(pipeline.counters.clauses_committed, 0, "counters start at zero");
+        assert_eq!(
+            pipeline.counters.clauses_committed, 0,
+            "counters start at zero"
+        );
         assert!(pipeline.clauses.is_empty());
     }
 }

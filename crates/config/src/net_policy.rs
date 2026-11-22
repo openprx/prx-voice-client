@@ -137,14 +137,21 @@ impl NetworkPolicy {
         allow_hosts: &[String],
         local_endpoint_urls: impl IntoIterator<Item = &'a str>,
     ) -> Self {
-        let allowed = allow_hosts.iter().filter_map(|h| Target::parse(h)).collect();
+        let allowed = allow_hosts
+            .iter()
+            .filter_map(|h| Target::parse(h))
+            .collect();
         let local_endpoints = local_endpoint_urls
             .into_iter()
             .filter_map(|u| Url::parse(u).ok())
             .filter_map(|u| u.host().map(Target::from_url_host))
             .filter(|t| t.is_loopback() || t.is_private_lan())
             .collect();
-        Self { offline, allowed, local_endpoints }
+        Self {
+            offline,
+            allowed,
+            local_endpoints,
+        }
     }
 
     /// Build the policy from the loaded configuration.
@@ -205,7 +212,9 @@ impl NetworkPolicy {
         {
             Ok(())
         } else {
-            Err(Blocked::Offline { host: target.display() })
+            Err(Blocked::Offline {
+                host: target.display(),
+            })
         }
     }
 }
@@ -231,7 +240,11 @@ mod tests {
         assert!(p.check("http://10.0.0.5:9").is_ok());
         assert!(p.check("not a url").is_ok());
         assert!(p.check_host("example.com", 443).is_ok());
-        assert!(NetworkPolicy::online().check("https://huggingface.co").is_ok());
+        assert!(
+            NetworkPolicy::online()
+                .check("https://huggingface.co")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -267,7 +280,10 @@ mod tests {
         ] {
             assert!(denied(&p, url), "{url} should be denied");
         }
-        assert!(matches!(p.check_host("example.com", 443), Err(Blocked::Offline { .. })));
+        assert!(matches!(
+            p.check_host("example.com", 443),
+            Err(Blocked::Offline { .. })
+        ));
     }
 
     #[test]
@@ -283,7 +299,14 @@ mod tests {
 
     #[test]
     fn local_endpoint_that_is_public_or_named_is_not_allowed() {
-        let p = offline(&[], &["https://api.openai.com/v1", "http://8.8.8.8/", "http://box.lan/"]);
+        let p = offline(
+            &[],
+            &[
+                "https://api.openai.com/v1",
+                "http://8.8.8.8/",
+                "http://box.lan/",
+            ],
+        );
         assert!(denied(&p, "https://api.openai.com/v1/chat"));
         assert!(denied(&p, "http://8.8.8.8/"));
         assert!(denied(&p, "http://box.lan/"));
@@ -291,7 +314,15 @@ mod tests {
 
     #[test]
     fn allow_list_matches_host_only_and_exactly() {
-        let p = offline(&["192.168.1.20", "Models.Example.com", "[2001:db8::1]", "nas.lan:8443"], &[]);
+        let p = offline(
+            &[
+                "192.168.1.20",
+                "Models.Example.com",
+                "[2001:db8::1]",
+                "nas.lan:8443",
+            ],
+            &[],
+        );
         assert!(p.check("http://192.168.1.20:1234/").is_ok());
         assert!(p.check("https://models.example.com/file").is_ok());
         assert!(p.check("http://[2001:db8::1]/").is_ok());
@@ -311,7 +342,13 @@ mod tests {
     #[test]
     fn malformed_urls_are_denied_with_a_reason() {
         let p = offline(&["example.com"], &[]);
-        for url in ["", "not a url", "http://", "example.com/path", "http://exa mple.com/"] {
+        for url in [
+            "",
+            "not a url",
+            "http://",
+            "example.com/path",
+            "http://exa mple.com/",
+        ] {
             match p.check(url) {
                 Err(Blocked::MalformedUrl { input, detail }) => {
                     assert_eq!(input, url);
@@ -325,7 +362,10 @@ mod tests {
             p.check("data:text/plain,hello"),
             Err(Blocked::MalformedUrl { .. })
         ));
-        assert!(matches!(p.check_host("", 1), Err(Blocked::MalformedUrl { .. })));
+        assert!(matches!(
+            p.check_host("", 1),
+            Err(Blocked::MalformedUrl { .. })
+        ));
         let msg = p.check("not a url").unwrap_err().to_string();
         assert!(msg.contains("not a url"));
     }
@@ -345,7 +385,9 @@ mod tests {
         let p = offline(&[], &[]);
         assert_eq!(
             p.check("https://Example.COM./a").unwrap_err(),
-            Blocked::Offline { host: "example.com".into() }
+            Blocked::Offline {
+                host: "example.com".into()
+            }
         );
     }
 
@@ -374,7 +416,11 @@ mod tests {
         assert!(denied(&p, "https://api.example.net/v1"));
 
         cfg.network_policy.offline = false;
-        assert!(NetworkPolicy::from_config(&cfg).check("https://api.openai.com/v1").is_ok());
+        assert!(
+            NetworkPolicy::from_config(&cfg)
+                .check("https://api.openai.com/v1")
+                .is_ok()
+        );
     }
 
     #[test]

@@ -21,14 +21,22 @@ pub(crate) fn history_rows(ui: &mut egui::Ui, tk: &Tokens, entries: &[HistoryEnt
     let count = entries.len();
     for (i, entry) in entries.iter().enumerate() {
         let meta = format!("{} \u{00b7} {}", entry.created_at, entry.duration);
-        widgets::setting_row(ui, tk, &entry.title, Some(&meta), 96.0, i + 1 == count, |ui| {
-            let tone = if entry.state == "Failed" {
-                Tone::Danger
-            } else {
-                Tone::Neutral
-            };
-            widgets::chip(ui, tk, tone, &entry.state);
-        });
+        widgets::setting_row(
+            ui,
+            tk,
+            &entry.title,
+            Some(&meta),
+            96.0,
+            i + 1 == count,
+            |ui| {
+                let tone = if entry.state == "Failed" {
+                    Tone::Danger
+                } else {
+                    Tone::Neutral
+                };
+                widgets::chip(ui, tk, tone, &entry.state);
+            },
+        );
     }
 }
 

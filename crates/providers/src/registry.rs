@@ -17,9 +17,7 @@ use prxvc_adapters::tts::qwentts::QwenTts;
 use prxvc_config::{AppConfig, NetworkPolicy};
 use prxvc_media::Lang;
 use prxvc_models::{Catalogue, HardwareInfo};
-use prxvc_ports::{
-    DialogueBackend, RefineAsr, SpeechSynth, StreamingAsr, Translator, VadProvider,
-};
+use prxvc_ports::{DialogueBackend, RefineAsr, SpeechSynth, StreamingAsr, Translator, VadProvider};
 use sha2::{Digest, Sha256};
 
 use crate::credentials::CredentialReader;
@@ -395,7 +393,10 @@ impl ProviderRegistry {
 
     /// Build the dialogue backend of `spec`. The offline policy is checked again first. The client
     /// is shared by every handle built from the same spec and holds the conversations.
-    pub fn build_dialogue(&self, spec: &DialogueSpec) -> Result<Box<dyn DialogueBackend>, BuildError> {
+    pub fn build_dialogue(
+        &self,
+        spec: &DialogueSpec,
+    ) -> Result<Box<dyn DialogueBackend>, BuildError> {
         if let Err(blocked) = self.state.read().policy.check(&spec.base_url) {
             return Err(match blocked {
                 prxvc_config::Blocked::Offline { host } => BuildError::Blocked {
@@ -408,7 +409,9 @@ impl ProviderRegistry {
                 },
             });
         }
-        let lease = self.dialogue.acquire(dialogue_key(spec), || start_dialogue(spec))?;
+        let lease = self
+            .dialogue
+            .acquire(dialogue_key(spec), || start_dialogue(spec))?;
         lease.engine().descriptor().require_native()?;
         Ok(Box::new(SharedDialogue { lease }))
     }

@@ -9,15 +9,13 @@
 //! never a dimmed copy.
 
 use egui::{
-    Align, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Pos2, Rect,
-    Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo,
-    pos2, vec2,
+    Align, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Frame, Layout, Margin, Pos2,
+    Rect, Response, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, WidgetInfo, pos2,
+    vec2,
 };
 
 use crate::fonts;
-use crate::theme::{
-    Tokens, border, hairline, layout, mix, radius, shadow_overlay, size, space,
-};
+use crate::theme::{Tokens, border, hairline, layout, mix, radius, shadow_overlay, size, space};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,7 +32,9 @@ pub fn text(s: impl Into<String>, size: f32, color: Color32) -> RichText {
     } else {
         FontFamily::Proportional
     };
-    RichText::new(s).font(FontId::new(size, family)).color(color)
+    RichText::new(s)
+        .font(FontId::new(size, family))
+        .color(color)
 }
 
 /// Text at weight 500 (row titles, button-like labels).
@@ -190,7 +190,11 @@ pub fn button_with(
         Color32::PLACEHOLDER,
     );
     let width = galley.size().x + 2.0 * layout::BUTTON_PAD_X;
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
     let (rect, response) = ui.allocate_exact_size(vec2(width, height), sense);
     response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, enabled, label));
 
@@ -224,10 +228,7 @@ pub fn button_with(
 ///
 /// `label` is the accessible name and the hover text.
 pub fn icon_button(ui: &mut Ui, tk: &Tokens, glyph: &str, label: &str) -> Response {
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::splat(layout::ICON_BUTTON),
-        Sense::click(),
-    );
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(layout::ICON_BUTTON), Sense::click());
     response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, label));
     if ui.is_rect_visible(rect) {
         let fill = if response.is_pointer_button_down_on() {
@@ -270,11 +271,13 @@ pub fn switch(ui: &mut Ui, tk: &Tokens, value: &mut bool) -> Response {
 /// `surface` with a `line-strong` outline, knob `control`); the standard does
 /// not draw a disabled switch.
 pub fn switch_with(ui: &mut Ui, tk: &Tokens, value: &mut bool, enabled: bool) -> Response {
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let (rect, mut response) = ui.allocate_exact_size(
-        vec2(layout::SWITCH_WIDTH, layout::SWITCH_HEIGHT),
-        sense,
-    );
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, mut response) =
+        ui.allocate_exact_size(vec2(layout::SWITCH_WIDTH, layout::SWITCH_HEIGHT), sense);
     if enabled && response.clicked() {
         *value = !*value;
         response.mark_changed();
@@ -306,7 +309,8 @@ pub fn switch_with(ui: &mut Ui, tk: &Tokens, value: &mut bool, enabled: bool) ->
         } else {
             rect.left() + inset + r
         };
-        ui.painter().circle_filled(pos2(cx, rect.center().y), r, knob);
+        ui.painter()
+            .circle_filled(pos2(cx, rect.center().y), r, knob);
         if enabled && response.has_focus() {
             // A checked switch is a filled control: ring outside the edge.
             let corner = (layout::SWITCH_HEIGHT / 2.0) as u8;
@@ -338,11 +342,17 @@ pub fn switch_locked(ui: &mut Ui, tk: &Tokens, on: bool, name: &str, why: &str) 
             (tk.line_strong, tk.surface_white)
         };
         let fade = |c: Color32| c.gamma_multiply(LOCKED_OPACITY);
-        ui.painter().rect_filled(rect, pill_radius(rect), fade(track));
+        ui.painter()
+            .rect_filled(rect, pill_radius(rect), fade(track));
         let inset = (layout::SWITCH_HEIGHT - layout::SWITCH_KNOB) / 2.0;
         let r = layout::SWITCH_KNOB / 2.0;
-        let cx = if on { rect.right() - inset - r } else { rect.left() + inset + r };
-        ui.painter().circle_filled(pos2(cx, rect.center().y), r, fade(knob));
+        let cx = if on {
+            rect.right() - inset - r
+        } else {
+            rect.left() + inset + r
+        };
+        ui.painter()
+            .circle_filled(pos2(cx, rect.center().y), r, fade(knob));
     }
     response.on_hover_text(why)
 }
@@ -366,7 +376,10 @@ pub fn segmented(ui: &mut Ui, tk: &Tokens, selected: usize, labels: &[&str]) -> 
         .collect();
     let pad = space::S2;
     let seg_h = layout::CONTROL_HEIGHT - 2.0 * pad;
-    let seg_widths: Vec<f32> = galleys.iter().map(|g| g.size().x + 2.0 * space::S12).collect();
+    let seg_widths: Vec<f32> = galleys
+        .iter()
+        .map(|g| g.size().x + 2.0 * space::S12)
+        .collect();
     let total_w = seg_widths.iter().sum::<f32>()
         + pad * 2.0
         + space::S2 * labels.len().saturating_sub(1) as f32;
@@ -381,7 +394,9 @@ pub fn segmented(ui: &mut Ui, tk: &Tokens, selected: usize, labels: &[&str]) -> 
         x += seg_widths[i] + space::S2;
         let id = ui.scope_id().with(("segment", i));
         let response = ui.interact(seg, id, Sense::click());
-        response.widget_info(|| WidgetInfo::selected(egui::Role::RadioButton, true, i == selected, labels[i]));
+        response.widget_info(|| {
+            WidgetInfo::selected(egui::Role::RadioButton, true, i == selected, labels[i])
+        });
         let is_selected = i == selected;
         if is_selected {
             ui.painter()
@@ -434,7 +449,12 @@ pub fn text_field(
     let response = ui
         .scope(|ui| {
             let w = &mut ui.style_mut().visuals.widgets;
-            for state in [&mut w.inactive, &mut w.hovered, &mut w.active, &mut w.noninteractive] {
+            for state in [
+                &mut w.inactive,
+                &mut w.hovered,
+                &mut w.active,
+                &mut w.noninteractive,
+            ] {
                 state.bg_stroke = hairline(border_color);
                 state.corner_radius = CornerRadius::same(radius::INPUT);
             }
@@ -493,7 +513,8 @@ pub fn select_named(
     selected: usize,
 ) -> Option<usize> {
     let id = ui.make_persistent_id(id_salt);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, layout::FIELD_HEIGHT), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width, layout::FIELD_HEIGHT), Sense::click());
     response.widget_info(|| WidgetInfo::labeled(egui::Role::ComboBox, true, name));
     let _ = id;
     let popup_id = egui::Popup::default_response_id(&response);
@@ -586,10 +607,8 @@ pub fn menu_item_colored(
         }
         if selected {
             let bar_h = (rect.height() / 2.0).max(16.0);
-            let bar = Rect::from_center_size(
-                pos2(rect.left() + 5.0, rect.center().y),
-                vec2(2.0, bar_h),
-            );
+            let bar =
+                Rect::from_center_size(pos2(rect.left() + 5.0, rect.center().y), vec2(2.0, bar_h));
             ui.painter()
                 .rect_filled(bar, CornerRadius::same(2), tk.primary);
         }
@@ -645,21 +664,15 @@ pub fn setting_row(
 
     let left_width = (full_width - control_width - space::S16).max(60.0);
     let left = ui
-        .allocate_ui_with_layout(
-            vec2(left_width, 0.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(left_width);
-                ui.set_min_height(layout::CONTROL_HEIGHT);
-                ui.spacing_mut().item_spacing.y = space::S4;
-                ui.add(egui::Label::new(text_medium(label, size::BODY, tk.text)).wrap());
-                if let Some(description) = description {
-                    ui.add(
-                        egui::Label::new(text(description, size::SECONDARY, tk.secondary)).wrap(),
-                    );
-                }
-            },
-        )
+        .allocate_ui_with_layout(vec2(left_width, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_width(left_width);
+            ui.set_min_height(layout::CONTROL_HEIGHT);
+            ui.spacing_mut().item_spacing.y = space::S4;
+            ui.add(egui::Label::new(text_medium(label, size::BODY, tk.text)).wrap());
+            if let Some(description) = description {
+                ui.add(egui::Label::new(text(description, size::SECONDARY, tk.secondary)).wrap());
+            }
+        })
         .response
         .rect;
 
@@ -677,11 +690,8 @@ pub fn setting_row(
     ui.add_space(space::S12);
     if !last {
         let y = ui.cursor().top();
-        ui.painter().hline(
-            left.left()..=left.left() + full_width,
-            y,
-            hairline(tk.line),
-        );
+        ui.painter()
+            .hline(left.left()..=left.left() + full_width, y, hairline(tk.line));
     }
 }
 
@@ -781,7 +791,11 @@ pub fn tip_bar(
 /// strong colour for the label.
 pub fn chip(ui: &mut Ui, tk: &Tokens, tone: Tone, label: &str) -> Response {
     let (fill, strong) = tone_colors(tk, tone);
-    let label_color = if tone == Tone::Neutral { tk.text } else { strong };
+    let label_color = if tone == Tone::Neutral {
+        tk.text
+    } else {
+        strong
+    };
     let galley = ui.painter().layout_no_wrap(
         label.to_owned(),
         FontId::proportional(size::META),

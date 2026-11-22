@@ -38,7 +38,10 @@ pub enum CallJudgement {
 impl CallJudgement {
     /// A call (or recording) is active: the application's input runs.
     pub fn call_active(&self) -> bool {
-        matches!(self, Self::ActiveOnOurMicrophone { .. } | Self::ActiveOnOtherMicrophone { .. })
+        matches!(
+            self,
+            Self::ActiveOnOurMicrophone { .. } | Self::ActiveOnOtherMicrophone { .. }
+        )
     }
 
     /// The active call uses our microphone.
@@ -50,7 +53,11 @@ impl CallJudgement {
 /// Whether an input-list entry is the echo reference of the application's
 /// voice-processing unit rather than a microphone: an output-capable device, or
 /// one the application also uses for output. Our own microphone is never one.
-pub fn is_echo_reference(device: &ProcessDevice, outputs: &[ProcessDevice], our_microphone_uid: &str) -> bool {
+pub fn is_echo_reference(
+    device: &ProcessDevice,
+    outputs: &[ProcessDevice],
+    our_microphone_uid: &str,
+) -> bool {
     if !our_microphone_uid.is_empty() && device.uid == our_microphone_uid {
         return false;
     }
@@ -58,7 +65,11 @@ pub fn is_echo_reference(device: &ProcessDevice, outputs: &[ProcessDevice], our_
 }
 
 fn same_device(a: &ProcessDevice, b: &ProcessDevice) -> bool {
-    if a.uid.is_empty() || b.uid.is_empty() { a.object_id == b.object_id } else { a.uid == b.uid }
+    if a.uid.is_empty() || b.uid.is_empty() {
+        a.object_id == b.object_id
+    } else {
+        a.uid == b.uid
+    }
 }
 
 /// Judge `activity` against our virtual microphone's device UID.
@@ -69,9 +80,15 @@ pub fn judge_call(activity: &AppAudioActivity, our_microphone_uid: &str) -> Call
     if !activity.input_running {
         return CallJudgement::Idle;
     }
-    let ours = !our_microphone_uid.is_empty() && activity.input_devices.iter().any(|d| d.uid == our_microphone_uid);
+    let ours = !our_microphone_uid.is_empty()
+        && activity
+            .input_devices
+            .iter()
+            .any(|d| d.uid == our_microphone_uid);
     if ours {
-        return CallJudgement::ActiveOnOurMicrophone { output_running: activity.output_running };
+        return CallJudgement::ActiveOnOurMicrophone {
+            output_running: activity.output_running,
+        };
     }
     let devices = activity
         .input_devices

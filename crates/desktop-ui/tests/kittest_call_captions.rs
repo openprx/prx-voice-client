@@ -33,7 +33,10 @@ fn harness_of(panel: CallPanel, height: f32) -> Harness<'static, DesktopUiState>
 fn wheel_up(h: &mut Harness<'static, DesktopUiState>) {
     h.input_mut()
         .events
-        .push(egui::Event::PointerMoved(egui::pos2(WIDTH / 2.0, HEIGHT / 2.0)));
+        .push(egui::Event::PointerMoved(egui::pos2(
+            WIDTH / 2.0,
+            HEIGHT / 2.0,
+        )));
     h.run_steps(2);
     for _ in 0..8 {
         h.input_mut().events.push(egui::Event::MouseWheel {
@@ -64,8 +67,14 @@ fn the_captions_follow_the_newest_line_until_the_user_scrolls_up() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(long_panel(60));
-    assert!(h.state().call_window.at_bottom(), "starts at the newest line");
-    assert!(h.query_by_role_and_label(Role::Button, "Jump to latest").is_none());
+    assert!(
+        h.state().call_window.at_bottom(),
+        "starts at the newest line"
+    );
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Jump to latest")
+            .is_none()
+    );
 
     peer_says(&mut h, 61);
     assert!(h.state().call_window.at_bottom(), "a new line is followed");
@@ -83,10 +92,17 @@ fn the_captions_follow_the_newest_line_until_the_user_scrolls_up() {
     );
     assert_eq!(h.state().call_window.unseen(), 2, "the pill counts them");
 
-    h.get_by_role_and_label(Role::Button, "Jump to latest").click();
+    h.get_by_role_and_label(Role::Button, "Jump to latest")
+        .click();
     h.run_steps(30);
-    assert!(h.state().call_window.at_bottom(), "the pill brings the reader back");
-    assert!(h.query_by_role_and_label(Role::Button, "Jump to latest").is_none());
+    assert!(
+        h.state().call_window.at_bottom(),
+        "the pill brings the reader back"
+    );
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Jump to latest")
+            .is_none()
+    );
     assert_eq!(h.state().call_window.unseen(), 0);
 
     // And following resumes.
@@ -122,7 +138,10 @@ fn the_timeline_is_bounded_and_says_so() {
 fn wheel_up_far(h: &mut Harness<'static, DesktopUiState>) {
     for _ in 0..40 {
         wheel_up(h);
-        if h.query_all_by_label_contains("no longer kept").next().is_some() {
+        if h.query_all_by_label_contains("no longer kept")
+            .next()
+            .is_some()
+        {
             return;
         }
     }
@@ -135,20 +154,30 @@ fn copy_puts_the_utterance_on_the_clipboard_and_says_so() {
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(call_fixtures::live_panel());
     assert_eq!(h.state().call_window.last_copied(), None);
-    let first = h.query_all_by_role_and_label(Role::Button, "Copy").next().expect("a Copy action");
+    let first = h
+        .query_all_by_role_and_label(Role::Button, "Copy")
+        .next()
+        .expect("a Copy action");
     first.click();
     let mut copied = None;
     for _ in 0..4 {
         h.step();
         copied = copied.or_else(|| {
-            h.output().platform_output.commands.iter().find_map(|c| match c {
-                egui::OutputCommand::CopyText(t) => Some(t.clone()),
-                _ => None,
-            })
+            h.output()
+                .platform_output
+                .commands
+                .iter()
+                .find_map(|c| match c {
+                    egui::OutputCommand::CopyText(t) => Some(t.clone()),
+                    _ => None,
+                })
         });
     }
     assert!(h.state().call_window.last_copied().is_some());
-    assert!(copied.is_some_and(|t| !t.is_empty()), "the text went to the clipboard");
+    assert!(
+        copied.is_some_and(|t| !t.is_empty()),
+        "the text went to the clipboard"
+    );
 }
 
 /// Open the Options menu of the captions bar.
@@ -177,13 +206,26 @@ fn the_original_line_can_be_hidden() {
     let _guard = lock_locale();
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = harness(call_fixtures::live_panel());
-    assert!(h.query_all_by_label_contains("Sounds good, three works for me.").next().is_some());
+    assert!(
+        h.query_all_by_label_contains("Sounds good, three works for me.")
+            .next()
+            .is_some()
+    );
     open_options(&mut h);
-    h.get_by_role_and_label(Role::Switch, "Show original").click();
+    h.get_by_role_and_label(Role::Switch, "Show original")
+        .click();
     h.run_steps(3);
     assert!(!h.state().settings.call_captions_show_source);
-    assert!(h.query_all_by_label_contains("Sounds good, three works for me.").next().is_none());
-    assert!(h.query_all_by_label_contains("好的，三点我可以。").next().is_some());
+    assert!(
+        h.query_all_by_label_contains("Sounds good, three works for me.")
+            .next()
+            .is_none()
+    );
+    assert!(
+        h.query_all_by_label_contains("好的，三点我可以。")
+            .next()
+            .is_some()
+    );
 }
 
 #[test]
@@ -207,13 +249,26 @@ fn a_live_partial_shows_as_speaking_and_the_playing_clause_as_playing() {
     assert!(h.query_all_by_label_contains("speaking").next().is_some());
     assert!(h.query_all_by_label_contains("playing").next().is_some());
     assert!(h.query_all_by_label_contains("not spoken").next().is_some());
-    assert!(h.query_all_by_label_contains("Not translated: already in 中文").next().is_some());
-    assert!(h.query_all_by_label_contains("reads as an answer").next().is_some());
-    assert!(h.query_all_by_label_contains("translated again").next().is_some());
+    assert!(
+        h.query_all_by_label_contains("Not translated: already in 中文")
+            .next()
+            .is_some()
+    );
+    assert!(
+        h.query_all_by_label_contains("reads as an answer")
+            .next()
+            .is_some()
+    );
+    assert!(
+        h.query_all_by_label_contains("translated again")
+            .next()
+            .is_some()
+    );
 }
 
 #[test]
-fn chinese_mixed_with_english_and_long_utterances_render_in_both_languages_without_missing_glyphs() {
+fn chinese_mixed_with_english_and_long_utterances_render_in_both_languages_without_missing_glyphs()
+{
     let _guard = lock_locale();
     for locale in [prxvc_i18n::Locale::En, prxvc_i18n::Locale::ZhCn] {
         prxvc_i18n::set_locale(locale);

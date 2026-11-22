@@ -27,7 +27,14 @@ fn assert_unsupported(f: &RawFormat, needle: &str) {
 #[test]
 fn accepts_interleaved_stereo_float32() {
     let l = StreamLayout::validate(&fmt(FLOAT_PACKED, 2, 32, 8)).unwrap();
-    assert_eq!(l, StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: false });
+    assert_eq!(
+        l,
+        StreamLayout {
+            sample_rate: 48_000,
+            channels: 2,
+            non_interleaved: false
+        }
+    );
 }
 
 #[test]
@@ -44,7 +51,10 @@ fn rejects_wrong_codec_depth_endianness_and_packing() {
     assert_unsupported(&f, "not linear PCM");
     assert_unsupported(&fmt(FLAG_IS_PACKED, 2, 32, 8), "32-bit float");
     assert_unsupported(&fmt(FLOAT_PACKED, 2, 16, 4), "32-bit float");
-    assert_unsupported(&fmt(FLOAT_PACKED | FLAG_IS_BIG_ENDIAN, 2, 32, 8), "big-endian");
+    assert_unsupported(
+        &fmt(FLOAT_PACKED | FLAG_IS_BIG_ENDIAN, 2, 32, 8),
+        "big-endian",
+    );
     assert_unsupported(&fmt(FLAG_IS_FLOAT, 2, 32, 8), "not packed");
 }
 
@@ -60,9 +70,16 @@ fn rejects_bad_channel_counts_rates_and_strides() {
 
 #[test]
 fn interleaved_buffer_passes_through_and_can_be_sliced() {
-    let l = StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: false };
+    let l = StreamLayout {
+        sample_rate: 48_000,
+        channels: 2,
+        non_interleaved: false,
+    };
     let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-    let bufs = [InputBuffer { channels: 2, samples: &data }];
+    let bufs = [InputBuffer {
+        channels: 2,
+        samples: &data,
+    }];
     assert_eq!(l.frames_in(&bufs), Some(3));
     let mut out = [0.0; 4];
     l.interleave_into(&bufs, 1, 2, &mut out);
@@ -71,12 +88,22 @@ fn interleaved_buffer_passes_through_and_can_be_sliced() {
 
 #[test]
 fn non_interleaved_buffers_are_interleaved() {
-    let l = StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: true };
+    let l = StreamLayout {
+        sample_rate: 48_000,
+        channels: 2,
+        non_interleaved: true,
+    };
     let left = [1.0, 2.0, 3.0];
     let right = [-1.0, -2.0, -3.0];
     let bufs = [
-        InputBuffer { channels: 1, samples: &left },
-        InputBuffer { channels: 1, samples: &right },
+        InputBuffer {
+            channels: 1,
+            samples: &left,
+        },
+        InputBuffer {
+            channels: 1,
+            samples: &right,
+        },
     ];
     assert_eq!(l.frames_in(&bufs), Some(3));
     let mut out = [0.0; 6];
@@ -86,28 +113,66 @@ fn non_interleaved_buffers_are_interleaved() {
 
 #[test]
 fn buffers_that_differ_from_the_validated_shape_are_refused() {
-    let inter = StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: false };
+    let inter = StreamLayout {
+        sample_rate: 48_000,
+        channels: 2,
+        non_interleaved: false,
+    };
     let data = [0.0f32; 6];
     // Wrong channel count in the buffer.
-    assert_eq!(inter.frames_in(&[InputBuffer { channels: 1, samples: &data }]), None);
+    assert_eq!(
+        inter.frames_in(&[InputBuffer {
+            channels: 1,
+            samples: &data
+        }]),
+        None
+    );
     // Partial frame.
-    assert_eq!(inter.frames_in(&[InputBuffer { channels: 2, samples: &data[..5] }]), None);
+    assert_eq!(
+        inter.frames_in(&[InputBuffer {
+            channels: 2,
+            samples: &data[..5]
+        }]),
+        None
+    );
     // No buffers.
     assert_eq!(inter.frames_in(&[]), None);
 
-    let non = StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: true };
+    let non = StreamLayout {
+        sample_rate: 48_000,
+        channels: 2,
+        non_interleaved: true,
+    };
     // One buffer where two are expected.
-    assert_eq!(non.frames_in(&[InputBuffer { channels: 1, samples: &data }]), None);
+    assert_eq!(
+        non.frames_in(&[InputBuffer {
+            channels: 1,
+            samples: &data
+        }]),
+        None
+    );
     // Unequal lengths.
     let bufs = [
-        InputBuffer { channels: 1, samples: &data[..3] },
-        InputBuffer { channels: 1, samples: &data[..2] },
+        InputBuffer {
+            channels: 1,
+            samples: &data[..3],
+        },
+        InputBuffer {
+            channels: 1,
+            samples: &data[..2],
+        },
     ];
     assert_eq!(non.frames_in(&bufs), None);
     // An interleaved buffer where planar ones are expected.
     let bufs = [
-        InputBuffer { channels: 2, samples: &data },
-        InputBuffer { channels: 2, samples: &data },
+        InputBuffer {
+            channels: 2,
+            samples: &data,
+        },
+        InputBuffer {
+            channels: 2,
+            samples: &data,
+        },
     ];
     assert_eq!(non.frames_in(&bufs), None);
 }
@@ -115,8 +180,16 @@ fn buffers_that_differ_from_the_validated_shape_are_refused() {
 #[test]
 fn layout_packs_and_unpacks() {
     for l in [
-        StreamLayout { sample_rate: 48_000, channels: 2, non_interleaved: false },
-        StreamLayout { sample_rate: 44_100, channels: 8, non_interleaved: true },
+        StreamLayout {
+            sample_rate: 48_000,
+            channels: 2,
+            non_interleaved: false,
+        },
+        StreamLayout {
+            sample_rate: 44_100,
+            channels: 8,
+            non_interleaved: true,
+        },
     ] {
         assert_eq!(StreamLayout::unpack(l.pack()), Some(l));
     }
@@ -127,13 +200,28 @@ fn layout_packs_and_unpacks() {
 fn any_nonzero_sees_one_nonzero_sample_and_treats_negative_zero_as_zero() {
     use crate::tap_format_rt::any_nonzero;
     let zeros = [0.0f32, -0.0, 0.0];
-    let buf = |s: &'static [f32]| InputBuffer { channels: 1, samples: s };
+    let buf = |s: &'static [f32]| InputBuffer {
+        channels: 1,
+        samples: s,
+    };
     assert!(!any_nonzero(&[]));
-    assert!(!any_nonzero(&[InputBuffer { channels: 1, samples: &zeros }]));
+    assert!(!any_nonzero(&[InputBuffer {
+        channels: 1,
+        samples: &zeros
+    }]));
     let mut mostly = vec![0.0f32; 1024];
     mostly[1000] = 1.0e-9;
-    assert!(any_nonzero(&[InputBuffer { channels: 1, samples: &mostly }]));
+    assert!(any_nonzero(&[InputBuffer {
+        channels: 1,
+        samples: &mostly
+    }]));
     // Only the second of two planar buffers carries signal.
     let second = [0.0f32, 0.5];
-    assert!(any_nonzero(&[buf(&[0.0, 0.0]), InputBuffer { channels: 1, samples: &second }]));
+    assert!(any_nonzero(&[
+        buf(&[0.0, 0.0]),
+        InputBuffer {
+            channels: 1,
+            samples: &second
+        }
+    ]));
 }

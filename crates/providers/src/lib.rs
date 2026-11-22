@@ -73,13 +73,13 @@ pub use problem::{BuildError, Problem, ProblemKind, Slot};
 pub use recognition::{BuiltInRecognition, RecognitionLoader, TRANSCRIBE_BUILT_IN};
 pub use registry::{LiveEngines, PrepareError, ProviderRegistry, VoicePrepared};
 pub use resolve::{
-    DEFAULT_DIALOGUE_PROVIDER, DEFAULT_MT_PROVIDER, SYSTEM_MT_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME,
-    OPENPRX_PROVIDER, VoiceChoice, VoiceDirs,
+    DEFAULT_DIALOGUE_PROVIDER, DEFAULT_MT_PROVIDER, DialogueChoice, DialogueKind, OPENPRX_NAME,
+    OPENPRX_PROVIDER, SYSTEM_MT_PROVIDER, VoiceChoice, VoiceDirs,
 };
 pub use runtime::{BuiltRuntimes, Runtime};
 pub use spec::{
-    DataLeaving, DialogueSpec, LocalModelSpec, Locality, MtEngineKind, MtSpec, Resolved, TtsFiles, TtsSpec,
-    VoicePlan,
+    DataLeaving, DialogueSpec, LocalModelSpec, Locality, MtEngineKind, MtSpec, Resolved, TtsFiles,
+    TtsSpec, VoicePlan,
 };
 pub use test_provider::{FailureClass, TestError, TestReport};
 pub use tts_loader::{BuiltInTts, TtsLoader};

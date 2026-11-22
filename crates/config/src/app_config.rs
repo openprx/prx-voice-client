@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::migrate::CURRENT_SCHEMA_VERSION;
-use crate::sections::*;
 use crate::providers::ProvidersConfig;
+use crate::sections::*;
 
 /// Top-level application configuration.
 ///

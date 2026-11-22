@@ -85,7 +85,11 @@ fn lcs(a: &[String], b: &[&str]) -> usize {
         let mut diag = 0;
         for (j, y) in b.iter().enumerate() {
             let up = row[j + 1];
-            row[j + 1] = if x == y { diag + 1 } else { row[j + 1].max(row[j]) };
+            row[j + 1] = if x == y {
+                diag + 1
+            } else {
+                row[j + 1].max(row[j])
+            };
             diag = up;
         }
     }
@@ -103,9 +107,16 @@ mod tests {
     #[test]
     fn what_we_just_said_is_recognised_again_despite_small_errors() {
         let mut own = OwnSpeech::default();
-        own.remember(at(10), "Thanks for joining the call. I would like to walk through the schedule.");
+        own.remember(
+            at(10),
+            "Thanks for joining the call. I would like to walk through the schedule.",
+        );
         assert!(own.is_echo(at(14), "thanks for joining the call", &[]));
-        assert!(own.is_echo(at(14), "Thanks for joining the cool I would like to walk through", &[]));
+        assert!(own.is_echo(
+            at(14),
+            "Thanks for joining the cool I would like to walk through",
+            &[]
+        ));
         assert!(!own.is_echo(at(14), "Can you hear me now", &[]));
     }
 
@@ -128,7 +139,11 @@ mod tests {
     #[test]
     fn a_clause_that_is_still_queued_counts_as_own_speech() {
         let mut own = OwnSpeech::default();
-        assert!(own.is_echo(at(1), "we should move the meeting", &["We should move the meeting to Thursday."]));
+        assert!(own.is_echo(
+            at(1),
+            "we should move the meeting",
+            &["We should move the meeting to Thursday."]
+        ));
         assert!(!own.is_echo(at(1), "we should move the meeting", &[]));
     }
 

@@ -69,7 +69,11 @@ mod tests {
     fn enumeration_returns_named_devices_or_a_typed_error() {
         // CI may have no audio hardware; the call must not panic.
         if let Ok(devices) = list_input_devices() {
-            assert!(devices.iter().all(|d| !d.uid.is_empty() || !d.name.is_empty()));
+            assert!(
+                devices
+                    .iter()
+                    .all(|d| !d.uid.is_empty() || !d.name.is_empty())
+            );
         }
     }
 }

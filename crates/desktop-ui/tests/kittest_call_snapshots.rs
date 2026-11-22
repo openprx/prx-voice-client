@@ -32,7 +32,14 @@ fn state_with(panel: CallPanel, elapsed_s: u64) -> DesktopUiState {
     st
 }
 
-fn snapshot(name: &str, panel: CallPanel, scheme: Theme, locale: Locale, width: f32, scroll_up: bool) {
+fn snapshot(
+    name: &str,
+    panel: CallPanel,
+    scheme: Theme,
+    locale: Locale,
+    width: f32,
+    scroll_up: bool,
+) {
     let _guard = common::lock_locale();
     prxvc_i18n::set_locale(locale);
     let height = if scroll_up { SHORT } else { TALL };
@@ -104,19 +111,31 @@ fn after_call_state(details_open: bool) -> DesktopUiState {
     st.call = call_fixtures::live_panel();
     let running = st.call.clone();
     st.call_window.sync(&running);
-    st.call = CallPanel { phase: prxvc_desktop_ui::CallPhase::Idle, ..call_fixtures::live_panel() };
+    st.call = CallPanel {
+        phase: prxvc_desktop_ui::CallPhase::Idle,
+        ..call_fixtures::live_panel()
+    };
     st.call_window.began_ago(754);
     st.call_window.details_open = details_open;
     st
 }
 
-fn after_call_snapshot(name: &str, details_open: bool, scheme: Theme, locale: Locale, width: f32, height: f32) {
+fn after_call_snapshot(
+    name: &str,
+    details_open: bool,
+    scheme: Theme,
+    locale: Locale,
+    width: f32,
+    height: f32,
+) {
     let _guard = common::lock_locale();
     prxvc_i18n::set_locale(locale);
-    let mut h = common::builder(vec2(width, height), scheme).wgpu().build_ui_state(
-        |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_call_window(ui, st),
-        after_call_state(details_open),
-    );
+    let mut h = common::builder(vec2(width, height), scheme)
+        .wgpu()
+        .build_ui_state(
+            |ui, st: &mut DesktopUiState| prxvc_desktop_ui::render_call_window(ui, st),
+            after_call_state(details_open),
+        );
     h.input_mut().system_theme = Some(scheme);
     h.run_steps(6);
     h.snapshot(name);
@@ -125,20 +144,48 @@ fn after_call_snapshot(name: &str, details_open: bool, scheme: Theme, locale: Lo
 
 #[test]
 fn after_a_call_with_the_details_open_light_zh_430x630() {
-    after_call_snapshot("callwin_details_open_light_zh_430x630", true, Theme::Light, Locale::ZhCn, 430.0, 630.0);
+    after_call_snapshot(
+        "callwin_details_open_light_zh_430x630",
+        true,
+        Theme::Light,
+        Locale::ZhCn,
+        430.0,
+        630.0,
+    );
 }
 
 #[test]
 fn after_a_call_with_the_captions_light_zh_430x630() {
-    after_call_snapshot("callwin_after_call_light_zh_430x630", false, Theme::Light, Locale::ZhCn, 430.0, 630.0);
+    after_call_snapshot(
+        "callwin_after_call_light_zh_430x630",
+        false,
+        Theme::Light,
+        Locale::ZhCn,
+        430.0,
+        630.0,
+    );
 }
 
 #[test]
 fn after_a_call_with_the_details_open_dark_en_380x480() {
-    after_call_snapshot("callwin_details_open_dark_en_380x480", true, Theme::Dark, Locale::En, 380.0, 480.0);
+    after_call_snapshot(
+        "callwin_details_open_dark_en_380x480",
+        true,
+        Theme::Dark,
+        Locale::En,
+        380.0,
+        480.0,
+    );
 }
 
 #[test]
 fn after_a_call_at_the_smallest_size_light_en_320x360() {
-    after_call_snapshot("callwin_after_call_light_en_320x360", false, Theme::Light, Locale::En, 320.0, 360.0);
+    after_call_snapshot(
+        "callwin_after_call_light_en_320x360",
+        false,
+        Theme::Light,
+        Locale::En,
+        320.0,
+        360.0,
+    );
 }

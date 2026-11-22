@@ -15,7 +15,12 @@ fn paces(events: &[PipelineEvent]) -> Vec<(u32, bool)> {
 fn queue_of_four(h: &mut Harness) -> Vec<ClauseId> {
     h.speech(1);
     for i in 0..4u64 {
-        h.commit(1, &format!("第{i}句话很长很长"), 100 + i * 500, 600 + i * 500);
+        h.commit(
+            1,
+            &format!("第{i}句话很长很长"),
+            100 + i * 500,
+            600 + i * 500,
+        );
     }
     let ids: Vec<ClauseId> = (0..4u16).map(|i| cl(1, i)).collect();
     for c in &ids {
@@ -47,9 +52,18 @@ fn a_queue_speeds_the_next_clauses_up_before_their_audio_and_the_end_of_it_retur
         [(100, true)],
         "the first clause is still being synthesised when it is released: normal speed, short pauses"
     );
-    let pace_at = first.iter().position(|e| matches!(e, PipelineEvent::Pace { .. })).unwrap();
-    let audio_at = first.iter().position(|e| matches!(e, PipelineEvent::Audio(_))).unwrap();
-    assert!(pace_at < audio_at, "announced before the audio it applies to");
+    let pace_at = first
+        .iter()
+        .position(|e| matches!(e, PipelineEvent::Pace { .. }))
+        .unwrap();
+    let audio_at = first
+        .iter()
+        .position(|e| matches!(e, PipelineEvent::Audio(_)))
+        .unwrap();
+    assert!(
+        pace_at < audio_at,
+        "announced before the audio it applies to"
+    );
 
     let mut later = Vec::new();
     for c in &ids[..3] {
@@ -59,8 +73,15 @@ fn a_queue_speeds_the_next_clauses_up_before_their_audio_and_the_end_of_it_retur
     play(&mut h, ids[3]);
     later.extend(h.drain());
     let seen = paces(&later);
-    assert!(seen.contains(&(125, true)), "a complete clause with 6 s behind it is sped up: {seen:?}");
-    assert_eq!(seen.last(), Some(&(100, false)), "back to normal at the end: {seen:?}");
+    assert!(
+        seen.contains(&(125, true)),
+        "a complete clause with 6 s behind it is sped up: {seen:?}"
+    );
+    assert_eq!(
+        seen.last(),
+        Some(&(100, false)),
+        "back to normal at the end: {seen:?}"
+    );
     assert!(seen.iter().all(|(s, _)| (100..=125).contains(s)));
 }
 

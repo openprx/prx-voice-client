@@ -241,7 +241,8 @@ fn translation_tokens_are_split_into_clauses_without_cutting_numbers_or_abbrevia
 }
 
 #[test]
-fn a_new_utterance_does_not_cut_the_playing_translation_and_keeps_a_queued_clause_that_is_fully_synthesised() {
+fn a_new_utterance_does_not_cut_the_playing_translation_and_keeps_a_queued_clause_that_is_fully_synthesised()
+ {
     let clock = ManualClock::new();
     let (mt, tts) = simple_providers(
         &clock,

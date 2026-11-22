@@ -22,7 +22,10 @@ pub(crate) fn join(parts: &[(Recording, (f64, f64))], gap: Duration) -> Result<J
     let mut spans = Vec::new();
     for (i, (rec, bounds)) in parts.iter().enumerate() {
         if rec.rate != rate {
-            return Err(format!("recording {i} is {}, the first is {rate}", rec.rate));
+            return Err(format!(
+                "recording {i} is {}, the first is {rate}",
+                rec.rate
+            ));
         }
         if i > 0 {
             samples.extend(std::iter::repeat_n(0.0, rate.samples_in(gap)));
@@ -41,7 +44,11 @@ pub(crate) fn join(parts: &[(Recording, (f64, f64))], gap: Duration) -> Result<J
 
 /// One run per segment of the joined run: its clauses, with the speech start of its first clause.
 pub(crate) fn split(run: &UtteranceRun) -> Vec<UtteranceRun> {
-    let mut segments: Vec<u64> = run.clauses.iter().map(|c| c.clause.segment().seq()).collect();
+    let mut segments: Vec<u64> = run
+        .clauses
+        .iter()
+        .map(|c| c.clause.segment().seq())
+        .collect();
     segments.dedup();
     segments
         .into_iter()
@@ -57,7 +64,11 @@ pub(crate) fn split(run: &UtteranceRun) -> Vec<UtteranceRun> {
                 .filter_map(|c| c.at(S::SpeechStart))
                 .map(|t| t.as_nanos() as f64)
                 .fold(f64::MAX, f64::min);
-            let start = if start == f64::MAX { run.speech_start_ns } else { start };
+            let start = if start == f64::MAX {
+                run.speech_start_ns
+            } else {
+                start
+            };
             let audio_seconds = run
                 .clauses
                 .iter()
@@ -87,10 +98,19 @@ pub(crate) fn queue_waits(runs: &[UtteranceRun]) -> Vec<f64> {
 }
 
 /// The lines printed after a conversation run.
-pub(crate) fn summary(runs: &[UtteranceRun], whole: &UtteranceRun, last_speech_end_ns: f64) -> String {
+pub(crate) fn summary(
+    runs: &[UtteranceRun],
+    whole: &UtteranceRun,
+    last_speech_end_ns: f64,
+) -> String {
     let waits = queue_waits(runs);
     let stat = |v: &[f64]| {
-        crate::report::median_p95(v).map_or("-".to_owned(), |(m, p)| format!("median {m:.2}, p95 {p:.2}, max {:.2}", v.iter().copied().fold(0.0, f64::max)))
+        crate::report::median_p95(v).map_or("-".to_owned(), |(m, p)| {
+            format!(
+                "median {m:.2}, p95 {p:.2}, max {:.2}",
+                v.iter().copied().fold(0.0, f64::max)
+            )
+        })
     };
     let last_end = whole
         .clauses
@@ -135,8 +155,16 @@ mod tests {
 
     #[test]
     fn recordings_at_different_rates_are_refused() {
-        let other = Recording { samples: vec![0.0; 10], rate: SampleRate::HZ_48000 };
-        assert!(join(&[(rec(1.0), (0.0, 1.0)), (other, (0.0, 0.1))], Duration::ZERO).is_err());
+        let other = Recording {
+            samples: vec![0.0; 10],
+            rate: SampleRate::HZ_48000,
+        };
+        assert!(
+            join(
+                &[(rec(1.0), (0.0, 1.0)), (other, (0.0, 0.1))],
+                Duration::ZERO
+            )
+            .is_err()
+        );
     }
 }
-

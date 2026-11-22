@@ -18,9 +18,9 @@ use std::sync::Arc;
 
 use prxvc_media::AudioFrame;
 
+use crate::AudioError;
 use crate::playback_buffer::PlaybackBuffer;
 use crate::resample::MonoResampler;
-use crate::AudioError;
 
 /// Default capacity of a playback buffer, in seconds of audio.
 ///
@@ -333,9 +333,21 @@ mod tests {
     fn write_reports_what_fit_into_a_full_queue() {
         let mut core = OutputCore::new(16_000, 1, 1).unwrap();
         let first = core.write(&tone_frame(16_000, 12_000)).unwrap();
-        assert_eq!(first, Queued { produced: 12_000, accepted: 12_000 });
+        assert_eq!(
+            first,
+            Queued {
+                produced: 12_000,
+                accepted: 12_000
+            }
+        );
         let second = core.write(&tone_frame(16_000, 12_000)).unwrap();
-        assert_eq!(second, Queued { produced: 12_000, accepted: 4_000 });
+        assert_eq!(
+            second,
+            Queued {
+                produced: 12_000,
+                accepted: 4_000
+            }
+        );
         assert_eq!(core.buffer().stats().dropped_samples, 8_000);
     }
 }

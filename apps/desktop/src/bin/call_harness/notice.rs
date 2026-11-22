@@ -22,7 +22,9 @@ impl NoticeMode {
             "off" => Ok(Self::Off),
             "speech" => Ok(Self::Speech),
             "audio" => Ok(Self::Audio),
-            other => Err(format!("unknown notice mode {other} (off, speech or audio)")),
+            other => Err(format!(
+                "unknown notice mode {other} (off, speech or audio)"
+            )),
         }
     }
 }
@@ -36,10 +38,7 @@ pub(crate) struct Notice {
 
 /// The clause the notice uses; no real segment reaches this number.
 pub(crate) fn notice_clause(direction: Direction) -> ClauseId {
-    ClauseId::new(
-        SegmentId::new(direction, u64::MAX).expect("seq >= 1"),
-        0,
-    )
+    ClauseId::new(SegmentId::new(direction, u64::MAX).expect("seq >= 1"), 0)
 }
 
 /// Whether `clause` is the notice's.
@@ -93,6 +92,9 @@ mod tests {
     fn the_notice_clause_is_recognised_and_a_real_one_is_not() {
         let n = notice_clause(Direction::Outgoing);
         assert!(is_notice(n));
-        assert!(!is_notice(ClauseId::new(SegmentId::first(Direction::Outgoing), 0)));
+        assert!(!is_notice(ClauseId::new(
+            SegmentId::first(Direction::Outgoing),
+            0
+        )));
     }
 }

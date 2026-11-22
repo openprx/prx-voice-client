@@ -9,7 +9,10 @@ use crate::widgets::Tone;
 /// Options of a preset select: the catalogue default (empty id) first, then the presets;
 /// a configured id that is not among them stays visible. Returns the options, the id of
 /// each and the current index.
-pub(crate) fn preset_options(presets: &[String], configured: &str) -> (Vec<String>, Vec<String>, usize) {
+pub(crate) fn preset_options(
+    presets: &[String],
+    configured: &str,
+) -> (Vec<String>, Vec<String>, usize) {
     let mut options = vec![t("settings.voice.preset.default")];
     let mut ids = vec![String::new()];
     for p in presets {

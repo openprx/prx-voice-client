@@ -10,9 +10,9 @@ mod common;
 use common::{WindowState, english, narrow, wide, window_harness};
 use egui::{Role, Theme};
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
+use prxvc_desktop_ui::SettingsSection;
 use prxvc_desktop_ui::settings_command::SettingsCommand;
 use prxvc_desktop_ui::settings_data::*;
-use prxvc_desktop_ui::SettingsSection;
 use prxvc_i18n::t;
 
 const WIDE: f32 = 1200.0;
@@ -243,15 +243,23 @@ fn the_assistant_page_chooses_the_backend_and_shows_why_one_cannot_serve() {
     let mut h = wide(SettingsSection::Assistant);
     // The built-in local server is the default: an empty setting, ready.
     assert_eq!(h.state().settings.dialogue_provider, "");
-    assert!(h.query_all_by_label_contains(&t("settings.pipeline.ready")).next().is_some());
+    assert!(
+        h.query_all_by_label_contains(&t("settings.pipeline.ready"))
+            .next()
+            .is_some()
+    );
     // The OpenPRX agent can be chosen; the page then says it is not available yet.
-    h.get_by_role_and_label(Role::ComboBox, "Dialogue backend").click();
+    h.get_by_role_and_label(Role::ComboBox, "Dialogue backend")
+        .click();
     h.run();
-    h.get_by_label(&t("settings.assistant.backend.openprx")).click();
+    h.get_by_label(&t("settings.assistant.backend.openprx"))
+        .click();
     h.run();
     assert_eq!(h.state().settings.dialogue_provider, "openprx");
     assert!(
-        h.query_all_by_label_contains("not available yet").next().is_some(),
+        h.query_all_by_label_contains("not available yet")
+            .next()
+            .is_some(),
         "the problem of the chosen backend is told, not hidden"
     );
 }
@@ -265,16 +273,23 @@ fn the_assistant_voice_can_be_a_preset_or_the_users_own_and_clone_without_a_prof
     let mut h = window_harness(WIDE, Theme::Light, st);
     h.run();
     assert!(
-        h.query_by_label_contains(&t("settings.assistant.voice.needs_profile")).is_some(),
+        h.query_by_label_contains(&t("settings.assistant.voice.needs_profile"))
+            .is_some(),
         "the missing profile is explained"
     );
     assert!(
-        h.query_all_by_label(&t("settings.assistant.voice.preset_name")).next().is_none(),
+        h.query_all_by_label(&t("settings.assistant.voice.preset_name"))
+            .next()
+            .is_none(),
         "no preset to choose while the voice is the user's own"
     );
     h.state_mut().settings.assistant_voice = "preset".into();
     h.run();
-    assert!(h.query_all_by_label(&t("settings.assistant.voice.preset_name")).next().is_some());
+    assert!(
+        h.query_all_by_label(&t("settings.assistant.voice.preset_name"))
+            .next()
+            .is_some()
+    );
 }
 
 #[test]

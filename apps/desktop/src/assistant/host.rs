@@ -107,7 +107,8 @@ impl AssistantHost {
         match launched {
             Ok(launched) => self.begin(launched, &config),
             Err(found) => {
-                self.shared.update_session_state(Phase::Idle.ui_name(), false);
+                self.shared
+                    .update_session_state(Phase::Idle.ui_name(), false);
                 for issue in &found {
                     tracing::warn!(key = %issue.key, detail = %issue.detail, "the assistant cannot start");
                 }
@@ -124,14 +125,20 @@ impl AssistantHost {
     fn drop_clicks_during_start(&self) {
         let mut dropped = 0usize;
         for cmd in self.shared.take_commands() {
-            if matches!(cmd.as_str(), command::CREATE | command::START | command::STOP) {
+            if matches!(
+                cmd.as_str(),
+                command::CREATE | command::START | command::STOP
+            ) {
                 dropped += 1;
             } else {
                 self.shared.push_command(&cmd);
             }
         }
         if dropped > 0 {
-            tracing::info!(dropped, "clicks while the assistant was starting were ignored");
+            tracing::info!(
+                dropped,
+                "clicks while the assistant was starting were ignored"
+            );
         }
     }
 

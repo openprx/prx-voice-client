@@ -108,10 +108,17 @@ fn a_stream_that_may_still_grow_fades_out_over_the_longer_fade() {
     let end = ms(300);
     let peak = |a: usize, b: usize| out[a..b].iter().fold(0.0f32, |p, s| p.max(s.abs()));
     // Ten milliseconds before the end the gate is about half way down: well below the tone.
-    assert!(peak(end - ms(11), end - ms(9)) < 0.35, "{}", peak(end - ms(11), end - ms(9)));
+    assert!(
+        peak(end - ms(11), end - ms(9)) < 0.35,
+        "{}",
+        peak(end - ms(11), end - ms(9))
+    );
     assert!(peak(end - 10, end) < 0.03);
     assert!(out[end..].iter().all(|s| *s == 0.0));
-    let step = out.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max);
+    let step = out
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max);
     assert!(step < 0.07, "a smooth fade, not a cut: {step}");
 }
 
@@ -145,7 +152,10 @@ fn the_pre_roll_adapts_to_a_producer_slower_than_real_time() {
     assert!(wanted <= ms(1_500), "and is capped: {wanted}");
     // The second clause starts with what it needs: no gap at all.
     assert_eq!(clause(&mut adaptive, 3_000, 0.6), 0);
-    assert!(clause(&mut fixed, 3_000, 0.6) >= 1, "the fixed depth gaps again");
+    assert!(
+        clause(&mut fixed, 3_000, 0.6) >= 1,
+        "the fixed depth gaps again"
+    );
 }
 
 #[test]
@@ -170,7 +180,10 @@ fn a_gap_that_cannot_be_avoided_is_still_a_fade() {
     m.end_translated().unwrap();
     all.extend(render(&mut m, ms(3_000)));
     assert!(m.stats().translated.underruns >= 1);
-    let step = all.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max);
+    let step = all
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(0.0, f32::max);
     // A 440 Hz tone at 0.5 moves 0.03 per sample at most; a cut would be a jump of up to 0.5.
     assert!(step < 0.07, "no hard cut: {step}");
 }
@@ -200,7 +213,14 @@ fn clause_with_stall(m: &mut Mixer, clause_ms: usize, stall_ms: usize) -> u64 {
 fn a_stall_teaches_the_lane_to_ride_out_the_next_one() {
     let mut m = mixer(true);
     assert_eq!(clause_with_stall(&mut m, 3_000, 0), 0);
-    assert!(clause_with_stall(&mut m, 3_000, 800) >= 1, "the first stall is a gap");
+    assert!(
+        clause_with_stall(&mut m, 3_000, 800) >= 1,
+        "the first stall is a gap"
+    );
     assert!(m.stats().translated.start_depth_samples > ms(150));
-    assert_eq!(clause_with_stall(&mut m, 3_000, 800), 0, "the second is covered");
+    assert_eq!(
+        clause_with_stall(&mut m, 3_000, 800),
+        0,
+        "the second is covered"
+    );
 }

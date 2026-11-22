@@ -27,7 +27,9 @@ impl StreamLayout {
                 return None;
             }
             let frames = buffers[0].samples.len();
-            let ok = buffers[..ch].iter().all(|b| b.channels == 1 && b.samples.len() == frames);
+            let ok = buffers[..ch]
+                .iter()
+                .all(|b| b.channels == 1 && b.samples.len() == frames);
             ok.then_some(frames)
         } else {
             let b = buffers.first()?;
@@ -39,7 +41,13 @@ impl StreamLayout {
     /// Write `frames` frames starting at frame `start` into `out` as
     /// interleaved samples. `out` must hold `frames * channels` samples and the
     /// range must lie inside what [`frames_in`](Self::frames_in) returned.
-    pub fn interleave_into(&self, buffers: &[InputBuffer<'_>], start: usize, frames: usize, out: &mut [f32]) {
+    pub fn interleave_into(
+        &self,
+        buffers: &[InputBuffer<'_>],
+        start: usize,
+        frames: usize,
+        out: &mut [f32],
+    ) {
         let ch = self.channels as usize;
         if self.non_interleaved {
             for c in 0..ch {
@@ -49,7 +57,8 @@ impl StreamLayout {
                 }
             }
         } else {
-            out[..frames * ch].copy_from_slice(&buffers[0].samples[start * ch..(start + frames) * ch]);
+            out[..frames * ch]
+                .copy_from_slice(&buffers[0].samples[start * ch..(start + frames) * ch]);
         }
     }
 }

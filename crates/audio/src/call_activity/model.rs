@@ -23,7 +23,11 @@ impl ProcessDevice {
 
     /// The name for messages: the name, or the UID when the name is empty.
     pub fn label(&self) -> &str {
-        if self.name.is_empty() { &self.uid } else { &self.name }
+        if self.name.is_empty() {
+            &self.uid
+        } else {
+            &self.name
+        }
     }
 }
 
@@ -55,7 +59,10 @@ pub struct AppAudioActivity {
 impl AppAudioActivity {
     /// The record of an application the audio system does not know.
     pub fn absent(bundle_id: impl Into<String>) -> Self {
-        Self { bundle_id: bundle_id.into(), ..Self::default() }
+        Self {
+            bundle_id: bundle_id.into(),
+            ..Self::default()
+        }
     }
 
     /// Add another process object of the same application.
@@ -74,7 +81,13 @@ impl AppAudioActivity {
 /// object ID when the UID is unknown).
 fn unite(devices: &mut Vec<ProcessDevice>, more: Vec<ProcessDevice>) {
     for d in more {
-        let known = devices.iter().any(|e| if d.uid.is_empty() { e.object_id == d.object_id } else { e.uid == d.uid });
+        let known = devices.iter().any(|e| {
+            if d.uid.is_empty() {
+                e.object_id == d.object_id
+            } else {
+                e.uid == d.uid
+            }
+        });
         if !known {
             devices.push(d);
         }

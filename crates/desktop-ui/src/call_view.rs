@@ -288,7 +288,10 @@ pub struct CountersView {
 impl CountersView {
     /// The count of one flag kind.
     pub fn flag(&self, flag: CaptionFlag) -> u64 {
-        let i = CaptionFlag::ALL.iter().position(|f| *f == flag).unwrap_or(0);
+        let i = CaptionFlag::ALL
+            .iter()
+            .position(|f| *f == flag)
+            .unwrap_or(0);
         self.flags[i]
     }
 

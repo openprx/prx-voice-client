@@ -65,13 +65,27 @@ pub fn tap_ring(capacity: usize) -> (RingProducer, RingConsumer) {
     let slots = (0..capacity)
         .map(|_| {
             UnsafeCell::new(Slot {
-                meta: SlotMeta { channels: 0, sample_rate: 0, host_time: 0, len: 0 },
+                meta: SlotMeta {
+                    channels: 0,
+                    sample_rate: 0,
+                    host_time: 0,
+                    len: 0,
+                },
                 data: vec![0.0; SLOT_SAMPLES].into_boxed_slice(),
             })
         })
         .collect();
-    let inner = Arc::new(Inner { slots, head: AtomicUsize::new(0), tail: AtomicUsize::new(0) });
-    (RingProducer { inner: Arc::clone(&inner) }, RingConsumer { inner })
+    let inner = Arc::new(Inner {
+        slots,
+        head: AtomicUsize::new(0),
+        tail: AtomicUsize::new(0),
+    });
+    (
+        RingProducer {
+            inner: Arc::clone(&inner),
+        },
+        RingConsumer { inner },
+    )
 }
 
 impl RingConsumer {
@@ -121,7 +135,15 @@ mod tests {
         let mut out = Vec::new();
         let meta = c.pop_into(&mut out).unwrap();
         assert_eq!(out, [1.0]);
-        assert_eq!(meta, SlotMeta { channels: 2, sample_rate: 48_000, host_time: 7, len: 1 });
+        assert_eq!(
+            meta,
+            SlotMeta {
+                channels: 2,
+                sample_rate: 48_000,
+                host_time: 7,
+                len: 1
+            }
+        );
         c.pop_into(&mut out).unwrap();
         assert_eq!(out, [2.0]);
         assert!(c.pop_into(&mut out).is_none());

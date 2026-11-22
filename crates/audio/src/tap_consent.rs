@@ -137,7 +137,9 @@ pub fn request_capture_consent(timeout: Duration) -> Result<ConsentOutcome, TapE
         CONSENT_UNAVAILABLE => Err(TapError::ConsentNoAnswer {
             reason: "the system permission request function is not available".into(),
         }),
-        _ => Err(TapError::ConsentNoAnswer { reason: format!("no answer within {} s", timeout.as_secs()) }),
+        _ => Err(TapError::ConsentNoAnswer {
+            reason: format!("no answer within {} s", timeout.as_secs()),
+        }),
     }
 }
 
@@ -172,29 +174,61 @@ mod tests {
             (Undetermined, true, RequestPlan::Ask),
             (Unknown, true, RequestPlan::Ask),
             (Denied, true, RequestPlan::Fail(PlanFailure::Denied)),
-            (Undetermined, false, RequestPlan::Fail(PlanFailure::NotInAppBundle)),
-            (Unknown, false, RequestPlan::Fail(PlanFailure::NotInAppBundle)),
-            (Denied, false, RequestPlan::Fail(PlanFailure::NotInAppBundle)),
+            (
+                Undetermined,
+                false,
+                RequestPlan::Fail(PlanFailure::NotInAppBundle),
+            ),
+            (
+                Unknown,
+                false,
+                RequestPlan::Fail(PlanFailure::NotInAppBundle),
+            ),
+            (
+                Denied,
+                false,
+                RequestPlan::Fail(PlanFailure::NotInAppBundle),
+            ),
         ];
         for (status, bundle, expected) in cases {
-            assert_eq!(plan_request(status, bundle), expected, "{status:?} bundle={bundle}");
+            assert_eq!(
+                plan_request(status, bundle),
+                expected,
+                "{status:?} bundle={bundle}"
+            );
         }
     }
 
     #[test]
     fn plan_failures_map_to_the_typed_errors() {
-        assert_eq!(TapError::from(PlanFailure::NotInAppBundle), TapError::NotInAppBundle);
-        assert_eq!(TapError::from(PlanFailure::Denied), TapError::PermissionDenied);
+        assert_eq!(
+            TapError::from(PlanFailure::NotInAppBundle),
+            TapError::NotInAppBundle
+        );
+        assert_eq!(
+            TapError::from(PlanFailure::Denied),
+            TapError::PermissionDenied
+        );
     }
 
     #[test]
     fn start_gate_returns_the_typed_error_for_each_state() {
         assert_eq!(start_gate(Granted, true), Ok(()));
-        assert_eq!(start_gate(Granted, false), Ok(()), "a granted terminal may be used for development");
+        assert_eq!(
+            start_gate(Granted, false),
+            Ok(()),
+            "a granted terminal may be used for development"
+        );
         assert_eq!(start_gate(Unknown, false), Ok(()));
         assert_eq!(start_gate(Denied, true), Err(TapError::PermissionDenied));
-        assert_eq!(start_gate(Undetermined, true), Err(TapError::ConsentUndetermined));
-        assert_eq!(start_gate(Undetermined, false), Err(TapError::NotInAppBundle));
+        assert_eq!(
+            start_gate(Undetermined, true),
+            Err(TapError::ConsentUndetermined)
+        );
+        assert_eq!(
+            start_gate(Undetermined, false),
+            Err(TapError::NotInAppBundle)
+        );
         assert_eq!(start_gate(Denied, false), Err(TapError::NotInAppBundle));
     }
 

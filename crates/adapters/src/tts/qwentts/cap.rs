@@ -276,7 +276,10 @@ mod tests {
     #[test]
     fn units_count_words_characters_and_digits() {
         assert_eq!(speakable_units("Don't  stop, ok?!", Lang::En), 3);
-        assert_eq!(speakable_units("\u{6211}\u{4eec}\u{7528} Rust", Lang::Zh), 5);
+        assert_eq!(
+            speakable_units("\u{6211}\u{4eec}\u{7528} Rust", Lang::Zh),
+            5
+        );
         assert_eq!(speakable_units("2026", Lang::En), 4);
         assert_eq!(speakable_units("...", Lang::En), 0);
     }
@@ -365,14 +368,24 @@ mod tests {
     fn the_short_text_policy_retries_every_text_that_is_held_back() {
         let short = cap_frames("Mm.", Lang::En);
         let mid = cap_frames("We should meet at the office tomorrow", Lang::En);
-        let long = cap_frames("We should meet at the office tomorrow morning and then go home to eat", Lang::En);
+        let long = cap_frames(
+            "We should meet at the office tomorrow morning and then go home to eat",
+            Lang::En,
+        );
         assert!(short < 40);
         assert!(mid > short && mid <= HOLD_CAP_FRAMES);
         assert!(long > HOLD_CAP_FRAMES);
-        assert_eq!(RunawayRetry::ShortOnce.extra_attempts(mid), 2, "a retry and a last attempt at twice the cap");
+        assert_eq!(
+            RunawayRetry::ShortOnce.extra_attempts(mid),
+            2,
+            "a retry and a last attempt at twice the cap"
+        );
         assert_eq!(attempt_cap_frames(mid, 0, 2), mid);
         assert_eq!(attempt_cap_frames(mid, 1, 2), mid);
-        assert!(attempt_cap_frames(mid, 2, 2) >= HOLD_CAP_FRAMES.min(mid * 4) && attempt_cap_frames(mid, 2, 2) >= mid * 2);
+        assert!(
+            attempt_cap_frames(mid, 2, 2) >= HOLD_CAP_FRAMES.min(mid * 4)
+                && attempt_cap_frames(mid, 2, 2) >= mid * 2
+        );
         assert_eq!(attempt_cap_frames(mid, 2, 1), mid, "Once never doubles");
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(short), 2);
         assert_eq!(RunawayRetry::ShortOnce.extra_attempts(long), 0);
@@ -384,8 +397,16 @@ mod tests {
         let held = |t, l| RunawayRetry::ShortOnce.extra_attempts_for(hold, t, l, cap_frames(t, l));
         assert_eq!(held("see you later", Lang::En), 2, "three words are held");
         assert_eq!(held("we should go there", Lang::En), 0, "four words stream");
-        assert_eq!(held("\u{4f60}\u{597d}\u{5417}\u{ff1f}", Lang::Zh), 2, "four characters");
-        assert_eq!(held("\u{6211}\u{4eec}\u{53bb}\u{4e86}\u{5427}", Lang::Zh), 0, "five characters");
+        assert_eq!(
+            held("\u{4f60}\u{597d}\u{5417}\u{ff1f}", Lang::Zh),
+            2,
+            "four characters"
+        );
+        assert_eq!(
+            held("\u{6211}\u{4eec}\u{53bb}\u{4e86}\u{5427}", Lang::Zh),
+            0,
+            "five characters"
+        );
         // The legacy value is the cap rule: up to nine words are held, ten are not.
         let legacy = |t, l| {
             RunawayRetry::ShortOnce.extra_attempts_for(HoldLimit::LEGACY, t, l, cap_frames(t, l))
@@ -397,13 +418,25 @@ mod tests {
         // A limit never holds a clause whose cap is past the hold limit.
         assert!(!HoldLimit::clamped(20, 20).holds(long, Lang::En, HOLD_CAP_FRAMES + 1));
         // Other policies ignore the limit.
-        assert_eq!(RunawayRetry::Off.extra_attempts_for(hold, "hi", Lang::En, 29), 0);
-        assert_eq!(RunawayRetry::Once.extra_attempts_for(hold, "see you later and go", Lang::En, 50), 1);
+        assert_eq!(
+            RunawayRetry::Off.extra_attempts_for(hold, "hi", Lang::En, 29),
+            0
+        );
+        assert_eq!(
+            RunawayRetry::Once.extra_attempts_for(hold, "see you later and go", Lang::En, 50),
+            1
+        );
     }
 
     #[test]
     fn the_hold_limit_is_clamped() {
-        assert_eq!(HoldLimit::clamped(999, 999), HoldLimit { max_words: 20, max_chars: 20 });
+        assert_eq!(
+            HoldLimit::clamped(999, 999),
+            HoldLimit {
+                max_words: 20,
+                max_chars: 20
+            }
+        );
         assert_eq!(HoldLimit::clamped(0, 0), HoldLimit::LEGACY);
         assert_eq!(HoldLimit::default(), HoldLimit::LEGACY);
     }

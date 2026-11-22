@@ -63,7 +63,11 @@ pub fn decide(params: &CatchUpParams, queued: Duration, now: PlayPace) -> PlayPa
     let active = params.enabled && max > 1.0;
     let enter = params.after;
     let stay = params.after / 2;
-    let speeding = if now.speed > 1.0 { queued >= stay } else { queued >= enter };
+    let speeding = if now.speed > 1.0 {
+        queued >= stay
+    } else {
+        queued >= enter
+    };
     let speed = if active && speeding {
         // From just above 1 where it starts to the maximum at twice that queue.
         let ramp = (queued.as_secs_f32() / (2.0 * enter.as_secs_f32().max(0.001))).clamp(0.0, 1.0);
@@ -94,10 +98,22 @@ mod tests {
     #[test]
     fn a_producer_is_believed_only_when_it_was_seen_long_enough_and_is_well_ahead() {
         let ms = Duration::from_millis;
-        assert!(super::producer_comfortably_ahead(ms(2_000), ms(500)), "four times real time");
-        assert!(!super::producer_comfortably_ahead(ms(200), ms(100)), "too short an observation");
-        assert!(!super::producer_comfortably_ahead(ms(600), ms(500)), "barely faster than playing");
-        assert!(!super::producer_comfortably_ahead(ms(100), ms(600)), "slower than real time");
+        assert!(
+            super::producer_comfortably_ahead(ms(2_000), ms(500)),
+            "four times real time"
+        );
+        assert!(
+            !super::producer_comfortably_ahead(ms(200), ms(100)),
+            "too short an observation"
+        );
+        assert!(
+            !super::producer_comfortably_ahead(ms(600), ms(500)),
+            "barely faster than playing"
+        );
+        assert!(
+            !super::producer_comfortably_ahead(ms(100), ms(600)),
+            "slower than real time"
+        );
     }
 
     use super::*;
@@ -132,21 +148,57 @@ mod tests {
     #[test]
     fn it_returns_to_normal_with_hysteresis() {
         let params = CatchUpParams::default();
-        let fast = PlayPace { speed: 1.2, tight: true };
-        assert!(decide(&params, s(1_200), fast).speed > 1.0, "still above half the start");
+        let fast = PlayPace {
+            speed: 1.2,
+            tight: true,
+        };
+        assert!(
+            decide(&params, s(1_200), fast).speed > 1.0,
+            "still above half the start"
+        );
         assert_eq!(decide(&params, s(900), fast).speed, 1.0);
-        assert_eq!(decide(&params, s(1_200), PlayPace::default()).speed, 1.0, "not yet entering");
-        assert!(decide(&params, s(250), PlayPace { speed: 1.0, tight: true }).tight);
-        assert!(!decide(&params, s(50), PlayPace { speed: 1.0, tight: true }).tight);
+        assert_eq!(
+            decide(&params, s(1_200), PlayPace::default()).speed,
+            1.0,
+            "not yet entering"
+        );
+        assert!(
+            decide(
+                &params,
+                s(250),
+                PlayPace {
+                    speed: 1.0,
+                    tight: true
+                }
+            )
+            .tight
+        );
+        assert!(
+            !decide(
+                &params,
+                s(50),
+                PlayPace {
+                    speed: 1.0,
+                    tight: true
+                }
+            )
+            .tight
+        );
     }
 
     #[test]
     fn switched_off_it_never_speeds_up_but_pauses_still_shorten() {
-        let off = CatchUpParams { enabled: false, ..CatchUpParams::default() };
+        let off = CatchUpParams {
+            enabled: false,
+            ..CatchUpParams::default()
+        };
         let p = decide(&off, s(20_000), PlayPace::default());
         assert_eq!(p.speed, 1.0);
         assert!(p.tight);
-        let flat = CatchUpParams { max_speed: 1.0, ..CatchUpParams::default() };
+        let flat = CatchUpParams {
+            max_speed: 1.0,
+            ..CatchUpParams::default()
+        };
         assert_eq!(decide(&flat, s(20_000), PlayPace::default()).speed, 1.0);
     }
 }

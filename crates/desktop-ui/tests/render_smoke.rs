@@ -9,9 +9,7 @@ use prxvc_desktop_ui::fonts;
 use prxvc_desktop_ui::theme::{self, Scheme};
 use prxvc_desktop_ui::tool_window::ToolKind;
 use prxvc_desktop_ui::widgets::{self, ButtonKind};
-use prxvc_desktop_ui::{
-    DesktopUiState, HistoryEntry, Theme, TranscriptLine,
-};
+use prxvc_desktop_ui::{DesktopUiState, HistoryEntry, Theme, TranscriptLine};
 use prxvc_i18n::Locale;
 
 /// The i18n locale is global; tests that change it must not interleave.
@@ -30,7 +28,8 @@ const SCREEN: egui::Vec2 = vec2(400.0, 600.0);
 fn new_ctx() -> egui::Context {
     let ctx = egui::Context::default();
     fonts::install(&ctx, None);
-    ctx.run_ui(RawInput::default(), |_| {}).drop_without_applying_deltas();
+    ctx.run_ui(RawInput::default(), |_| {})
+        .drop_without_applying_deltas();
     ctx
 }
 
@@ -79,7 +78,10 @@ fn run_frames_sized(
 ) -> (usize, String) {
     let mut last = (0, String::new());
     for i in 0..frames {
-        let output = ctx.run_ui(raw_input_sized(system, size, i as f64 * 0.016, vec![]), |u| ui(u));
+        let output = ctx.run_ui(
+            raw_input_sized(system, size, i as f64 * 0.016, vec![]),
+            |u| ui(u),
+        );
         let mut text = String::new();
         for clipped in &output.shapes {
             collect_text(&clipped.shape, &mut text);
@@ -251,9 +253,12 @@ fn click_at<R>(
     ];
     let mut result = None;
     for (i, events) in frames.into_iter().enumerate() {
-        ctx.run_pass(raw_input(EguiTheme::Light, i as f64 * 0.05, events), |ctx| {
-            result = Some(body(ctx));
-        })
+        ctx.run_pass(
+            raw_input(EguiTheme::Light, i as f64 * 0.05, events),
+            |ctx| {
+                result = Some(body(ctx));
+            },
+        )
         .drop_without_applying_deltas();
     }
     result.expect("at least one frame ran")
@@ -288,8 +293,8 @@ fn disabled_button_does_not_react() {
         egui::Area::new(egui::Id::unique("button_test"))
             .fixed_pos(pos2(50.0, 50.0))
             .show(ctx, |ui| {
-                clicked = widgets::button_with(ui, &tk, ButtonKind::Primary, "Go", 32.0, false)
-                    .clicked();
+                clicked =
+                    widgets::button_with(ui, &tk, ButtonKind::Primary, "Go", 32.0, false).clicked();
             });
         clicked
     });
@@ -365,9 +370,12 @@ fn opening_and_closing_settings_never_resizes_or_moves_the_orb_window() {
         if frame == 4 {
             state.windows.get_mut(ToolKind::Settings).close();
         }
-        let output = ctx.run_ui(raw_input(EguiTheme::Light, frame as f64 * 0.016, vec![]), |ui| {
-            prxvc_desktop_ui::render_app(ui, &mut state);
-        });
+        let output = ctx.run_ui(
+            raw_input(EguiTheme::Light, frame as f64 * 0.016, vec![]),
+            |ui| {
+                prxvc_desktop_ui::render_app(ui, &mut state);
+            },
+        );
         if let Some(root) = output.viewport_output.get(&egui::ViewportId::ROOT) {
             commands.extend(root.commands.iter().cloned());
         }
@@ -415,10 +423,19 @@ fn setting_row_puts_the_control_right_and_centred() {
                 row = Rect::from_min_max(pos2(20.0, top), pos2(340.0, ui.cursor().top()));
             });
     });
-    assert!((control.right() - 340.0).abs() < 0.5, "control must sit at the right edge");
+    assert!(
+        (control.right() - 340.0).abs() < 0.5,
+        "control must sit at the right edge"
+    );
     let mid = (control.center().y - row.top()) - (row.bottom() - control.center().y);
-    assert!(mid.abs() < 1.0, "control must be vertically centred in the row, off by {mid}");
-    assert!(row.height() >= 56.0, "row is at least padding + 32 + padding");
+    assert!(
+        mid.abs() < 1.0,
+        "control must be vertically centred in the row, off by {mid}"
+    );
+    assert!(
+        row.height() >= 56.0,
+        "row is at least padding + 32 + padding"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -427,7 +444,10 @@ fn setting_row_puts_the_control_right_and_centred() {
 
 /// Sample strings every text style must draw without the replacement glyph.
 const GLYPH_SAMPLES: &[(&str, &str)] = &[
-    ("latin", "The quick brown fox jumps over the lazy dog. PRX voice"),
+    (
+        "latin",
+        "The quick brown fox jumps over the lazy dog. PRX voice",
+    ),
     ("digits", "0123456789 12:30 3.14 100%"),
     ("ascii punctuation", ".,;:!?()[]{}<>-_/\\@#&*+=~^'\"|`$"),
     ("chinese", "你好，世界！语音助手已连接，请开始说话。"),
@@ -440,7 +460,8 @@ const GLYPH_SAMPLES: &[(&str, &str)] = &[
 fn every_text_style_draws_every_sample_without_the_replacement_glyph() {
     let ctx = new_ctx();
     theme::install(&ctx);
-    ctx.run_ui(RawInput::default(), |_| {}).drop_without_applying_deltas();
+    ctx.run_ui(RawInput::default(), |_| {})
+        .drop_without_applying_deltas();
     for (scheme, _) in SCHEMES {
         let style = theme::style_for(&scheme.tokens(), matches!(scheme, Scheme::Dark));
         for (text_style, font_id) in &style.text_styles {
@@ -486,11 +507,20 @@ fn glyph_check_detects_a_missing_glyph() {
 fn text_styles_use_the_standard_weights() {
     let style = theme::style_for(&theme::LIGHT, false);
     let family = |s: egui::TextStyle| style.text_styles[&s].family.clone();
-    assert_eq!(family(egui::TextStyle::Body), egui::FontFamily::Proportional);
-    assert_eq!(family(egui::TextStyle::Small), egui::FontFamily::Proportional);
+    assert_eq!(
+        family(egui::TextStyle::Body),
+        egui::FontFamily::Proportional
+    );
+    assert_eq!(
+        family(egui::TextStyle::Small),
+        egui::FontFamily::Proportional
+    );
     assert_eq!(family(egui::TextStyle::Button), fonts::medium());
     assert_eq!(family(egui::TextStyle::Heading), fonts::semibold());
-    assert_eq!(family(egui::TextStyle::Monospace), egui::FontFamily::Monospace);
+    assert_eq!(
+        family(egui::TextStyle::Monospace),
+        egui::FontFamily::Monospace
+    );
 }
 
 #[test]
@@ -580,8 +610,22 @@ fn call_control_renders_in_both_languages_with_issues() {
         call_app: "net.whatsapp.WhatsApp".into(),
         activity: ActivityView::OnOtherMicrophone,
         activity_devices: "AirPods".into(),
-        outgoing: LaneView { running: true, hears: Heard::Original, device: "Built-in Mic".into(), frames: 120, rms: 0.1, peak: 0.4, ..LaneView::default() },
-        incoming: LaneView { running: true, hears: Heard::Original, device: "process tap".into(), frames: 90, ..LaneView::default() },
+        outgoing: LaneView {
+            running: true,
+            hears: Heard::Original,
+            device: "Built-in Mic".into(),
+            frames: 120,
+            rms: 0.1,
+            peak: 0.4,
+            ..LaneView::default()
+        },
+        incoming: LaneView {
+            running: true,
+            hears: Heard::Original,
+            device: "process tap".into(),
+            frames: 90,
+            ..LaneView::default()
+        },
         issues: vec![IssueView {
             key: "call.issue.default_input_displaced".into(),
             severity: IssueSeverity::Degraded,
@@ -604,12 +648,30 @@ fn call_control_renders_in_both_languages_with_issues() {
         hears: Heard::Translation,
         device: "Built-in Mic".into(),
         frames: 500,
-        partial: Some(PartialView { utterance: 3, text: "今天天气很好我们去".into(), stable_len: 18 }),
+        partial: Some(PartialView {
+            utterance: 3,
+            text: "今天天气很好我们去".into(),
+            stable_len: 18,
+        }),
         clauses: vec![
-            CaptionView { source: "你好".into(), translation: "Hello.".into(), status: ClauseStatus::Played, ..CaptionView::default() },
-            CaptionView { source: "我们开会".into(), translation: String::new(), status: ClauseStatus::Translating, ..CaptionView::default() },
+            CaptionView {
+                source: "你好".into(),
+                translation: "Hello.".into(),
+                status: ClauseStatus::Played,
+                ..CaptionView::default()
+            },
+            CaptionView {
+                source: "我们开会".into(),
+                translation: String::new(),
+                status: ClauseStatus::Translating,
+                ..CaptionView::default()
+            },
         ],
-        counters: Some(CountersView { late_dropped: 1, underruns: 2, ..CountersView::default() }),
+        counters: Some(CountersView {
+            late_dropped: 1,
+            underruns: 2,
+            ..CountersView::default()
+        }),
         latency: Some(LatencyView {
             speech_start_to_first_audio_ms: Some(2500.0),
             pause_to_first_audio_ms: Some(900.0),
@@ -626,7 +688,10 @@ fn call_control_renders_in_both_languages_with_issues() {
         in_call_mode: true,
         default_input_ours: true,
         outgoing: lane.clone(),
-        incoming: LaneView { hears: Heard::Translation, ..lane },
+        incoming: LaneView {
+            hears: Heard::Translation,
+            ..lane
+        },
         issues: vec![IssueView {
             key: "call.issue.speaker_output".into(),
             severity: IssueSeverity::Degraded,
@@ -656,7 +721,8 @@ fn call_control_renders_in_both_languages_with_issues() {
 }
 
 #[test]
-fn every_state_of_the_assistant_has_a_pill_and_the_transcript_shows_the_interim_line_in_both_languages() {
+fn every_state_of_the_assistant_has_a_pill_and_the_transcript_shows_the_interim_line_in_both_languages()
+ {
     let _guard = lock_locale();
     for locale in LOCALES {
         prxvc_i18n::set_locale(locale.clone());
@@ -672,14 +738,29 @@ fn every_state_of_the_assistant_has_a_pill_and_the_transcript_shows_the_interim_
             state.session_state = session.to_owned();
             state.session_active = session != "Idle";
             state.transcript_lines = vec![
-                TranscriptLine { role: "user".into(), text: "what time is it".into(), is_final: true },
-                TranscriptLine { role: "assistant".into(), text: "It is noon.".into(), is_final: true },
-                TranscriptLine { role: "user".into(), text: "and tomorr".into(), is_final: false },
+                TranscriptLine {
+                    role: "user".into(),
+                    text: "what time is it".into(),
+                    is_final: true,
+                },
+                TranscriptLine {
+                    role: "assistant".into(),
+                    text: "It is noon.".into(),
+                    is_final: true,
+                },
+                TranscriptLine {
+                    role: "user".into(),
+                    text: "and tomorr".into(),
+                    is_final: false,
+                },
             ];
             let (_, text) = run_frames(&ctx, EguiTheme::Light, 2, |ui| {
                 prxvc_desktop_ui::render_app(ui, &mut state);
             });
-            assert!(text.contains(&prxvc_i18n::t(key)), "{session} / {locale:?} shows {key}");
+            assert!(
+                text.contains(&prxvc_i18n::t(key)),
+                "{session} / {locale:?} shows {key}"
+            );
             for line in ["what time is it", "It is noon.", "and tomorr"] {
                 assert!(text.contains(line), "{session}: {line}");
             }

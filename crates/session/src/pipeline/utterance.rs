@@ -67,7 +67,11 @@ impl OpenTimes {
     }
 
     pub(crate) fn note_wait(&mut self, segment: SegmentId, wait: std::time::Duration) {
-        self.0.entry(segment).or_default().queue_wait.get_or_insert(wait);
+        self.0
+            .entry(segment)
+            .or_default()
+            .queue_wait
+            .get_or_insert(wait);
     }
 
     pub(crate) fn take(&mut self, segment: SegmentId) -> SegmentTimes {
@@ -399,7 +403,11 @@ mod tests {
         assert_eq!(u.playback_end_ms, Some(5000));
         assert_eq!(u.pause_to_first_audio_ms, Some(1100));
         assert_eq!(u.outcome(), "played");
-        assert_eq!(open.take(s), SegmentTimes::default(), "taken times are gone");
+        assert_eq!(
+            open.take(s),
+            SegmentTimes::default(),
+            "taken times are gone"
+        );
     }
 
     #[test]

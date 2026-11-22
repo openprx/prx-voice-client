@@ -36,7 +36,9 @@ pub struct UnavailableCredentialStore;
 
 impl CredentialStore for UnavailableCredentialStore {
     fn store(&self, _id: &str, _secret: &str) -> Result<(), CredentialError> {
-        Err(CredentialError("no credential store is available".to_owned()))
+        Err(CredentialError(
+            "no credential store is available".to_owned(),
+        ))
     }
 }
 
@@ -90,7 +92,12 @@ pub fn extract_secrets(root: &mut toml::Table, store: &dyn CredentialStore) -> S
     outcome
 }
 
-fn walk(value: &mut toml::Value, path: &str, store: &dyn CredentialStore, out: &mut SecretsOutcome) {
+fn walk(
+    value: &mut toml::Value,
+    path: &str,
+    store: &dyn CredentialStore,
+    out: &mut SecretsOutcome,
+) {
     match value {
         toml::Value::Table(table) => {
             handle_table(table, path, store, out);
@@ -107,8 +114,17 @@ fn walk(value: &mut toml::Value, path: &str, store: &dyn CredentialStore, out: &
     }
 }
 
-fn handle_table(table: &mut toml::Table, path: &str, store: &dyn CredentialStore, out: &mut SecretsOutcome) {
-    let own_id = table.get("id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_owned);
+fn handle_table(
+    table: &mut toml::Table,
+    path: &str,
+    store: &dyn CredentialStore,
+    out: &mut SecretsOutcome,
+) {
+    let own_id = table
+        .get("id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
     let id = own_id.clone().unwrap_or_else(|| path.to_owned());
     let found: Vec<(String, String)> = table
         .iter()
@@ -136,7 +152,10 @@ fn handle_table(table: &mut toml::Table, path: &str, store: &dyn CredentialStore
         }
     }
     if stored {
-        table.insert("credential".to_owned(), toml::Value::String(format!("keychain:{id}")));
+        table.insert(
+            "credential".to_owned(),
+            toml::Value::String(format!("keychain:{id}")),
+        );
         out.moved.push(id);
     }
 }
@@ -161,28 +180,44 @@ mod tests {
         assert_eq!(out.moved, vec!["openai-mt", "b"]);
         assert!(out.kept.is_empty());
         let entries = t["providers"]["entries"].as_array().unwrap();
-        assert_eq!(entries[0]["credential"].as_str(), Some("keychain:openai-mt"));
+        assert_eq!(
+            entries[0]["credential"].as_str(),
+            Some("keychain:openai-mt")
+        );
         assert!(entries[0].get("api_key").is_none());
         assert_eq!(entries[1]["credential"].as_str(), Some("keychain:b"));
         assert!(entries[1].get("token").is_none());
         let saved = store.saved.lock().unwrap();
-        assert_eq!(saved.as_slice(), [("openai-mt".into(), "sk-1".into()), ("b".into(), "t-2".into())]);
+        assert_eq!(
+            saved.as_slice(),
+            [
+                ("openai-mt".into(), "sk-1".into()),
+                ("b".into(), "t-2".into())
+            ]
+        );
     }
 
     #[test]
     fn refused_keys_stay_in_place() {
-        let mut t = parse("[[providers.entries]]\nid = \"a\"\napi_key = \"sk-1\"\n[providers.active]\nsecret = \"x\"\n");
+        let mut t = parse(
+            "[[providers.entries]]\nid = \"a\"\napi_key = \"sk-1\"\n[providers.active]\nsecret = \"x\"\n",
+        );
         let out = extract_secrets(&mut t, &UnavailableCredentialStore);
         assert!(out.moved.is_empty());
         assert_eq!(out.kept.len(), 2);
         assert_eq!(out.stray_kept, vec!["providers.active.secret"]);
-        assert_eq!(t["providers"]["entries"][0]["api_key"].as_str(), Some("sk-1"));
+        assert_eq!(
+            t["providers"]["entries"][0]["api_key"].as_str(),
+            Some("sk-1")
+        );
         assert_eq!(t["providers"]["active"]["secret"].as_str(), Some("x"));
     }
 
     #[test]
     fn empty_values_are_dropped_and_other_sections_ignored() {
-        let mut t = parse("[[providers.entries]]\nid = \"a\"\napi_key = \"\"\n[network]\nserver_url = \"x\"\ntoken = \"keep\"\n");
+        let mut t = parse(
+            "[[providers.entries]]\nid = \"a\"\napi_key = \"\"\n[network]\nserver_url = \"x\"\ntoken = \"keep\"\n",
+        );
         let store = FakeStore::default();
         let out = extract_secrets(&mut t, &store);
         assert_eq!(out, SecretsOutcome::default());

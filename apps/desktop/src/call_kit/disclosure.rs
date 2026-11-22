@@ -62,7 +62,10 @@ mod tests {
     fn a_configured_text_replaces_the_built_in_one_for_its_language_only() {
         let mut config = AppConfig::default();
         config.call.disclosure_text_en = "  Heads up: machine translation.  ".into();
-        assert_eq!(disclosure_text(&config, Lang::En), "Heads up: machine translation.");
+        assert_eq!(
+            disclosure_text(&config, Lang::En),
+            "Heads up: machine translation."
+        );
         assert!(disclosure_text(&config, Lang::Zh).starts_with("本通话"));
         config.call.disclosure_text_en = "   ".into();
         assert!(disclosure_text(&config, Lang::En).starts_with("This call"));

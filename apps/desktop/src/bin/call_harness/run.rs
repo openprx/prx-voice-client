@@ -164,7 +164,8 @@ pub(crate) fn run_utterance(
             },
             on_playback: Box::new(move |s| match s {
                 // The notice is not a clause of the pipeline.
-                PlaybackSignal::Started { clause, .. } | PlaybackSignal::Finished { clause, .. }
+                PlaybackSignal::Started { clause, .. }
+                | PlaybackSignal::Finished { clause, .. }
                     if crate::notice::is_notice(clause) => {}
                 PlaybackSignal::Started { clause, at } => report.playback_started(clause, at),
                 PlaybackSignal::Finished { clause, at } => report.playback_finished(clause, at),
@@ -193,7 +194,11 @@ pub(crate) fn run_utterance(
             while let Some(event) = events.recv() {
                 match event {
                     PipelineEvent::SpeechStarted => {
-                        if notice_owed && notice.as_ref().is_some_and(|n| n.mode == crate::notice::NoticeMode::Speech) {
+                        if notice_owed
+                            && notice
+                                .as_ref()
+                                .is_some_and(|n| n.mode == crate::notice::NoticeMode::Speech)
+                        {
                             notice_owed = false;
                             queue_notice(&feed);
                         }

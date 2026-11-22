@@ -420,10 +420,10 @@ fn units_of_one_segment_are_translated_and_spoken_in_order_whatever_each_takes()
 
 #[test]
 fn with_a_refine_pass_early_units_and_the_rest_of_their_round_keep_the_streaming_text() {
-    use prxvc_ports::fakes::{FakeRefineAsr, FakeTraceSink, FakeVadProvider, RefineScript};
-    use prxvc_ports::CancellationToken;
-    use prxvc_session::pipeline::{PipelineProviders, RecognitionMode};
     use pipeline_rig::{Fakes, params};
+    use prxvc_ports::CancellationToken;
+    use prxvc_ports::fakes::{FakeRefineAsr, FakeTraceSink, FakeVadProvider, RefineScript};
+    use prxvc_session::pipeline::{PipelineProviders, RecognitionMode};
 
     let clock = ManualClock::new();
     let (mt, tts) = providers(&clock);
@@ -464,7 +464,10 @@ fn with_a_refine_pass_early_units_and_the_rest_of_their_round_keep_the_streaming
     let snap = run.finish(2);
     assert_eq!(
         Run::texts(&snap),
-        ["we should meet at the office", "tomorrow morning and then go home"],
+        [
+            "we should meet at the office",
+            "tomorrow morning and then go home"
+        ],
         "the clip of a cut chosen from text would not match the audio: no refine for them"
     );
     assert!(refine.audio_lens().is_empty());

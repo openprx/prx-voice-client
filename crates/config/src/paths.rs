@@ -71,7 +71,10 @@ impl AppPaths {
     }
 
     /// [`AppPaths::resolve`] with the override passed in.
-    pub fn resolve_with(config: &AppConfig, data_override: Option<&Path>) -> Result<Self, ConfigError> {
+    pub fn resolve_with(
+        config: &AppConfig,
+        data_override: Option<&Path>,
+    ) -> Result<Self, ConfigError> {
         let dirs = project_dirs(APP_ID)?;
         let (data_dir, default_models) = match data_override {
             Some(root) => (root.to_path_buf(), root.join("models")),

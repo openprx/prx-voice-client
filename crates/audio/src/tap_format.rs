@@ -68,7 +68,10 @@ impl StreamLayout {
             return bad("samples are not packed".into());
         }
         if f.channels == 0 || f.channels > MAX_CHANNELS {
-            return bad(format!("{} channels (1 to {MAX_CHANNELS} supported)", f.channels));
+            return bad(format!(
+                "{} channels (1 to {MAX_CHANNELS} supported)",
+                f.channels
+            ));
         }
         if !(8_000.0..=384_000.0).contains(&f.sample_rate) {
             return bad(format!("sample rate {} Hz", f.sample_rate));
@@ -81,13 +84,19 @@ impl StreamLayout {
                 f.bytes_per_frame
             ));
         }
-        Ok(Self { sample_rate: f.sample_rate as u32, channels: f.channels, non_interleaved })
+        Ok(Self {
+            sample_rate: f.sample_rate as u32,
+            channels: f.channels,
+            non_interleaved,
+        })
     }
 
     /// Pack into one word so the real-time callback can read it with a single
     /// atomic load while the supervisor installs the layout of a new tap.
     pub fn pack(&self) -> u64 {
-        (u64::from(self.sample_rate) << 32) | (u64::from(self.channels) << 1) | u64::from(self.non_interleaved)
+        (u64::from(self.sample_rate) << 32)
+            | (u64::from(self.channels) << 1)
+            | u64::from(self.non_interleaved)
     }
 }
 
@@ -102,7 +111,10 @@ pub struct InputBuffer<'a> {
 
 impl InputBuffer<'_> {
     /// An empty buffer, used to fill fixed-size arrays.
-    pub const EMPTY: InputBuffer<'static> = InputBuffer { channels: 0, samples: &[] };
+    pub const EMPTY: InputBuffer<'static> = InputBuffer {
+        channels: 0,
+        samples: &[],
+    };
 }
 
 #[cfg(test)]

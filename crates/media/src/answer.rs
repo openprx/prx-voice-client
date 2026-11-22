@@ -49,7 +49,18 @@ const REFUSAL_RULES: [Rule; 17] = [
 const ANSWER_RULES: [Rule; 15] = [
     (
         "sure",
-        &["好的", "当然", "没问题", "行", "可以", "确定", "确实", "没错", "对", "sure"],
+        &[
+            "好的",
+            "当然",
+            "没问题",
+            "行",
+            "可以",
+            "确定",
+            "确实",
+            "没错",
+            "对",
+            "sure",
+        ],
     ),
     ("certainly", &["当然", "肯定", "一定", "certainly"]),
     ("of course", &["当然", "自然", "of course"]),
@@ -57,7 +68,25 @@ const ANSWER_RULES: [Rule; 15] = [
         "absolutely",
         &["当然", "完全", "绝对", "没错", "absolutely"],
     ),
-    ("okay", &["好", "行", "可以", "嗯", "知道", "明白", "了解", "懂", "收到", "没事", "没关系", "对", "是", "ok"]),
+    (
+        "okay",
+        &[
+            "好",
+            "行",
+            "可以",
+            "嗯",
+            "知道",
+            "明白",
+            "了解",
+            "懂",
+            "收到",
+            "没事",
+            "没关系",
+            "对",
+            "是",
+            "ok",
+        ],
+    ),
     ("here is", &["这是", "这里", "给你", "以下", "here"]),
     ("here's", &["这是", "这里", "给你", "以下", "here"]),
     (
@@ -89,17 +118,24 @@ const NOTE_LABELS: [&str; 7] = [
     "explanation:",
 ];
 
-
 /// Whether `output` opens like an apology or an AI self-reference ("I'm sorry", "I cannot", "抱歉")
 /// that the source does not itself contain.
 pub fn opens_like_refusal(source: &str, output: &str) -> bool {
-    opens_with_unexplained(&output.to_lowercase(), &source.to_lowercase(), &REFUSAL_RULES)
+    opens_with_unexplained(
+        &output.to_lowercase(),
+        &source.to_lowercase(),
+        &REFUSAL_RULES,
+    )
 }
 
 /// Whether `output` opens like a chat reply ("Sure", "Of course", "Here is", "好的", "以下是") that
 /// the source does not itself contain.
 pub fn opens_like_answer(source: &str, output: &str) -> bool {
-    opens_with_unexplained(&output.to_lowercase(), &source.to_lowercase(), &ANSWER_RULES)
+    opens_with_unexplained(
+        &output.to_lowercase(),
+        &source.to_lowercase(),
+        &ANSWER_RULES,
+    )
 }
 
 fn opens_with_unexplained(output_lower: &str, source_lower: &str, rules: &[Rule]) -> bool {
@@ -153,7 +189,10 @@ mod tests {
 
     #[test]
     fn a_chat_opener_is_an_answer_unless_the_source_has_it() {
-        assert!(opens_like_answer("你叫什么名字？", "Sure! My name is Gemma."));
+        assert!(opens_like_answer(
+            "你叫什么名字？",
+            "Sure! My name is Gemma."
+        ));
         assert!(opens_like_answer("What is your name?", "好的，我叫小明。"));
         assert!(!opens_like_answer("好的，没问题。", "Sure, no problem."));
         assert!(!opens_like_answer("Of course.", "当然。"));
@@ -175,9 +214,18 @@ mod tests {
 
     #[test]
     fn a_refusal_is_one_unless_the_speaker_said_it() {
-        assert!(opens_like_refusal("你能帮我订机票吗？", "I'm sorry, but I can't help with that."));
-        assert!(opens_like_refusal("Book me a flight.", "抱歉，我无法预订机票。"));
-        assert!(!opens_like_refusal("对不起，我迟到了。", "I'm sorry, I'm late."));
+        assert!(opens_like_refusal(
+            "你能帮我订机票吗？",
+            "I'm sorry, but I can't help with that."
+        ));
+        assert!(opens_like_refusal(
+            "Book me a flight.",
+            "抱歉，我无法预订机票。"
+        ));
+        assert!(!opens_like_refusal(
+            "对不起，我迟到了。",
+            "I'm sorry, I'm late."
+        ));
         assert!(!opens_like_refusal("我不能去。", "I can't go."));
     }
 
@@ -186,8 +234,14 @@ mod tests {
         assert!(answers_a_question("你几点到？", "I will arrive at six."));
         assert!(answers_a_question("When do you arrive?", "我六点到。"));
         assert!(!answers_a_question("When do you arrive?", "你几点到？"));
-        assert!(!answers_a_question("你几点到", "I will arrive at six."), "no mark on the source");
-        assert!(!answers_a_question("好的。你几点到？", "Okay. I will arrive at six."), "two sentences");
+        assert!(
+            !answers_a_question("你几点到", "I will arrive at six."),
+            "no mark on the source"
+        );
+        assert!(
+            !answers_a_question("好的。你几点到？", "Okay. I will arrive at six."),
+            "two sentences"
+        );
         assert!(!answers_a_question(
             "Answer with one number only, what is two plus two?",
             "2+2等于几？只用一个数字回答。"

@@ -38,7 +38,12 @@ pub(crate) struct TimelineArgs<'a> {
 }
 
 /// Draw the timeline in the height that is left in `ui`, which the caller bounds.
-pub(crate) fn timeline(ui: &mut egui::Ui, tk: &Tokens, w: &mut CallWindowState, a: &TimelineArgs<'_>) {
+pub(crate) fn timeline(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    w: &mut CallWindowState,
+    a: &TimelineArgs<'_>,
+) {
     if w.transcript.is_empty() {
         empty_state(ui, tk, &a.empty);
         return;
@@ -122,7 +127,8 @@ pub(crate) fn timeline(ui: &mut egui::Ui, tk: &Tokens, w: &mut CallWindowState, 
     if let Some((id, text)) = copy_request {
         ui.ctx().copy_text(text);
         w.copied = Some((Some(id), now));
-        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FOR));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FOR));
     }
     w.unseen = if w.at_bottom {
         0
@@ -148,20 +154,26 @@ fn jump_pill(ui: &mut egui::Ui, tk: &Tokens, over: egui::Rect, unseen: usize) ->
     } else {
         label.clone()
     };
-    let galley = ui.painter().layout_no_wrap(
-        text,
-        FontId::proportional(size::META),
-        tk.text,
-    );
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text, FontId::proportional(size::META), tk.text);
     let height = crate::theme::layout::CONTROL_HEIGHT;
     let width = galley.size().x + 2.0 * space::S12 + 16.0 + space::S4;
     let rect = egui::Rect::from_center_size(
         pos2(over.center().x, over.bottom() - height / 2.0 - space::S8),
         vec2(width, height),
     );
-    let response = ui.interact(rect, ui.make_persistent_id("call_jump_pill"), Sense::click());
+    let response = ui.interact(
+        rect,
+        ui.make_persistent_id("call_jump_pill"),
+        Sense::click(),
+    );
     response.widget_info(|| WidgetInfo::labeled(egui::Role::Button, true, &label));
-    let fill = if response.hovered() { tk.surface } else { tk.surface_white };
+    let fill = if response.hovered() {
+        tk.surface
+    } else {
+        tk.surface_white
+    };
     let painter = ui.painter();
     painter.rect(
         rect,
@@ -176,7 +188,10 @@ fn jump_pill(ui: &mut egui::Ui, tk: &Tokens, over: egui::Rect, unseen: usize) ->
     painter.line_segment([c + vec2(-4.0, -2.0), c + vec2(0.0, 2.0)], stroke);
     painter.line_segment([c + vec2(0.0, 2.0), c + vec2(4.0, -2.0)], stroke);
     painter.galley(
-        pos2(rect.left() + space::S12 + 16.0 + space::S4, rect.center().y - galley.size().y / 2.0),
+        pos2(
+            rect.left() + space::S12 + 16.0 + space::S4,
+            rect.center().y - galley.size().y / 2.0,
+        ),
         galley,
         tk.text,
     );
@@ -200,13 +215,19 @@ fn empty_state(ui: &mut egui::Ui, tk: &Tokens, e: &EmptyState) {
         tk.text,
         width,
     );
-    let body = ui
-        .painter()
-        .layout(e.body.clone(), FontId::proportional(size::SECONDARY), tk.secondary, width);
+    let body = ui.painter().layout(
+        e.body.clone(),
+        FontId::proportional(size::SECONDARY),
+        tk.secondary,
+        width,
+    );
     let total = title.size().y + space::S8 + body.size().y;
     let top = rect.center().y - total / 2.0;
     let center_x = rect.center().x;
-    let title_pos = pos2(center_x - title.size().x / 2.0, top.max(rect.top() + space::S16));
+    let title_pos = pos2(
+        center_x - title.size().x / 2.0,
+        top.max(rect.top() + space::S16),
+    );
     let body_pos = pos2(
         center_x - body.size().x / 2.0,
         title_pos.y + title.size().y + space::S8,
@@ -214,6 +235,12 @@ fn empty_state(ui: &mut egui::Ui, tk: &Tokens, e: &EmptyState) {
     // Labels, so that the words are in the accessibility tree.
     let (title_size, body_size) = (title.size(), body.size());
     let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-    cui.put(egui::Rect::from_min_size(title_pos, title_size), egui::Label::new(title).selectable(false));
-    cui.put(egui::Rect::from_min_size(body_pos, body_size), egui::Label::new(body).selectable(false));
+    cui.put(
+        egui::Rect::from_min_size(title_pos, title_size),
+        egui::Label::new(title).selectable(false),
+    );
+    cui.put(
+        egui::Rect::from_min_size(body_pos, body_size),
+        egui::Label::new(body).selectable(false),
+    );
 }

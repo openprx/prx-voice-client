@@ -29,7 +29,12 @@ impl RingProducer {
         // so the consumer does not touch it; `&mut self` makes this the only producer.
         let slot = unsafe { &mut *inner.slots[head % inner.slots.len()].get() };
         let len = fill(&mut slot.data).min(SLOT_SAMPLES);
-        slot.meta = SlotMeta { channels, sample_rate, host_time, len };
+        slot.meta = SlotMeta {
+            channels,
+            sample_rate,
+            host_time,
+            len,
+        };
         inner.head.store(head + 1, Ordering::Release);
         true
     }

@@ -24,12 +24,17 @@ fn live_tap_zero_detect() {
     use prxvc_audio::core_audio_tap::CoreAudioTap;
     use prxvc_audio::tap_types::{TapConfig, TapError, TapEvent};
 
-    let target = std::env::var("PRXVC_LIVE_TAP_TARGET").expect("set PRXVC_LIVE_TAP_TARGET to a bundle ID");
+    let target =
+        std::env::var("PRXVC_LIVE_TAP_TARGET").expect("set PRXVC_LIVE_TAP_TARGET to a bundle ID");
     let wait = Duration::from_secs(
-        std::env::var("PRXVC_LIVE_TAP_WAIT_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20),
+        std::env::var("PRXVC_LIVE_TAP_WAIT_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20),
     );
-    let (tap, mut frames) = CoreAudioTap::start_without_consent_check(TapConfig::for_bundle(target.clone()))
-        .expect("tap starts (is the application running?)");
+    let (tap, mut frames) =
+        CoreAudioTap::start_without_consent_check(TapConfig::for_bundle(target.clone()))
+            .expect("tap starts (is the application running?)");
 
     let mut saw_silence = false;
     let mut saw_error = false;
@@ -40,15 +45,25 @@ fn live_tap_zero_detect() {
             match event {
                 TapEvent::SilentWhilePlaying { .. } => saw_silence = true,
                 TapEvent::NoSignal { error } => {
-                    assert_eq!(error, TapError::NoSignal { target: target.clone() });
+                    assert_eq!(
+                        error,
+                        TapError::NoSignal {
+                            target: target.clone()
+                        }
+                    );
                     saw_error = true;
                 }
-                TapEvent::SignalRestored => panic!("real audio arrived: the bundle holds consent, nothing to detect"),
+                TapEvent::SignalRestored => {
+                    panic!("real audio arrived: the bundle holds consent, nothing to detect")
+                }
                 _ => {}
             }
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    assert!(saw_silence, "no SilentWhilePlaying event: is {target} playing audio and the bundle unconsented?");
+    assert!(
+        saw_silence,
+        "no SilentWhilePlaying event: is {target} playing audio and the bundle unconsented?"
+    );
     assert!(saw_error, "no NoSignal event after the rebuild");
 }

@@ -152,7 +152,9 @@ impl Coordinator {
         let pipeline = Arc::new(pipeline);
         let playout: Arc<Mutex<Option<Arc<dyn Playout>>>> = Arc::default();
         let (tx, rx) = sync_channel(FORWARD_CAPACITY);
-        let notice = (d == Direction::Outgoing).then(|| self.disclosure.clone()).flatten();
+        let notice = (d == Direction::Outgoing)
+            .then(|| self.disclosure.clone())
+            .flatten();
         let forwarder = spawn_forwarder(d, events, Arc::clone(&playout), tx, notice)?;
         self.lanes[slot(d)].running = Some(Running {
             pipeline,
@@ -188,7 +190,9 @@ impl Coordinator {
         let input = running.pipeline.audio();
         let on_playback = {
             let pipeline = Arc::clone(&running.pipeline);
-            let notice = (d == Direction::Outgoing).then(|| self.disclosure.clone()).flatten();
+            let notice = (d == Direction::Outgoing)
+                .then(|| self.disclosure.clone())
+                .flatten();
             let now = Arc::clone(&clock);
             Box::new(move |report: PlaybackReport| {
                 // The spoken notice is the coordinator's, not a clause of the pipeline.
@@ -337,7 +341,11 @@ impl Coordinator {
             .map(|s| (s.sink_route, s.sink_device.clone()));
         match route {
             Some((OutputRoute::Speakers, device)) if self.translate => {
-                if !self.issues.iter().any(|i| i.code == CallErrorCode::SpeakerOutput) {
+                if !self
+                    .issues
+                    .iter()
+                    .any(|i| i.code == CallErrorCode::SpeakerOutput)
+                {
                     self.raise(
                         CallErrorCode::SpeakerOutput,
                         format!("local output: {}", device.unwrap_or_default()),

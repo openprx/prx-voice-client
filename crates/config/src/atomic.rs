@@ -10,14 +10,21 @@ use std::time::SystemTime;
 /// directory, are flushed to disk, and the temporary file is renamed over
 /// `path`. A stale temporary file from an interrupted write is overwritten.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
     let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
     tmp_name.push(".tmp");
     let tmp = parent.join(tmp_name);
 
     let result = (|| {
-        let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(&tmp)?;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
@@ -75,7 +82,9 @@ pub(crate) fn set_aside(path: &Path, label: &str) -> io::Result<PathBuf> {
     fs::copy(path, &target)?;
     if fs::read(path)? != fs::read(&target)? {
         let _ = fs::remove_file(&target);
-        return Err(io::Error::other("copy of the file does not match the original"));
+        return Err(io::Error::other(
+            "copy of the file does not match the original",
+        ));
     }
     fs::remove_file(path)?;
     Ok(target)
@@ -100,7 +109,10 @@ pub(crate) fn copy_aside(path: &Path, label: &str) -> io::Result<PathBuf> {
         }
     }
     let target = aside_name(path, label);
-    let mut file = OpenOptions::new().write(true).create_new(true).open(&target)?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)?;
     file.write_all(&original)?;
     file.sync_all()?;
     Ok(target)
@@ -108,7 +120,9 @@ pub(crate) fn copy_aside(path: &Path, label: &str) -> io::Result<PathBuf> {
 
 /// `YYYYMMDDTHHMMSSZ` in UTC.
 fn utc_stamp(t: SystemTime) -> String {
-    let secs = t.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+    let secs = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs()) as i64;
     let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
     // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
     let z = days + 719_468;
@@ -120,7 +134,12 @@ fn utc_stamp(t: SystemTime) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}{m:02}{d:02}T{:02}{:02}{:02}Z", rem / 3_600, rem % 3_600 / 60, rem % 60)
+    format!(
+        "{y:04}{m:02}{d:02}T{:02}{:02}{:02}Z",
+        rem / 3_600,
+        rem % 3_600 / 60,
+        rem % 60
+    )
 }
 
 #[cfg(test)]

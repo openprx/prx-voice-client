@@ -179,7 +179,11 @@ mod tests {
     fn a_stall_of_a_fast_producer_raises_the_depth_and_decays_with_the_next_clauses() {
         let mut m = PrerollModel::new(CFG, 7_200);
         m.observe(96_000, 90_000, 30_000, 10, 1_000);
-        assert_eq!(m.depth_for_new_stream(), 7_200, "short waits are covered by the base");
+        assert_eq!(
+            m.depth_for_new_stream(),
+            7_200,
+            "short waits are covered by the base"
+        );
         m.observe(96_000, 90_000, 30_000, 10, 20_000); // one wait of 420 ms
         assert_eq!(m.depth_for_new_stream(), 20_000);
         m.observe(96_000, 90_000, 30_000, 10, 1_000);

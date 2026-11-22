@@ -193,7 +193,11 @@ fn controls(
     ui.horizontal_wrapped(|ui| {
         let (label, cmd, enabled) = if running {
             (
-                if panel.finishing_s.is_some() { "callwin.stop_now" } else { "callwin.stop" },
+                if panel.finishing_s.is_some() {
+                    "callwin.stop_now"
+                } else {
+                    "callwin.stop"
+                },
                 command::STOP,
                 panel.can_stop(),
             )
@@ -287,7 +291,10 @@ mod tests {
             },
             ..CallPanel::default()
         };
-        assert_eq!(language_codes(&running, &settings), ("en".into(), "zh".into()));
+        assert_eq!(
+            language_codes(&running, &settings),
+            ("en".into(), "zh".into())
+        );
     }
 
     #[test]

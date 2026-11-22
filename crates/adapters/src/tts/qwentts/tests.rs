@@ -355,7 +355,9 @@ fn a_queue_overflow_fails_the_request_visibly_after_the_audio_that_was_kept() {
     let items = drain(stream.as_mut());
     assert_eq!(
         chunk_values(&items).len(),
-        queue_capacity(crate::tts::qwentts::cap::attempt_cap_frames(SHORT_CAP, 2, 2)),
+        queue_capacity(crate::tts::qwentts::cap::attempt_cap_frames(
+            SHORT_CAP, 2, 2
+        )),
         "everything queued is delivered"
     );
     assert!(
@@ -546,7 +548,11 @@ fn warm_up_runs_before_the_engine_is_ready_and_its_audio_is_discarded() {
         "warm-up is not a user request"
     );
     assert_eq!(tts.stats().warm_up_requests, 3);
-    assert_eq!(tts.stats().requests, 0, "the warm-up is not counted as requests");
+    assert_eq!(
+        tts.stats().requests,
+        0,
+        "the warm-up is not counted as requests"
+    );
     assert_eq!(tts.stats().completed, 0);
     let (single, probe1) = start_with(steady(2, FRAME), {
         let mut c = cfg();
@@ -801,7 +807,10 @@ fn the_warm_up_is_counted_apart_from_the_requests_of_a_session() {
     let (tts, _probe) = ready(steady(1, 100), cfg());
     let s = tts.stats();
     assert_eq!(s.warm_up_requests, 3);
-    assert_eq!((s.requests, s.completed, s.failed, s.runaways), (0, 0, 0, 0));
+    assert_eq!(
+        (s.requests, s.completed, s.failed, s.runaways),
+        (0, 0, 0, 0)
+    );
     drain(open(&tts, Direction::Outgoing, SHORT).as_mut());
     let s = tts.stats();
     assert_eq!((s.requests, s.completed), (1, 1));

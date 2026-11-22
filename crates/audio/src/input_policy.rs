@@ -69,8 +69,10 @@ impl InputDevice {
     /// Whether the device is a stand-in the policy avoids for the default:
     /// virtual, aggregate or ours.
     fn is_synthetic(&self) -> bool {
-        matches!(self.transport, InputTransport::Virtual | InputTransport::Aggregate)
-            || self.is_own_virtual()
+        matches!(
+            self.transport,
+            InputTransport::Virtual | InputTransport::Aggregate
+        ) || self.is_own_virtual()
     }
 }
 
@@ -133,7 +135,9 @@ pub fn choose_input(
 ) -> Result<InputSelection, InputPolicyError> {
     let configured = configured.trim();
     if is_own_identifier(configured) {
-        return Err(InputPolicyError::OwnVirtualDevice { configured: configured.to_owned() });
+        return Err(InputPolicyError::OwnVirtualDevice {
+            configured: configured.to_owned(),
+        });
     }
 
     let mut missing = false;
@@ -142,9 +146,16 @@ pub fn choose_input(
         let found = devices
             .iter()
             .find(|d| !d.is_own_virtual() && d.uid == configured)
-            .or_else(|| devices.iter().find(|d| !d.is_own_virtual() && d.name == configured));
+            .or_else(|| {
+                devices
+                    .iter()
+                    .find(|d| !d.is_own_virtual() && d.name == configured)
+            });
         if let Some(device) = found {
-            return Ok(InputSelection { device: device.clone(), reason: SelectionReason::Configured });
+            return Ok(InputSelection {
+                device: device.clone(),
+                reason: SelectionReason::Configured,
+            });
         }
         missing = true;
     }
@@ -206,7 +217,11 @@ pub struct InputSelector {
 impl InputSelector {
     /// A selector with the configured preference and no current device.
     pub fn new(configured: impl Into<String>) -> Self {
-        Self { configured: configured.into(), current: None, failed: None }
+        Self {
+            configured: configured.into(),
+            current: None,
+            failed: None,
+        }
     }
 
     /// The device capture is on, if any.
@@ -234,7 +249,10 @@ impl InputSelector {
                     return SelectionUpdate::Unchanged;
                 }
                 let from = self.current.replace(selection.clone()).map(|c| c.device);
-                SelectionUpdate::Changed { from, to: selection }
+                SelectionUpdate::Changed {
+                    from,
+                    to: selection,
+                }
             }
             Err(error) => {
                 self.current = None;
@@ -249,7 +267,11 @@ impl InputSelector {
 }
 
 fn same_device(a: &InputDevice, b: &InputDevice) -> bool {
-    if a.uid.is_empty() || b.uid.is_empty() { a.name == b.name } else { a.uid == b.uid }
+    if a.uid.is_empty() || b.uid.is_empty() {
+        a.name == b.name
+    } else {
+        a.uid == b.uid
+    }
 }
 
 #[cfg(test)]

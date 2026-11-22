@@ -45,8 +45,8 @@ use prxvc_media::MonoTime;
 use prxvc_ports::{AudioSink, AudioSource, EndpointError};
 
 pub use level::{Level, LevelMeter, SharedLevel};
-pub use link::{FrameTap, PlaybackFn, PlaybackSignal, PumpLink, TranslatedFeed};
 use link::LinkState;
+pub use link::{FrameTap, PlaybackFn, PlaybackSignal, PumpLink, TranslatedFeed};
 
 use crate::echo_gate::EchoGateHandle;
 use crate::mix::{MixMode, Mixer};

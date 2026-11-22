@@ -96,7 +96,9 @@ fn the_configured_silence_policy_makes_a_paused_listener_hear_nothing() {
     });
     rig.coord.handle(CallCommand::Pause(DirSet::BOTH));
     rig.until("both listeners hear nothing", |s| {
-        s.directions.iter().all(|d| d.hears == OutputSource::Nothing)
+        s.directions
+            .iter()
+            .all(|d| d.hears == OutputSource::Nothing)
     });
     assert!(rig.log().contains(&"outgoing.hears:Nothing".to_owned()));
     rig.coord.handle(CallCommand::Resume);

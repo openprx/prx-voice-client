@@ -185,7 +185,11 @@ pub(crate) fn provider_lines(config: &AppConfig) -> Vec<Line> {
                     "voice",
                     format!("{:?}: {:?}", d.direction, d.tts.primary.voice.selection()),
                 ));
-                lines.extend(super::engine_report::lines_of(config, d.direction, &d.mt.primary));
+                lines.extend(super::engine_report::lines_of(
+                    config,
+                    d.direction,
+                    &d.mt.primary,
+                ));
             }
         }
         Err(problems) => {

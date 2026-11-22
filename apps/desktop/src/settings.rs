@@ -531,7 +531,10 @@ mod tests {
             .dialogue
             .insert(String::new(), "openprx".into());
         assert_eq!(written, expected, "only the dialogue selection changes");
-        assert_eq!(ui_settings_from_config(&written).dialogue_provider, "openprx");
+        assert_eq!(
+            ui_settings_from_config(&written).dialogue_provider,
+            "openprx"
+        );
 
         // The empty choice is the local server: no selection is stored.
         let mut local = before.clone();
@@ -710,33 +713,108 @@ mod tests {
     const NOT_IN_THE_WINDOW: &[(&str, &str)] = &[
         ("schema_version.", "file format version"),
         ("ui.sounds.", "no sounds exist; not in the design's rows"),
-        ("ui.settings_window", "the window's own memory (set by the window, not a row)"),
+        (
+            "ui.settings_window",
+            "the window's own memory (set by the window, not a row)",
+        ),
         ("app.first_run_", "first-run flow state, a later package"),
-        ("audio.half_duplex_tail_ms.", "endpointing tuning; not in the design's rows"),
-        ("call.start_mode.", "call behaviour beyond the design's rows"),
-        ("call.outgoing_when_paused.", "call behaviour beyond the design's rows"),
-        ("call.incoming_when_paused.", "call behaviour beyond the design's rows"),
-        ("call.outgoing_on_failure.", "call behaviour beyond the design's rows"),
-        ("call.incoming_on_failure.", "call behaviour beyond the design's rows"),
-        ("call.original_gain_db.", "call behaviour beyond the design's rows"),
-        ("call.barge_in_max_lag_ms.", "call behaviour beyond the design's rows"),
+        (
+            "audio.half_duplex_tail_ms.",
+            "endpointing tuning; not in the design's rows",
+        ),
+        (
+            "call.start_mode.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.outgoing_when_paused.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.incoming_when_paused.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.outgoing_on_failure.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.incoming_on_failure.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.original_gain_db.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.barge_in_max_lag_ms.",
+            "call behaviour beyond the design's rows",
+        ),
         ("call.translate.", "set by the call start command"),
-        ("call.disclosure_text_", "the notice's wording: edited in the config file; the built-in text is the default"),
-        ("call.output_gain_db.", "call behaviour beyond the design's rows"),
-        ("call.stop_grace_ms.", "how long Stop lets the last sentences play; config file only"),
-        ("debug.call_trace.", "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE"),
-        ("debug.call_trace_text.", "diagnostic switch that adds spoken text to the trace; config file only, off by default"),
-        ("pipeline.", "pipeline tuning, shown under Advanced in a later package"),
-        ("assistant.end_silence_ms.", "turn-taking tuning; not in the design's rows"),
-        ("assistant.history_max_turns.", "conversation bound; not in the design's rows"),
-        ("assistant.history_max_tokens.", "conversation bound; not in the design's rows"),
-        ("assistant.keep_warm_s.", "how long the assistant's engines stay loaded after a session; config file only"),
-        ("providers.egress_acknowledged", "set by the egress dialog (provider editor package)"),
-        ("providers.active", "role choices belong to the provider editor package"),
-        ("providers.fallback", "role choices belong to the provider editor package"),
-        ("providers.entries", "provider entries belong to the provider editor package"),
-        ("llm_server.", "the local model server's binary path and idle time: set in the config file; the engine choice and the server's status are in the window"),
-        ("models.skipped_updates", "set by the model update dialog (model manager package)"),
+        (
+            "call.disclosure_text_",
+            "the notice's wording: edited in the config file; the built-in text is the default",
+        ),
+        (
+            "call.output_gain_db.",
+            "call behaviour beyond the design's rows",
+        ),
+        (
+            "call.stop_grace_ms.",
+            "how long Stop lets the last sentences play; config file only",
+        ),
+        (
+            "debug.call_trace.",
+            "diagnostic switch for a latency trace; set in the config file or by PRXVC_CALL_TRACE",
+        ),
+        (
+            "debug.call_trace_text.",
+            "diagnostic switch that adds spoken text to the trace; config file only, off by default",
+        ),
+        (
+            "pipeline.",
+            "pipeline tuning, shown under Advanced in a later package",
+        ),
+        (
+            "assistant.end_silence_ms.",
+            "turn-taking tuning; not in the design's rows",
+        ),
+        (
+            "assistant.history_max_turns.",
+            "conversation bound; not in the design's rows",
+        ),
+        (
+            "assistant.history_max_tokens.",
+            "conversation bound; not in the design's rows",
+        ),
+        (
+            "assistant.keep_warm_s.",
+            "how long the assistant's engines stay loaded after a session; config file only",
+        ),
+        (
+            "providers.egress_acknowledged",
+            "set by the egress dialog (provider editor package)",
+        ),
+        (
+            "providers.active",
+            "role choices belong to the provider editor package",
+        ),
+        (
+            "providers.fallback",
+            "role choices belong to the provider editor package",
+        ),
+        (
+            "providers.entries",
+            "provider entries belong to the provider editor package",
+        ),
+        (
+            "llm_server.",
+            "the local model server's binary path and idle time: set in the config file; the engine choice and the server's status are in the window",
+        ),
+        (
+            "models.skipped_updates",
+            "set by the model update dialog (model manager package)",
+        ),
     ];
 
     /// Every leaf of a JSON value as a dotted path with a trailing dot; objects with entries
@@ -762,7 +840,9 @@ mod tests {
         for key in &keys {
             let mapped = PLAIN_KEYS.contains(&key.as_str());
             let converted = CONVERTED_OR_READ_ONLY.contains(&key.as_str());
-            let excluded = NOT_IN_THE_WINDOW.iter().any(|(prefix, _)| key.starts_with(prefix));
+            let excluded = NOT_IN_THE_WINDOW
+                .iter()
+                .any(|(prefix, _)| key.starts_with(prefix));
             if !(mapped || converted || excluded) {
                 undecided.push(key.clone());
             }
@@ -773,7 +853,10 @@ mod tests {
         );
         // And the lists name keys that exist.
         for key in PLAIN_KEYS.iter().chain(CONVERTED_OR_READ_ONLY) {
-            assert!(keys.contains(&(*key).to_owned()), "{key} is not a key of the schema");
+            assert!(
+                keys.contains(&(*key).to_owned()),
+                "{key} is not a key of the schema"
+            );
         }
     }
 }

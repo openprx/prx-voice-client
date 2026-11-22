@@ -129,7 +129,11 @@ impl Utterance {
 
     /// Whether every clause of it was already in the listener's language.
     pub fn all_in_target(&self) -> bool {
-        !self.lines.is_empty() && self.lines.iter().all(|l| l.skip == SkipView::AlreadyInTarget)
+        !self.lines.is_empty()
+            && self
+                .lines
+                .iter()
+                .all(|l| l.skip == SkipView::AlreadyInTarget)
     }
 }
 
@@ -138,7 +142,8 @@ fn join<'a>(pieces: impl Iterator<Item = &'a str>) -> String {
     let mut out = String::new();
     for p in pieces.filter(|p| !p.is_empty()) {
         if let (Some(last), Some(first)) = (out.chars().next_back(), p.chars().next())
-            && last.is_ascii() && first.is_ascii()
+            && last.is_ascii()
+            && first.is_ascii()
             && !last.is_whitespace()
         {
             out.push(' ');
@@ -277,7 +282,11 @@ impl Transcript {
             let who = if u.side == Side::Me { me } else { peer };
             let translation = u.translation_text();
             let source = u.source_text();
-            let main = if translation.is_empty() { &source } else { &translation };
+            let main = if translation.is_empty() {
+                &source
+            } else {
+                &translation
+            };
             if main.is_empty() {
                 continue;
             }
@@ -304,7 +313,13 @@ pub fn mmss(secs: u32) -> String {
 mod tests {
     use super::*;
 
-    fn clause(utterance: u64, index: u16, source: &str, translation: &str, status: ClauseStatus) -> CaptionView {
+    fn clause(
+        utterance: u64,
+        index: u16,
+        source: &str,
+        translation: &str,
+        status: ClauseStatus,
+    ) -> CaptionView {
         CaptionView {
             utterance,
             index,
@@ -316,7 +331,12 @@ mod tests {
     }
 
     fn lane(clauses: Vec<CaptionView>, partial: Option<PartialView>) -> LaneView {
-        LaneView { clauses, partial, translating: true, ..LaneView::default() }
+        LaneView {
+            clauses,
+            partial,
+            translating: true,
+            ..LaneView::default()
+        }
     }
 
     #[test]
@@ -329,28 +349,68 @@ mod tests {
                     clause(1, 0, "你好", "Hello.", ClauseStatus::Played),
                     clause(2, 0, "再见", "Bye.", ClauseStatus::Playing),
                 ],
-                Some(PartialView { utterance: 3, text: "还没说完".into(), stable_len: 0 }),
+                Some(PartialView {
+                    utterance: 3,
+                    text: "还没说完".into(),
+                    stable_len: 0,
+                }),
             ),
             1,
         );
         assert_eq!(t.items().len(), 3);
         t.end_session();
-        assert_eq!(t.items().len(), 2, "an utterance that was only a partial leaves no bubble");
+        assert_eq!(
+            t.items().len(),
+            2,
+            "an utterance that was only a partial leaves no bubble"
+        );
         assert!(t.items().iter().all(|u| u.activity() == Activity::Done));
-        assert_eq!(t.items()[0].lines[0].status, ClauseStatus::Played, "what finished stays finished");
+        assert_eq!(
+            t.items()[0].lines[0].status,
+            ClauseStatus::Played,
+            "what finished stays finished"
+        );
         assert_eq!(t.items()[1].lines[0].status, ClauseStatus::Cancelled);
     }
 
     #[test]
     fn the_snapshot_window_becomes_a_growing_timeline_in_the_order_things_began() {
         let mut t = Transcript::default();
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)], None), 1);
-        t.absorb(Side::Peer, &lane(vec![clause(1, 0, "Hi", "你好。", ClauseStatus::Playing)], None), 4);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)],
+                None,
+            ),
+            1,
+        );
+        t.absorb(
+            Side::Peer,
+            &lane(
+                vec![clause(1, 0, "Hi", "你好。", ClauseStatus::Playing)],
+                None,
+            ),
+            4,
+        );
         // The same clauses again change nothing; a newer window that dropped clause 1 keeps it.
         let rev = t.items()[0].rev;
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)], None), 5);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)],
+                None,
+            ),
+            5,
+        );
         assert_eq!(t.items()[0].rev, rev);
-        t.absorb(Side::Me, &lane(vec![clause(2, 0, "再见", "Bye.", ClauseStatus::Translating)], None), 9);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(2, 0, "再见", "Bye.", ClauseStatus::Translating)],
+                None,
+            ),
+            9,
+        );
         let order: Vec<(Side, u64)> = t.items().iter().map(|u| (u.side, u.seq)).collect();
         assert_eq!(order, [(Side::Me, 1), (Side::Peer, 1), (Side::Me, 2)]);
         assert_eq!(t.items()[0].at_s, 1, "the time of the first sight is kept");
@@ -359,8 +419,22 @@ mod tests {
     #[test]
     fn a_clause_that_advances_updates_its_line_in_place() {
         let mut t = Transcript::default();
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "你好", "", ClauseStatus::Translating)], None), 1);
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Playing)], None), 2);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "你好", "", ClauseStatus::Translating)],
+                None,
+            ),
+            1,
+        );
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Playing)],
+                None,
+            ),
+            2,
+        );
         let u = &t.items()[0];
         assert_eq!(u.lines.len(), 1);
         assert_eq!(u.translation_text(), "Hello.");
@@ -370,16 +444,31 @@ mod tests {
     #[test]
     fn the_partial_belongs_to_its_utterance_and_goes_when_the_lane_moves_on() {
         let mut t = Transcript::default();
-        let p = PartialView { utterance: 1, text: "今天天".into(), stable_len: 3 };
+        let p = PartialView {
+            utterance: 1,
+            text: "今天天".into(),
+            stable_len: 3,
+        };
         t.absorb(Side::Me, &lane(vec![], Some(p)), 1);
         assert_eq!(t.items()[0].activity(), Activity::Speaking);
         assert_eq!(t.items()[0].source_text(), "今天天");
         // Committed: the clause is there and the partial is gone.
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "今天天气", "", ClauseStatus::Committed)], None), 2);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "今天天气", "", ClauseStatus::Committed)],
+                None,
+            ),
+            2,
+        );
         assert!(t.items()[0].partial.is_none());
         assert_eq!(t.items()[0].activity(), Activity::Translating);
         // A partial that never became a clause leaves no empty bubble.
-        let p2 = PartialView { utterance: 2, text: "嗯".into(), stable_len: 0 };
+        let p2 = PartialView {
+            utterance: 2,
+            text: "嗯".into(),
+            stable_len: 0,
+        };
         t.absorb(Side::Me, &lane(vec![], Some(p2)), 3);
         assert_eq!(t.items().len(), 2);
         t.absorb(Side::Me, &lane(vec![], None), 4);
@@ -389,7 +478,18 @@ mod tests {
     #[test]
     fn the_other_side_is_not_touched_by_a_lane() {
         let mut t = Transcript::default();
-        t.absorb(Side::Peer, &lane(vec![], Some(PartialView { utterance: 1, text: "Hel".into(), stable_len: 0 })), 1);
+        t.absorb(
+            Side::Peer,
+            &lane(
+                vec![],
+                Some(PartialView {
+                    utterance: 1,
+                    text: "Hel".into(),
+                    stable_len: 0,
+                }),
+            ),
+            1,
+        );
         t.absorb(Side::Me, &lane(vec![], None), 2);
         assert_eq!(t.items().len(), 1, "the peer's live partial stays");
     }
@@ -398,7 +498,11 @@ mod tests {
     fn the_timeline_is_bounded_and_says_how_much_it_forgot() {
         let mut t = Transcript::default();
         for n in 1..=(Transcript::MAX_UTTERANCES as u64 + 20) {
-            t.absorb(Side::Me, &lane(vec![clause(n, 0, "a", "b", ClauseStatus::Played)], None), 0);
+            t.absorb(
+                Side::Me,
+                &lane(vec![clause(n, 0, "a", "b", ClauseStatus::Played)], None),
+                0,
+            );
         }
         assert_eq!(t.items().len(), Transcript::MAX_UTTERANCES);
         assert_eq!(t.forgotten, 20);
@@ -441,8 +545,22 @@ mod tests {
     #[test]
     fn the_conversation_copies_as_plain_text() {
         let mut t = Transcript::default();
-        t.absorb(Side::Me, &lane(vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)], None), 5);
-        t.absorb(Side::Peer, &lane(vec![clause(1, 0, "Hi there", "你好呀。", ClauseStatus::Played)], None), 75);
+        t.absorb(
+            Side::Me,
+            &lane(
+                vec![clause(1, 0, "你好", "Hello.", ClauseStatus::Played)],
+                None,
+            ),
+            5,
+        );
+        t.absorb(
+            Side::Peer,
+            &lane(
+                vec![clause(1, 0, "Hi there", "你好呀。", ClauseStatus::Played)],
+                None,
+            ),
+            75,
+        );
         assert_eq!(
             t.conversation_text(true, "Me", "Them"),
             "[0:05] Me: Hello.\n    (你好)\n[1:15] Them: 你好呀。\n    (Hi there)\n"

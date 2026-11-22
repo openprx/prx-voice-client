@@ -68,7 +68,15 @@ impl TapHealth {
         signal_proven: bool,
         incidents: Arc<TapIncidents>,
     ) -> Self {
-        Self::with_timeouts(now, target, stats, signal_proven, incidents, DEFAULT_STALL_TIMEOUT, DEFAULT_ZERO_TIMEOUT)
+        Self::with_timeouts(
+            now,
+            target,
+            stats,
+            signal_proven,
+            incidents,
+            DEFAULT_STALL_TIMEOUT,
+            DEFAULT_ZERO_TIMEOUT,
+        )
     }
 
     pub(crate) fn with_timeouts(
@@ -83,7 +91,13 @@ impl TapHealth {
         Self {
             stall: StallWatchdog::new(stall_timeout, now, stats.callbacks),
             policy: TapPolicy::running(),
-            zero: ZeroWatchdog::new(zero_timeout, target, now, zero_observation(false, stats), signal_proven),
+            zero: ZeroWatchdog::new(
+                zero_timeout,
+                target,
+                now,
+                zero_observation(false, stats),
+                signal_proven,
+            ),
             clock: RebuildClock::default(),
             incidents,
         }
@@ -103,10 +117,15 @@ impl TapHealth {
         };
         let mut step = self.policy.step(observation);
         let mut actions = Actions::default();
-        let mut reason = step.teardown.then_some(RebuildReason::Stall).filter(|_| step.create);
+        let mut reason = step
+            .teardown
+            .then_some(RebuildReason::Stall)
+            .filter(|_| step.create);
         if self.policy.phase() == Phase::Running && !step.teardown {
             // Only a running tap with a running target has zeros worth judging.
-            let zero_step = self.zero.step(now, zero_observation(facts.output_running, &facts.stats));
+            let zero_step = self
+                .zero
+                .step(now, zero_observation(facts.output_running, &facts.stats));
             actions.events.extend(zero_step.emit);
             if zero_step.rebuild {
                 step = self.policy.rebuild();
@@ -142,15 +161,21 @@ impl TapHealth {
     pub(crate) fn created(&mut self, now: Instant, stats: &TapStats) {
         self.policy.created();
         self.stall.reset(now, stats.callbacks);
-        self.zero.restart_window(now, zero_observation(false, stats));
+        self.zero
+            .restart_window(now, zero_observation(false, stats));
         if let Some((reason, since)) = self.clock.open.take() {
-            self.incidents.record(reason, now.saturating_duration_since(since));
+            self.incidents
+                .record(reason, now.saturating_duration_since(since));
         }
     }
 }
 
 fn zero_observation(output_running: bool, stats: &TapStats) -> ZeroObservation {
-    ZeroObservation { output_running, callbacks: stats.callbacks, nonzero_callbacks: stats.nonzero_callbacks }
+    ZeroObservation {
+        output_running,
+        callbacks: stats.callbacks,
+        nonzero_callbacks: stats.nonzero_callbacks,
+    }
 }
 
 #[cfg(test)]

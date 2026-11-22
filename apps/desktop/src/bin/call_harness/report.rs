@@ -108,8 +108,14 @@ pub(crate) fn figures(run: &UtteranceRun) -> Vec<(&'static str, f64)> {
     let mut out = Vec::new();
     let secs = |a: f64, b: f64| (b - a) / 1e9;
     let first = run.clauses.first();
-    out.push(("committed units per utterance (count)", run.clauses.len() as f64));
-    out.push(("clauses skipped per utterance (count)", run.clauses_skipped as f64));
+    out.push((
+        "committed units per utterance (count)",
+        run.clauses.len() as f64,
+    ));
+    out.push((
+        "clauses skipped per utterance (count)",
+        run.clauses_skipped as f64,
+    ));
     let at = |c: &ClauseTimeline, s| c.at(s).map(ns);
     if let Some(c) = run
         .clauses

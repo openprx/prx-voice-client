@@ -54,7 +54,11 @@ fn run(seed: u64, steps: usize) {
         trim_silence: rng.below(4) != 0,
         ..MixerConfig::default()
     });
-    let rates = [SampleRate::HZ_16000, SampleRate::HZ_24000, SampleRate::HZ_48000];
+    let rates = [
+        SampleRate::HZ_16000,
+        SampleRate::HZ_24000,
+        SampleRate::HZ_48000,
+    ];
     let mut phase = 0;
     let mut last = m.stats().translated;
     for step in 0..steps {
@@ -72,12 +76,23 @@ fn run(seed: u64, steps: usize) {
             _ => {
                 let mut out = vec![0.0; 1 + rng.below(4_000)];
                 m.render(&mut out);
-                assert!(out.iter().all(|s| s.is_finite() && s.abs() <= 1.0), "seed {seed} step {step}");
+                assert!(
+                    out.iter().all(|s| s.is_finite() && s.abs() <= 1.0),
+                    "seed {seed} step {step}"
+                );
             }
         }
         let s = m.stats().translated;
-        assert!(s.played_total <= s.enqueued_total + 1, "seed {seed} step {step}: played {} of {}", s.played_total, s.enqueued_total);
-        assert!(s.played_total >= last.played_total, "seed {seed} step {step}: played went back");
+        assert!(
+            s.played_total <= s.enqueued_total + 1,
+            "seed {seed} step {step}: played {} of {}",
+            s.played_total,
+            s.enqueued_total
+        );
+        assert!(
+            s.played_total >= last.played_total,
+            "seed {seed} step {step}: played went back"
+        );
         last = s;
     }
     // The end of a call: the stream is ended and everything is played out.

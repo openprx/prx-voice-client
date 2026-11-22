@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::credentials::{self, CredentialStore, UnavailableCredentialStore};
 use crate::migrate::{self, CURRENT_SCHEMA_VERSION};
-use crate::{atomic, paths, AppConfig, ConfigError};
+use crate::{AppConfig, ConfigError, atomic, paths};
 
 // ---------------------------------------------------------------------------
 // Load report
@@ -118,7 +118,10 @@ impl ConfigManager {
                     tracing::info!("settings file migrated in memory from schema {from} to {to}")
                 }
                 LoadNotice::SecretsMoved { entry_ids } => {
-                    tracing::info!("moved API keys of {} provider(s) out of the settings file", entry_ids.len())
+                    tracing::info!(
+                        "moved API keys of {} provider(s) out of the settings file",
+                        entry_ids.len()
+                    )
                 }
                 LoadNotice::SecretsNotMoved { locations } => tracing::warn!(
                     "API keys found in the settings file could not be moved to a credential store: {}",
@@ -135,16 +138,30 @@ impl ConfigManager {
         match self.inspect()? {
             FileState::Missing => {
                 tracing::debug!("config file not found, returning defaults");
-                Ok(LoadReport { config: AppConfig::default(), notices })
+                Ok(LoadReport {
+                    config: AppConfig::default(),
+                    notices,
+                })
             }
             FileState::Unreadable(reason) => {
                 let kept_as = atomic::set_aside(&self.config_path(), "unreadable")?;
                 notices.push(LoadNotice::UnreadableFileKept { kept_as, reason });
-                Ok(LoadReport { config: AppConfig::default(), notices })
+                Ok(LoadReport {
+                    config: AppConfig::default(),
+                    notices,
+                })
             }
-            FileState::Readable { mut table, mut config, migrated_from, .. } => {
+            FileState::Readable {
+                mut table,
+                mut config,
+                migrated_from,
+                ..
+            } => {
                 if let Some(from) = migrated_from {
-                    notices.push(LoadNotice::Migrated { from, to: CURRENT_SCHEMA_VERSION });
+                    notices.push(LoadNotice::Migrated {
+                        from,
+                        to: CURRENT_SCHEMA_VERSION,
+                    });
                 }
                 let outcome = credentials::extract_secrets(&mut table, self.credentials.as_ref());
                 if !outcome.moved.is_empty() || !outcome.kept.is_empty() {
@@ -159,7 +176,9 @@ impl ConfigManager {
                     }
                 }
                 if !outcome.kept.is_empty() {
-                    notices.push(LoadNotice::SecretsNotMoved { locations: outcome.kept.clone() });
+                    notices.push(LoadNotice::SecretsNotMoved {
+                        locations: outcome.kept.clone(),
+                    });
                 }
                 if !outcome.stray_kept.is_empty() {
                     // A secret outside any provider entry cannot be held in
@@ -186,9 +205,14 @@ impl ConfigManager {
                     self.write(&config)?;
                 }
                 if !outcome.moved.is_empty() && outcome.kept.is_empty() {
-                    notices.push(LoadNotice::SecretsMoved { entry_ids: outcome.moved });
+                    notices.push(LoadNotice::SecretsMoved {
+                        entry_ids: outcome.moved,
+                    });
                 }
-                Ok(LoadReport { config: *config, notices })
+                Ok(LoadReport {
+                    config: *config,
+                    notices,
+                })
             }
         }
     }
@@ -218,8 +242,8 @@ impl ConfigManager {
         let mut config = config.clone();
         config.normalize();
         config.schema_version = CURRENT_SCHEMA_VERSION;
-        let content = toml::to_string_pretty(&config)
-            .map_err(|e| ConfigError::ParseError(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(&config).map_err(|e| ConfigError::ParseError(e.to_string()))?;
         let path = self.config_path();
         atomic::write_atomic(&path, content.as_bytes())?;
         tracing::debug!("configuration saved to {}", path.display());

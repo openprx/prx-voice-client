@@ -507,7 +507,8 @@ fn a_connected_pump_taps_its_frames_plays_translated_speech_and_reports_the_play
 #[test]
 fn a_pump_without_a_mixer_cannot_connect() {
     let source = FakeAudioSource::new(RATE, ramp_frames(5));
-    let pump = Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
+    let pump =
+        Pump::start(spec("incoming", Box::new(source), PumpRoute::MeterOnly)).expect("start");
     let linked = pump.connect(PumpLink {
         tap: FrameTap {
             rate: SampleRate::HZ_16000,
@@ -556,7 +557,11 @@ fn a_closed_echo_gate_keeps_the_microphone_from_the_mixer_and_the_pipeline() {
     let stats = pump.stats();
     assert!(stats.gated, "the gate is closed");
     assert!(stats.gated_frames >= 20, "{stats:?}");
-    assert_eq!(tapped.load(Ordering::SeqCst), 0, "nothing reaches the pipeline");
+    assert_eq!(
+        tapped.load(Ordering::SeqCst),
+        0,
+        "nothing reaches the pipeline"
+    );
     assert!(
         out.lock().iter().all(|(_, s)| s.abs() < 1e-4),
         "nothing of the microphone reaches the sink while the gate is closed"
@@ -572,9 +577,7 @@ fn a_playing_pump_closes_the_gate_while_its_output_is_audible_and_reopens_it_aft
     let gate = EchoGateHandle::new(EchoGate::new(true, Duration::from_millis(60)));
     let (sink, _out, _stopped) = CollectSink::new();
     // 300 ms of a loud tone.
-    let frames: Vec<AudioFrame> = (0..30)
-        .map(|i| frame(i, vec![0.5; FRAME]))
-        .collect();
+    let frames: Vec<AudioFrame> = (0..30).map(|i| frame(i, vec![0.5; FRAME])).collect();
     let source = FakeAudioSource::new(RATE, frames).with_frames_per_read(1);
     let mut spec = spec(
         "incoming",

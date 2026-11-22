@@ -1,8 +1,8 @@
 //! Helpers for tests: temporary directories and a fake credential store.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::credentials::{CredentialError, CredentialStore};
 
@@ -15,7 +15,8 @@ pub(crate) struct TempDir(PathBuf);
 impl TempDir {
     pub(crate) fn new(label: &str) -> Self {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("prxvc_config_{label}_{}_{n}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("prxvc_config_{label}_{}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp dir");
         Self(dir)
@@ -40,7 +41,10 @@ pub(crate) struct FakeStore {
 
 impl CredentialStore for FakeStore {
     fn store(&self, id: &str, secret: &str) -> Result<(), CredentialError> {
-        self.saved.lock().unwrap().push((id.to_owned(), secret.to_owned()));
+        self.saved
+            .lock()
+            .unwrap()
+            .push((id.to_owned(), secret.to_owned()));
         Ok(())
     }
 }

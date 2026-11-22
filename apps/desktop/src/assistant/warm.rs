@@ -102,7 +102,12 @@ mod tests {
         }
     }
 
-    fn rig() -> (ManualClock, WarmCache<Engine>, Arc<AtomicUsize>, AtomicUsize) {
+    fn rig() -> (
+        ManualClock,
+        WarmCache<Engine>,
+        Arc<AtomicUsize>,
+        AtomicUsize,
+    ) {
         let clock = ManualClock::new();
         let cache = WarmCache::new(Arc::new(clock.clone()));
         (clock, cache, Arc::default(), AtomicUsize::new(0))
@@ -114,7 +119,11 @@ mod tests {
     fn a_second_session_within_the_time_takes_the_engines_back_without_loading() {
         let (clock, cache, alive, loads) = rig();
         cache.keep("k".into(), Engine::load(&alive, &loads), MINUTE);
-        assert_eq!(alive.load(Ordering::SeqCst), 1, "kept after the session ended");
+        assert_eq!(
+            alive.load(Ordering::SeqCst),
+            1,
+            "kept after the session ended"
+        );
         clock.advance(Duration::from_secs(59));
         let engine = cache.take("k").expect("still warm");
         assert_eq!(loads.load(Ordering::SeqCst), 1, "no second load");
@@ -152,7 +161,10 @@ mod tests {
         cache.release();
         assert_eq!(alive.load(Ordering::SeqCst), 0);
         cache.keep("k".into(), Engine::load(&alive, &loads), MINUTE);
-        assert!(cache.take("another voice").is_none(), "built for other settings");
+        assert!(
+            cache.take("another voice").is_none(),
+            "built for other settings"
+        );
         assert_eq!(alive.load(Ordering::SeqCst), 0, "and freed");
     }
 

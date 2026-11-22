@@ -39,9 +39,9 @@ use prxvc_media::{AudioFrame, MonoTime};
 
 use super::preroll::{PrerollConfig, PrerollModel};
 use super::shape::{Pace, ShapeConfig, leading_silence, trailing_silence};
-use crate::timescale::TimeScaler;
 use crate::AudioError;
 use crate::resample::MonoResampler;
+use crate::timescale::TimeScaler;
 
 /// Largest difference between a frame's timestamp and the expected one that
 /// is taken as timestamp jitter (no gap, no overlap).
@@ -208,7 +208,9 @@ impl Lane {
                 self.lead_pending = false;
             }
         }
-        let scaler = self.scaler.get_or_insert_with(|| TimeScaler::new(self.cfg.out_rate));
+        let scaler = self
+            .scaler
+            .get_or_insert_with(|| TimeScaler::new(self.cfg.out_rate));
         if self.pace.speed <= 1.0 && scaler.is_empty() {
             return samples;
         }
@@ -467,7 +469,10 @@ impl Lane {
         let Some(m) = &self.model else {
             return self.cfg.depth;
         };
-        let played = self.stats.played_total.saturating_sub(self.stream.played_at_start);
+        let played = self
+            .stats
+            .played_total
+            .saturating_sub(self.stream.played_at_start);
         m.depth_to_resume(played)
     }
 

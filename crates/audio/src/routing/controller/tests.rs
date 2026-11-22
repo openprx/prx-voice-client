@@ -406,13 +406,19 @@ fn no_journal_and_our_microphone_as_default_is_put_back_by_policy_at_start() {
     );
     assert_ne!(rig.default_input(), Some(uid(OWN_MIC_UID)));
     assert_eq!(rig.switches().len(), 1);
-    assert!(rig.journal.log_entries().is_empty(), "no journal was involved");
+    assert!(
+        rig.journal.log_entries().is_empty(),
+        "no journal was involved"
+    );
 }
 
 #[test]
 fn outside_call_mode_a_default_that_becomes_ours_is_corrected_and_never_in_a_loop() {
     let (mut c, rig) = controller();
-    assert!(c.correct_idle_default().is_none(), "a physical default is left alone");
+    assert!(
+        c.correct_idle_default().is_none(),
+        "a physical default is left alone"
+    );
     assert!(rig.switches().is_empty());
     // macOS picks our microphone when the device that was the default goes away: corrected.
     for round in 0..IDLE_FIXES_PER_WINDOW {

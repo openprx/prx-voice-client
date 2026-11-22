@@ -21,11 +21,13 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::tap_consent::start_gate;
-pub use crate::tap_consent::{ConsentOutcome, PermissionStatus, permission_status, request_capture_consent};
+pub use crate::tap_consent::{
+    ConsentOutcome, PermissionStatus, permission_status, request_capture_consent,
+};
 use crate::tap_format::{RawFormat, StreamLayout};
+use crate::tap_incidents::{TapIncidentCounts, TapIncidents};
 use crate::tap_ring::{RingConsumer, RingProducer, SLOT_SAMPLES, tap_ring};
 use crate::tap_rt::on_buffers;
-use crate::tap_incidents::{TapIncidentCounts, TapIncidents};
 use crate::tap_supervisor::{Supervisor, spawn_supervisor};
 use crate::tap_types::{TapConfig, TapCounters, TapError, TapEvent, TapStats, TapTarget};
 use crate::{AudioFormat, AudioFrame};
@@ -80,7 +82,8 @@ pub(crate) struct RawTapBuffer {
 
 /// `host_time_ns` is the capture time of the cycle's first frame on the Core
 /// Audio host clock in nanoseconds, 0 if the system gave none.
-type TapAudioCb = extern "C" fn(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time_ns: u64);
+type TapAudioCb =
+    extern "C" fn(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time_ns: u64);
 
 const ERR_UNSUPPORTED_OS: i32 = 1;
 const ERR_PROCESS_NOT_FOUND: i32 = 2;
@@ -152,14 +155,24 @@ unsafe impl Send for NativeTap {}
 impl NativeTap {
     /// Create and start a native tap for `config`, delivering into `ctx`.
     /// `check_consent` runs the consent gate first (see [`crate::tap_consent`]).
-    pub(crate) fn open(config: &TapConfig, ctx: &Arc<TapCtx>, check_consent: bool) -> Result<Self, TapError> {
+    pub(crate) fn open(
+        config: &TapConfig,
+        ctx: &Arc<TapCtx>,
+        check_consent: bool,
+    ) -> Result<Self, TapError> {
         if check_consent {
-            start_gate(permission_status(), crate::tap_consent::bundle_declares_capture_usage())?;
+            start_gate(
+                permission_status(),
+                crate::tap_consent::bundle_declares_capture_usage(),
+            )?;
         }
         let (bundle, pid) = match &config.target {
             TapTarget::Pid(pid) => (None, *pid),
             TapTarget::BundleId(id) => (
-                Some(CString::new(id.as_str()).map_err(|_| TapError::Internal("bundle id contains NUL".into()))?),
+                Some(
+                    CString::new(id.as_str())
+                        .map_err(|_| TapError::Internal("bundle id contains NUL".into()))?,
+                ),
                 0,
             ),
         };
@@ -170,7 +183,12 @@ impl NativeTap {
             mute: config.mute.to_native(),
         };
         let mut format = RawTapFormat::default();
-        let mut result = RawTapResult { status: 0, os_status: 0, step: [0; 48], used_bundle_form: 0 };
+        let mut result = RawTapResult {
+            status: 0,
+            os_status: 0,
+            step: [0; 48],
+            used_bundle_form: 0,
+        };
         // SAFETY: all pointers are valid for the call; `ctx` outlives the tap
         // (the supervisor keeps its `Arc` until after this `NativeTap` is dropped).
         let handle = unsafe {
@@ -185,7 +203,10 @@ impl NativeTap {
         if handle.is_null() {
             return Err(map_failure(&result, &config.target));
         }
-        let tap = Self { handle, bundle_form: result.used_bundle_form != 0 };
+        let tap = Self {
+            handle,
+            bundle_form: result.used_bundle_form != 0,
+        };
         let layout = StreamLayout::validate(&RawFormat {
             sample_rate: format.sample_rate,
             format_id: format.format_id,
@@ -220,14 +241,21 @@ impl Drop for NativeTap {
 fn map_failure(result: &RawTapResult, target: &TapTarget) -> TapError {
     match result.status {
         ERR_UNSUPPORTED_OS => TapError::UnsupportedOs,
-        ERR_PROCESS_NOT_FOUND => TapError::ProcessNotFound { target: target.describe() },
+        ERR_PROCESS_NOT_FOUND => TapError::ProcessNotFound {
+            target: target.describe(),
+        },
         ERR_CORE_AUDIO => {
             if permission_status() == PermissionStatus::Denied {
                 return TapError::PermissionDenied;
             }
             // SAFETY: the shim NUL-terminates `step`, which is zero-initialised.
-            let step = unsafe { CStr::from_ptr(result.step.as_ptr()) }.to_string_lossy().into_owned();
-            TapError::CoreAudio { operation: step, status: result.os_status }
+            let step = unsafe { CStr::from_ptr(result.step.as_ptr()) }
+                .to_string_lossy()
+                .into_owned();
+            TapError::CoreAudio {
+                operation: step,
+                status: result.os_status,
+            }
         }
         _ => TapError::Internal("native tap creation failed".into()),
     }
@@ -237,7 +265,10 @@ fn map_os_failure(operation: &str, status: i32) -> TapError {
     if permission_status() == PermissionStatus::Denied {
         return TapError::PermissionDenied;
     }
-    TapError::CoreAudio { operation: operation.into(), status }
+    TapError::CoreAudio {
+        operation: operation.into(),
+        status,
+    }
 }
 
 /// The Core Audio host clock now, in nanoseconds: the clock of the capture
@@ -343,7 +374,16 @@ impl CoreAudioTap {
             stop: Arc::clone(&stop),
             incidents: Arc::clone(&incidents),
         })?;
-        Ok((Self { counters, incidents, events, stop, thread: Some(thread) }, TapReceiver::new(consumer)))
+        Ok((
+            Self {
+                counters,
+                incidents,
+                events,
+                stop,
+                thread: Some(thread),
+            },
+            TapReceiver::new(consumer),
+        ))
     }
 
     /// Health events (stall, target gone, restart) since the last call.
@@ -381,7 +421,11 @@ pub struct TapReceiver {
 
 impl TapReceiver {
     fn new(consumer: RingConsumer) -> Self {
-        Self { consumer, scratch: Vec::with_capacity(SLOT_SAMPLES), sequence: 0 }
+        Self {
+            consumer,
+            scratch: Vec::with_capacity(SLOT_SAMPLES),
+            sequence: 0,
+        }
     }
 
     /// The next captured frame, if one is ready.
@@ -522,7 +566,9 @@ impl CoreAudioTapSource {
 
     /// Health events of the running tap, if any.
     pub fn try_recv_event(&self) -> Option<TapEvent> {
-        self.inner.as_ref().and_then(|(tap, _)| tap.events().try_recv().ok())
+        self.inner
+            .as_ref()
+            .and_then(|(tap, _)| tap.events().try_recv().ok())
     }
 
     /// Counters of the running tap, if any.
@@ -537,7 +583,12 @@ impl CoreAudioTapSource {
     }
 
     /// Downmix a tap frame to a mono media frame stamped with its capture time.
-    fn frame_to_media(&mut self, frame: &AudioFrame, host_ns: u64, gap: bool) -> Result<MediaFrame, EndpointError> {
+    fn frame_to_media(
+        &mut self,
+        frame: &AudioFrame,
+        host_ns: u64,
+        gap: bool,
+    ) -> Result<MediaFrame, EndpointError> {
         let mono = downmix_to_mono(frame).map_err(|e| EndpointError::Internal(e.to_string()))?;
         let rate = SampleRate::new(frame.sample_rate)
             .map_err(|e| EndpointError::Internal(e.to_string()))?;
@@ -565,10 +616,15 @@ impl AudioSource for CoreAudioTapSource {
                 self.sequence = 0;
                 self.overruns_seen = 0;
                 self.last_error = None;
-                Ok(SourceInfo { rate: NOMINAL_RATE, device: "process tap".to_owned() })
+                Ok(SourceInfo {
+                    rate: NOMINAL_RATE,
+                    device: "process tap".to_owned(),
+                })
             }
             Err(e) => {
-                let e = EndpointError::Unavailable { reason: e.to_string() };
+                let e = EndpointError::Unavailable {
+                    reason: e.to_string(),
+                };
                 self.last_error = Some(e.to_string());
                 Err(e)
             }

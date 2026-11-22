@@ -101,8 +101,8 @@ pub use handle::{
 pub use input::{AudioInput, PushOutcome};
 pub use params::{PipelineParams, QueueCaps, RecognitionMode, RecoveryParams};
 pub use queue::{Policy, QueueStats};
-pub use utterance::Percentiles;
 pub use snapshot::{
-    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, Ledger, PartialSnapshot, SkipReason, SkippedClause,
-    SnapshotSubscriber,
+    ClauseSnapshot, Counters, DirectionSnapshot, ErrorSnapshot, Ledger, PartialSnapshot,
+    SkipReason, SkippedClause, SnapshotSubscriber,
 };
+pub use utterance::Percentiles;

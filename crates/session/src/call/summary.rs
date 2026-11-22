@@ -152,7 +152,11 @@ impl DirectionTotals {
             c.in_target_passed,
             c.self_echo_dropped,
             c.mt_suspect,
-            if flags.is_empty() { "-".to_owned() } else { flags.join(",") },
+            if flags.is_empty() {
+                "-".to_owned()
+            } else {
+                flags.join(",")
+            },
             c.mt_retries,
             c.runaway_synth,
             self.playback.text(),
@@ -183,7 +187,11 @@ impl Coordinator {
     pub(super) fn capture_totals(&mut self, d: Direction) {
         let lane = &self.lanes[slot(d)];
         let pipeline = lane.running.as_ref().and_then(|r| r.snapshot());
-        let playback = lane.stats.as_ref().map(PlaybackTotals::of).unwrap_or_default();
+        let playback = lane
+            .stats
+            .as_ref()
+            .map(PlaybackTotals::of)
+            .unwrap_or_default();
         let disclosure = (d == Direction::Outgoing)
             .then(|| {
                 self.disclosure

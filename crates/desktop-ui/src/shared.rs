@@ -244,7 +244,12 @@ impl SharedAppState {
     /// continuation); appends a user line when there is none.
     pub fn replace_last_user_line(&self, text: String) {
         self.mutate(|inner| {
-            match inner.transcript_lines.iter_mut().rev().find(|l| l.role == "user") {
+            match inner
+                .transcript_lines
+                .iter_mut()
+                .rev()
+                .find(|l| l.role == "user")
+            {
                 Some(line) if line.text == text => return false,
                 Some(line) => line.text = text,
                 None => inner.transcript_lines.push(TranscriptLine {
@@ -343,7 +348,9 @@ impl SharedAppState {
     pub fn append_assistant_text(&self, delta: &str) {
         self.mutate(|inner| {
             match inner.transcript_lines.last_mut() {
-                Some(line) if line.role == "assistant" && !line.is_final => line.text.push_str(delta),
+                Some(line) if line.role == "assistant" && !line.is_final => {
+                    line.text.push_str(delta)
+                }
                 _ => inner.transcript_lines.push(TranscriptLine {
                     role: "assistant".into(),
                     text: delta.trim_start().to_owned(),
@@ -469,7 +476,11 @@ mod tests {
     ];
 
     fn line(role: &str, text: &str) -> TranscriptLine {
-        TranscriptLine { role: role.into(), text: text.into(), is_final: true }
+        TranscriptLine {
+            role: role.into(),
+            text: text.into(),
+            is_final: true,
+        }
     }
 
     #[test]
@@ -491,8 +502,15 @@ mod tests {
         };
         shared.set_call_panel(panel);
         let snap = shared.snapshot_for_ui();
-        assert!(snap.transcript_lines.is_empty(), "the session transcript stays the assistant's");
-        assert_eq!(snap.call.outgoing.clauses.len(), 1, "the window still gets the captions");
+        assert!(
+            snap.transcript_lines.is_empty(),
+            "the session transcript stays the assistant's"
+        );
+        assert_eq!(
+            snap.call.outgoing.clauses.len(),
+            1,
+            "the window still gets the captions"
+        );
     }
 
     #[test]
@@ -538,33 +556,84 @@ mod tests {
     #[allow(clippy::type_complexity)]
     fn setter_calls() -> Vec<(&'static str, Box<dyn Fn(&SharedAppState)>)> {
         vec![
-            ("push_event", Box::new(|s| s.push_event(EventSnapshot {
-                event_type: "E".into(),
-                detail: "d".into(),
-                timestamp: "t".into(),
-            }))),
-            ("update_session_state", Box::new(|s| s.update_session_state("Listening", true))),
-            ("set_session_id", Box::new(|s| s.set_session_id(Some("id".into())))),
-            ("add_transcript_line", Box::new(|s| s.add_transcript_line(line("user", "a")))),
-            ("replace_last_user_line", Box::new(|s| s.replace_last_user_line("b".into()))),
+            (
+                "push_event",
+                Box::new(|s| {
+                    s.push_event(EventSnapshot {
+                        event_type: "E".into(),
+                        detail: "d".into(),
+                        timestamp: "t".into(),
+                    })
+                }),
+            ),
+            (
+                "update_session_state",
+                Box::new(|s| s.update_session_state("Listening", true)),
+            ),
+            (
+                "set_session_id",
+                Box::new(|s| s.set_session_id(Some("id".into()))),
+            ),
+            (
+                "add_transcript_line",
+                Box::new(|s| s.add_transcript_line(line("user", "a"))),
+            ),
+            (
+                "replace_last_user_line",
+                Box::new(|s| s.replace_last_user_line("b".into())),
+            ),
             ("clear_transcript", Box::new(|s| s.clear_transcript())),
-            ("add_history_entry", Box::new(|s| s.add_history_entry(entry()))),
-            ("set_assistant_issue", Box::new(|s| s.set_assistant_issue(Some(AssistantIssue {
-                key: "assistant.issue.dialogue_down".into(),
-                ..AssistantIssue::default()
-            })))),
-            ("set_interim_user_line", Box::new(|s| s.set_interim_user_line("hel"))),
-            ("drop_interim_user_line", Box::new(|s| s.drop_interim_user_line())),
-            ("finish_user_line", Box::new(|s| s.finish_user_line("hello"))),
-            ("append_assistant_text", Box::new(|s| s.append_assistant_text("Hi"))),
-            ("finish_assistant_line", Box::new(|s| s.finish_assistant_line())),
+            (
+                "add_history_entry",
+                Box::new(|s| s.add_history_entry(entry())),
+            ),
+            (
+                "set_assistant_issue",
+                Box::new(|s| {
+                    s.set_assistant_issue(Some(AssistantIssue {
+                        key: "assistant.issue.dialogue_down".into(),
+                        ..AssistantIssue::default()
+                    }))
+                }),
+            ),
+            (
+                "set_interim_user_line",
+                Box::new(|s| s.set_interim_user_line("hel")),
+            ),
+            (
+                "drop_interim_user_line",
+                Box::new(|s| s.drop_interim_user_line()),
+            ),
+            (
+                "finish_user_line",
+                Box::new(|s| s.finish_user_line("hello")),
+            ),
+            (
+                "append_assistant_text",
+                Box::new(|s| s.append_assistant_text("Hi")),
+            ),
+            (
+                "finish_assistant_line",
+                Box::new(|s| s.finish_assistant_line()),
+            ),
             ("set_mic_paused", Box::new(|s| s.set_mic_paused(true))),
-            ("set_input_device", Box::new(|s| s.set_input_device("Built-in"))),
-            ("set_outside_app_bundle", Box::new(|s| s.set_outside_app_bundle(true))),
-            ("set_call_panel", Box::new(|s| s.set_call_panel(CallPanel {
-                phase: crate::call_view::CallPhase::AudioReady,
-                ..CallPanel::default()
-            }))),
+            (
+                "set_input_device",
+                Box::new(|s| s.set_input_device("Built-in")),
+            ),
+            (
+                "set_outside_app_bundle",
+                Box::new(|s| s.set_outside_app_bundle(true)),
+            ),
+            (
+                "set_call_panel",
+                Box::new(|s| {
+                    s.set_call_panel(CallPanel {
+                        phase: crate::call_view::CallPhase::AudioReady,
+                        ..CallPanel::default()
+                    })
+                }),
+            ),
         ]
     }
 
@@ -572,7 +641,9 @@ mod tests {
     fn declared_methods() -> Vec<String> {
         let src = include_str!("shared.rs");
         let impl_start = src.find("impl SharedAppState {").expect("impl block");
-        let impl_end = src[impl_start..].find("\nimpl Default for SharedAppState").expect("end");
+        let impl_end = src[impl_start..]
+            .find("\nimpl Default for SharedAppState")
+            .expect("end");
         src[impl_start..impl_start + impl_end]
             .lines()
             .filter_map(|l| l.trim().strip_prefix("pub fn "))
@@ -591,7 +662,10 @@ mod tests {
             );
         }
         for name in covered {
-            assert!(declared_methods().iter().any(|m| m == name), "stale entry {name}");
+            assert!(
+                declared_methods().iter().any(|m| m == name),
+                "stale entry {name}"
+            );
         }
     }
 

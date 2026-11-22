@@ -81,8 +81,8 @@ pub use filler::{is_pure_filler, is_stray_tail};
 pub use ids::{SessionId, TurnId};
 pub use interrupt::{CancelAction, InterruptParams, InterruptTrigger, decide_interrupt};
 pub use manager::SessionManager;
-pub use pace::{CatchUpParams, PlayPace};
 pub use output::{DirectionConfig, OutputCause, OutputPolicy, OutputSource, Passthrough};
+pub use pace::{CatchUpParams, PlayPace};
 pub use rejection::InvalidTransition;
 pub use segment::{
     ClauseEventKind, ClauseState, ClauseView, Outcome, PlaybackState, SegmentEventKind,

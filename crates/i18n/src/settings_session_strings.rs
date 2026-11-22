@@ -217,20 +217,44 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ("settings.voice.preset.default", "Default voice"),
     ("settings.assistant.language.follow", "Same as interface"),
     ("settings.assistant.backend", "Dialogue backend"),
-    ("settings.assistant.backend.desc", "Where the assistant's answers come from."),
+    (
+        "settings.assistant.backend.desc",
+        "Where the assistant's answers come from.",
+    ),
     ("settings.assistant.backend.local", "Local server"),
-    ("settings.assistant.backend.openprx", "OpenPRX agent (not available yet)"),
-    ("settings.assistant.backend.loading", "Looking at the dialogue backends."),
+    (
+        "settings.assistant.backend.openprx",
+        "OpenPRX agent (not available yet)",
+    ),
+    (
+        "settings.assistant.backend.loading",
+        "Looking at the dialogue backends.",
+    ),
     ("settings.assistant.backend.status", "Backend status"),
-    ("settings.assistant.backend.status.desc", "Whether the chosen backend can answer now."),
+    (
+        "settings.assistant.backend.status.desc",
+        "Whether the chosen backend can answer now.",
+    ),
     ("settings.assistant.voice", "Assistant voice"),
-    ("settings.assistant.voice.desc", "The voice that speaks the assistant's answers."),
+    (
+        "settings.assistant.voice.desc",
+        "The voice that speaks the assistant's answers.",
+    ),
     ("settings.assistant.voice.preset", "A preset voice"),
     ("settings.assistant.voice.clone", "My voice"),
-    ("settings.assistant.voice.needs_profile", "My voice needs an enrolled voice profile. Set one up on the Voice page, or choose a preset voice."),
+    (
+        "settings.assistant.voice.needs_profile",
+        "My voice needs an enrolled voice profile. Set one up on the Voice page, or choose a preset voice.",
+    ),
     ("settings.assistant.voice.preset_name", "Preset voice"),
-    ("settings.assistant.voice.preset_name.desc", "Which preset speaks. When none is chosen, the preset for the other party (Voice page) speaks."),
-    ("settings.assistant.models_note", "Recognition and the voice use the same models as call translation. See Speech pipeline for what runs."),
+    (
+        "settings.assistant.voice.preset_name.desc",
+        "Which preset speaks. When none is chosen, the preset for the other party (Voice page) speaks.",
+    ),
+    (
+        "settings.assistant.models_note",
+        "Recognition and the voice use the same models as call translation. See Speech pipeline for what runs.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -411,18 +435,33 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ("settings.assistant.backend", "对话后端"),
     ("settings.assistant.backend.desc", "助手的回答由哪里生成。"),
     ("settings.assistant.backend.local", "本机服务器"),
-    ("settings.assistant.backend.openprx", "OpenPRX 智能体（暂不可用）"),
+    (
+        "settings.assistant.backend.openprx",
+        "OpenPRX 智能体（暂不可用）",
+    ),
     ("settings.assistant.backend.loading", "正在检查对话后端。"),
     ("settings.assistant.backend.status", "后端状态"),
-    ("settings.assistant.backend.status.desc", "所选后端现在能否回答。"),
+    (
+        "settings.assistant.backend.status.desc",
+        "所选后端现在能否回答。",
+    ),
     ("settings.assistant.voice", "助手的声音"),
     ("settings.assistant.voice.desc", "朗读助手回答所用的声音。"),
     ("settings.assistant.voice.preset", "预设声音"),
     ("settings.assistant.voice.clone", "我的声音"),
-    ("settings.assistant.voice.needs_profile", "“我的声音”需要先录入声音档案。请在“声音”页设置，或改用预设声音。"),
+    (
+        "settings.assistant.voice.needs_profile",
+        "“我的声音”需要先录入声音档案。请在“声音”页设置，或改用预设声音。",
+    ),
     ("settings.assistant.voice.preset_name", "预设声音"),
-    ("settings.assistant.voice.preset_name.desc", "由哪个预设朗读。未选择时，使用“声音”页中为对方设置的预设。"),
-    ("settings.assistant.models_note", "识别和声音与通话翻译使用相同的模型。运行情况见“语音处理”页。"),
+    (
+        "settings.assistant.voice.preset_name.desc",
+        "由哪个预设朗读。未选择时，使用“声音”页中为对方设置的预设。",
+    ),
+    (
+        "settings.assistant.models_note",
+        "识别和声音与通话翻译使用相同的模型。运行情况见“语音处理”页。",
+    ),
 ];
 
 #[cfg(test)]

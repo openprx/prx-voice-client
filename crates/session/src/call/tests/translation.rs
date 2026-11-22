@@ -45,8 +45,7 @@ pub(super) fn script_one_utterance(rig: &Rig) {
                 Direction::Outgoing => SOURCE_TEXT,
                 Direction::Incoming => INCOMING_TEXT,
             };
-            t.asr
-                .insert(d, AsrScript::new([], said).then_round([], ""));
+            t.asr.insert(d, AsrScript::new([], said).then_round([], ""));
         }
         t.mt = std::mem::replace(
             &mut t.mt,
@@ -457,7 +456,10 @@ fn speech_already_in_the_listeners_language_is_heard_as_the_original_and_the_tra
             "incoming.hears:Translation"
         ]
     );
-    assert!(rig.world.played("incoming").is_empty(), "nothing was synthesised");
+    assert!(
+        rig.world.played("incoming").is_empty(),
+        "nothing was synthesised"
+    );
     let s = rig.until("incoming hears the translation again", |s| {
         s.direction(Direction::Incoming).hears == OutputSource::Translation
     });

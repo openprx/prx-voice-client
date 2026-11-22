@@ -12,7 +12,9 @@
 //! remembered position is used only while the orb's monitor has the same
 //! size (design 2.1a, multi-monitor rule 1).
 
-use egui::{Pos2, Rect, Vec2, ViewportBuilder, ViewportClass, ViewportCommand, ViewportId, pos2, vec2};
+use egui::{
+    Pos2, Rect, Vec2, ViewportBuilder, ViewportClass, ViewportCommand, ViewportId, pos2, vec2,
+};
 
 use crate::theme::{Tokens, layout, space};
 
@@ -124,7 +126,10 @@ impl Geometry {
     /// not finite or have no area.
     pub fn from_tuple((x, y, w, h): (f32, f32, f32, f32)) -> Option<Self> {
         let finite = [x, y, w, h].iter().all(|v| v.is_finite());
-        (finite && w > 0.0 && h > 0.0).then(|| Self { pos: pos2(x, y), size: vec2(w, h) })
+        (finite && w > 0.0 && h > 0.0).then(|| Self {
+            pos: pos2(x, y),
+            size: vec2(w, h),
+        })
     }
 }
 
@@ -133,7 +138,10 @@ impl Geometry {
 pub fn clamp_into(screen: Rect, pos: Pos2, size: Vec2) -> Pos2 {
     let max_x = (screen.right() - size.x).max(screen.left());
     let max_y = (screen.bottom() - size.y).max(screen.top());
-    pos2(pos.x.clamp(screen.left(), max_x), pos.y.clamp(screen.top(), max_y))
+    pos2(
+        pos.x.clamp(screen.left(), max_x),
+        pos.y.clamp(screen.top(), max_y),
+    )
 }
 
 /// Where a window opens for the first time: beside the orb window (right of
@@ -350,7 +358,11 @@ impl Placement {
             }
             _ => None,
         };
-        Self { monitor, orb, screen }
+        Self {
+            monitor,
+            orb,
+            screen,
+        }
     }
 }
 
@@ -446,12 +458,17 @@ pub fn show_raw(
             (v.outer_rect, v.inner_rect, v.monitor_size)
         });
         if let (Some(outer), Some(inner)) = (outer, inner) {
-            state.observe(Geometry { pos: outer.min, size: inner.size() });
+            state.observe(Geometry {
+                pos: outer.min,
+                size: inner.size(),
+            });
             if let Some(monitor) = monitor {
                 state.observe_monitor(monitor);
             }
         }
-        egui::CentralPanel::default().frame(frame).show(ui, |ui| body(ui));
+        egui::CentralPanel::default()
+            .frame(frame)
+            .show(ui, |ui| body(ui));
     });
 }
 
@@ -501,13 +518,31 @@ mod tests {
     fn placement_is_fixed_while_open_and_recomputed_after_close() {
         let mut s = ToolWindowState::default();
         s.request_open();
-        let a = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), None);
+        let a = s.placement(
+            ToolKind::Settings,
+            Some(orb_at(100.0, 100.0)),
+            Some(SCREEN),
+            None,
+        );
         // The window was moved by the user; the creation geometry stays.
-        s.observe(Geometry { pos: pos2(500.0, 300.0), size: vec2(600.0, 700.0) });
-        let b = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN), None);
+        s.observe(Geometry {
+            pos: pos2(500.0, 300.0),
+            size: vec2(600.0, 700.0),
+        });
+        let b = s.placement(
+            ToolKind::Settings,
+            Some(orb_at(900.0, 100.0)),
+            Some(SCREEN),
+            None,
+        );
         assert_eq!(a, b);
         s.close();
-        let c = s.placement(ToolKind::Settings, Some(orb_at(900.0, 100.0)), Some(SCREEN), None);
+        let c = s.placement(
+            ToolKind::Settings,
+            Some(orb_at(900.0, 100.0)),
+            Some(SCREEN),
+            None,
+        );
         assert_eq!(c.pos, pos2(500.0, 300.0), "reopens where the user left it");
         assert_eq!(c.size, vec2(600.0, 700.0));
     }
@@ -531,7 +566,12 @@ mod tests {
     #[test]
     fn first_open_is_clamped_vertically_and_never_off_screen() {
         let size = ToolKind::Settings.default_size();
-        for orb in [orb_at(100.0, 800.0), orb_at(-50.0, -50.0), orb_at(1400.0, 880.0), orb_at(0.0, 0.0)] {
+        for orb in [
+            orb_at(100.0, 800.0),
+            orb_at(-50.0, -50.0),
+            orb_at(1400.0, 880.0),
+            orb_at(0.0, 0.0),
+        ] {
             let pos = first_open_position(orb, size, SCREEN);
             let r = Rect::from_min_size(pos, size);
             assert!(SCREEN.contains_rect(r), "{orb:?} -> {r:?}");
@@ -541,27 +581,55 @@ mod tests {
     #[test]
     fn a_window_larger_than_the_screen_is_pinned_to_the_corner() {
         let small = Rect::from_min_max(pos2(0.0, 0.0), pos2(300.0, 300.0));
-        assert_eq!(clamp_into(small, pos2(200.0, 200.0), vec2(528.0, 640.0)), pos2(0.0, 0.0));
+        assert_eq!(
+            clamp_into(small, pos2(200.0, 200.0), vec2(528.0, 640.0)),
+            pos2(0.0, 0.0)
+        );
     }
 
     #[test]
     fn saved_geometry_is_restored_when_reachable() {
-        let saved = Geometry { pos: pos2(300.0, 200.0), size: vec2(600.0, 700.0) };
-        let g = initial_geometry(ToolKind::Settings, Some(saved), Some(orb_at(10.0, 10.0)), Some(SCREEN));
+        let saved = Geometry {
+            pos: pos2(300.0, 200.0),
+            size: vec2(600.0, 700.0),
+        };
+        let g = initial_geometry(
+            ToolKind::Settings,
+            Some(saved),
+            Some(orb_at(10.0, 10.0)),
+            Some(SCREEN),
+        );
         assert_eq!(g, saved);
     }
 
     #[test]
     fn saved_size_is_clamped_to_the_limits() {
-        let saved = Geometry { pos: pos2(300.0, 200.0), size: vec2(5000.0, 10.0) };
+        let saved = Geometry {
+            pos: pos2(300.0, 200.0),
+            size: vec2(5000.0, 10.0),
+        };
         let g = initial_geometry(ToolKind::Settings, Some(saved), None, Some(SCREEN));
-        assert_eq!(g.size, vec2(ToolKind::Settings.max_size().x, ToolKind::Settings.min_size().y));
+        assert_eq!(
+            g.size,
+            vec2(
+                ToolKind::Settings.max_size().x,
+                ToolKind::Settings.min_size().y
+            )
+        );
     }
 
     #[test]
     fn saved_geometry_off_screen_is_moved_back_so_the_title_bar_is_reachable() {
-        let saved = Geometry { pos: pos2(5000.0, 3000.0), size: vec2(528.0, 640.0) };
-        let g = initial_geometry(ToolKind::Settings, Some(saved), Some(orb_at(100.0, 100.0)), Some(SCREEN));
+        let saved = Geometry {
+            pos: pos2(5000.0, 3000.0),
+            size: vec2(528.0, 640.0),
+        };
+        let g = initial_geometry(
+            ToolKind::Settings,
+            Some(saved),
+            Some(orb_at(100.0, 100.0)),
+            Some(SCREEN),
+        );
         let strip = Rect::from_min_size(g.pos, vec2(g.size.x, 40.0)).intersect(SCREEN);
         assert!(strip.width() >= 200.0 && strip.height() >= 40.0, "{g:?}");
         assert_eq!(g.size, saved.size);
@@ -569,10 +637,19 @@ mod tests {
 
     #[test]
     fn a_window_partly_off_the_left_edge_stays_while_200_px_of_its_title_bar_show() {
-        let saved = Geometry { pos: pos2(-300.0, 50.0), size: vec2(528.0, 640.0) };
+        let saved = Geometry {
+            pos: pos2(-300.0, 50.0),
+            size: vec2(528.0, 640.0),
+        };
         let g = initial_geometry(ToolKind::Settings, Some(saved), None, Some(SCREEN));
-        assert_eq!(g.pos, saved.pos, "228 px of the title bar are still visible");
-        let saved = Geometry { pos: pos2(-400.0, 50.0), size: vec2(528.0, 640.0) };
+        assert_eq!(
+            g.pos, saved.pos,
+            "228 px of the title bar are still visible"
+        );
+        let saved = Geometry {
+            pos: pos2(-400.0, 50.0),
+            size: vec2(528.0, 640.0),
+        };
         let g = initial_geometry(ToolKind::Settings, Some(saved), None, Some(SCREEN));
         assert_eq!(g.pos.x, -328.0, "moved right until 200 px show");
     }
@@ -581,34 +658,63 @@ mod tests {
     fn a_position_from_a_monitor_of_another_size_is_not_used() {
         let mut s = ToolWindowState::default();
         s.restore_on_monitor(
-            Geometry { pos: pos2(300.0, 200.0), size: vec2(600.0, 700.0) },
+            Geometry {
+                pos: pos2(300.0, 200.0),
+                size: vec2(600.0, 700.0),
+            },
             Some(vec2(2560.0, 1440.0)),
         );
         s.request_open();
-        let g = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), Some(vec2(1440.0, 900.0)));
-        assert_eq!(g.pos, pos2(100.0 + 220.0 + PLACEMENT_GAP, 100.0), "beside the orb");
+        let g = s.placement(
+            ToolKind::Settings,
+            Some(orb_at(100.0, 100.0)),
+            Some(SCREEN),
+            Some(vec2(1440.0, 900.0)),
+        );
+        assert_eq!(
+            g.pos,
+            pos2(100.0 + 220.0 + PLACEMENT_GAP, 100.0),
+            "beside the orb"
+        );
         assert_eq!(g.size, ToolKind::Settings.default_size());
     }
 
     #[test]
     fn a_position_from_a_monitor_of_the_same_size_is_restored() {
         let mut s = ToolWindowState::default();
-        let saved = Geometry { pos: pos2(300.0, 200.0), size: vec2(600.0, 700.0) };
+        let saved = Geometry {
+            pos: pos2(300.0, 200.0),
+            size: vec2(600.0, 700.0),
+        };
         s.restore_on_monitor(saved, Some(vec2(1440.0, 900.0)));
         s.request_open();
-        let g = s.placement(ToolKind::Settings, Some(orb_at(100.0, 100.0)), Some(SCREEN), Some(vec2(1440.0, 900.0)));
+        let g = s.placement(
+            ToolKind::Settings,
+            Some(orb_at(100.0, 100.0)),
+            Some(SCREEN),
+            Some(vec2(1440.0, 900.0)),
+        );
         assert_eq!(g, saved);
     }
 
     #[test]
     fn without_a_known_screen_saved_geometry_is_trusted() {
-        let saved = Geometry { pos: pos2(5000.0, 3000.0), size: vec2(528.0, 640.0) };
-        assert_eq!(initial_geometry(ToolKind::Settings, Some(saved), None, None), saved);
+        let saved = Geometry {
+            pos: pos2(5000.0, 3000.0),
+            size: vec2(528.0, 640.0),
+        };
+        assert_eq!(
+            initial_geometry(ToolKind::Settings, Some(saved), None, None),
+            saved
+        );
     }
 
     #[test]
     fn geometry_tuple_round_trips_and_rejects_garbage() {
-        let g = Geometry { pos: pos2(1.0, -2.0), size: vec2(528.0, 640.0) };
+        let g = Geometry {
+            pos: pos2(1.0, -2.0),
+            size: vec2(528.0, 640.0),
+        };
         assert_eq!(Geometry::from_tuple(g.to_tuple()), Some(g));
         assert_eq!(Geometry::from_tuple((f32::NAN, 0.0, 10.0, 10.0)), None);
         assert_eq!(Geometry::from_tuple((0.0, 0.0, 0.0, 10.0)), None);

@@ -72,12 +72,18 @@ pub struct TapConfig {
 impl TapConfig {
     /// An unmuted tap of one process.
     pub fn for_pid(pid: i32) -> Self {
-        Self { target: TapTarget::Pid(pid), mute: TapMuteMode::Unmuted }
+        Self {
+            target: TapTarget::Pid(pid),
+            mute: TapMuteMode::Unmuted,
+        }
     }
 
     /// An unmuted tap of one application by bundle ID.
     pub fn for_bundle(bundle_id: impl Into<String>) -> Self {
-        Self { target: TapTarget::BundleId(bundle_id.into()), mute: TapMuteMode::Unmuted }
+        Self {
+            target: TapTarget::BundleId(bundle_id.into()),
+            mute: TapMuteMode::Unmuted,
+        }
     }
 }
 
@@ -266,15 +272,24 @@ mod tests {
     fn mute_mode_parses_cli_spellings() {
         assert_eq!(TapMuteMode::parse("unmuted"), Some(TapMuteMode::Unmuted));
         assert_eq!(TapMuteMode::parse("muted"), Some(TapMuteMode::Muted));
-        assert_eq!(TapMuteMode::parse("muted-when-tapped"), Some(TapMuteMode::MutedWhenTapped));
+        assert_eq!(
+            TapMuteMode::parse("muted-when-tapped"),
+            Some(TapMuteMode::MutedWhenTapped)
+        );
         assert_eq!(TapMuteMode::parse("mute"), None);
     }
 
     #[test]
     fn consent_errors_tell_the_user_what_to_do() {
         let bundle = TapError::NotInAppBundle.to_string();
-        assert!(bundle.contains("application bundle") && bundle.contains("NSAudioCaptureUsageDescription"));
-        let silent = TapError::NoSignal { target: "net.whatsapp.WhatsApp".into() }.to_string();
+        assert!(
+            bundle.contains("application bundle")
+                && bundle.contains("NSAudioCaptureUsageDescription")
+        );
+        let silent = TapError::NoSignal {
+            target: "net.whatsapp.WhatsApp".into(),
+        }
+        .to_string();
         assert!(silent.contains("net.whatsapp.WhatsApp"));
         assert!(silent.contains("System Settings") && silent.contains("System Audio Recording"));
     }

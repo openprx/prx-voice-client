@@ -285,7 +285,10 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
     /// parties changing the default cannot loop. `None`: nothing to do or not allowed.
     pub fn correct_idle_default(&mut self) -> Option<Result<Restored, CallModeError>> {
         if self.state.phase != Phase::Idle
-            || !matches!(self.recovery_plan(), RecoveryPlan::OwnMicrophoneWithoutJournal)
+            || !matches!(
+                self.recovery_plan(),
+                RecoveryPlan::OwnMicrophoneWithoutJournal
+            )
         {
             return None;
         }
@@ -306,8 +309,13 @@ impl<R: SystemAudioRouting, S: SystemProbe, J: JournalStore> RoutingController<R
         self.idle_fixes += 1;
         let result = self.restore_default(None);
         match &result {
-            Ok(restored) => tracing::info!(?restored, "the PRX Voice Microphone was the default input outside call mode; the policy's choice was restored"),
-            Err(error) => tracing::error!(%error, "could not take the PRX Voice Microphone off the default input outside call mode"),
+            Ok(restored) => tracing::info!(
+                ?restored,
+                "the PRX Voice Microphone was the default input outside call mode; the policy's choice was restored"
+            ),
+            Err(error) => {
+                tracing::error!(%error, "could not take the PRX Voice Microphone off the default input outside call mode")
+            }
         }
         Some(result)
     }

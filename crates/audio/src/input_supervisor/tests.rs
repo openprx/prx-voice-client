@@ -22,14 +22,23 @@ impl InputBackend for FakeBackend {
     fn list(&mut self) -> Result<Vec<InputDevice>, AudioError> {
         Ok(self.0.borrow().devices.clone())
     }
-    fn open(&mut self, _session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError> {
+    fn open(
+        &mut self,
+        _session_id: Uuid,
+        device: &InputDevice,
+    ) -> Result<Box<dyn AudioSource>, AudioError> {
         self.0.borrow_mut().opened.push(device.uid.clone());
         Ok(Box::new(MockAudioSource::new(SampleRate::HZ_16000)))
     }
 }
 
 fn dev(uid: &str, name: &str, transport: InputTransport, is_default: bool) -> InputDevice {
-    InputDevice { uid: uid.into(), name: name.into(), transport, is_default }
+    InputDevice {
+        uid: uid.into(),
+        name: name.into(),
+        transport,
+        is_default,
+    }
 }
 
 fn builtin(d: bool) -> InputDevice {
@@ -42,8 +51,18 @@ fn own(d: bool) -> InputDevice {
     dev(OWN_MIC_UID, OWN_MIC_NAME, InputTransport::Virtual, d)
 }
 
-fn setup(pref: &str, devices: Vec<InputDevice>) -> (InputSupervisor<FakeBackend>, Rc<RefCell<World>>, Receiver<AudioLoopEvent>) {
-    let world = Rc::new(RefCell::new(World { devices, opened: Vec::new() }));
+fn setup(
+    pref: &str,
+    devices: Vec<InputDevice>,
+) -> (
+    InputSupervisor<FakeBackend>,
+    Rc<RefCell<World>>,
+    Receiver<AudioLoopEvent>,
+) {
+    let world = Rc::new(RefCell::new(World {
+        devices,
+        opened: Vec::new(),
+    }));
     let (tx, rx) = channel();
     let sup = InputSupervisor::new(FakeBackend(Rc::clone(&world)), Uuid::nil(), pref, tx);
     (sup, world, rx)
@@ -59,7 +78,11 @@ fn start_opens_builtin_when_default_is_our_virtual_microphone() {
     sup.start(Instant::now()).unwrap();
     assert_eq!(world.borrow().opened, ["builtin"]);
     match rx.try_recv().unwrap() {
-        AudioLoopEvent::InputOpened { device, reason, previous } => {
+        AudioLoopEvent::InputOpened {
+            device,
+            reason,
+            previous,
+        } => {
             assert_eq!(device.uid, "builtin");
             assert_eq!(reason, SelectionReason::DefaultAvoided);
             assert!(previous.is_none());
@@ -97,7 +120,9 @@ fn default_change_restarts_capture_on_the_new_device() {
     assert!(sup.tick(later(t0, 2)));
     assert_eq!(world.borrow().opened, ["builtin", "usb"]);
     match rx.try_recv().unwrap() {
-        AudioLoopEvent::InputOpened { device, previous, .. } => {
+        AudioLoopEvent::InputOpened {
+            device, previous, ..
+        } => {
             assert_eq!(device.uid, "usb");
             assert_eq!(previous.unwrap().uid, "builtin");
         }
@@ -114,7 +139,10 @@ fn vanished_device_stops_capture_without_falling_back_to_virtual() {
 
     world.borrow_mut().devices = vec![own(true)];
     assert!(sup.tick(later(t0, 2)));
-    assert!(matches!(rx.try_recv().unwrap(), AudioLoopEvent::InputUnavailable { .. }));
+    assert!(matches!(
+        rx.try_recv().unwrap(),
+        AudioLoopEvent::InputUnavailable { .. }
+    ));
     assert!(sup.read_frame().is_none());
     assert_eq!(world.borrow().opened, ["builtin"]);
 
@@ -123,6 +151,9 @@ fn vanished_device_stops_capture_without_falling_back_to_virtual() {
     assert!(rx.try_recv().is_err());
     world.borrow_mut().devices = vec![own(false), usb(true)];
     assert!(sup.tick(later(t0, 6)));
-    assert!(matches!(rx.try_recv().unwrap(), AudioLoopEvent::InputOpened { .. }));
+    assert!(matches!(
+        rx.try_recv().unwrap(),
+        AudioLoopEvent::InputOpened { .. }
+    ));
     assert!(sup.read_frame().is_some());
 }

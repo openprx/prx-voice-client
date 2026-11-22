@@ -94,8 +94,14 @@ fn the_enumeration_comma_is_not_a_punctuation_boundary() {
     let stable = units(&text[..text.find('，').expect("comma")]).len();
     let cut = cut_of(&p, Lang::Zh, text, 0, stable, ms(0)).expect("cut");
     assert_eq!(cut.reason, EarlyReason::Punctuation);
-    assert_eq!(&text[..cut.end], "大金字塔是埃及人在公元前三四、三世纪的杰作，");
-    for text in ["我们先去了北京：然后去上海，最后回家了吧", "我们先去了北京；然后去上海，最后回家了吧"] {
+    assert_eq!(
+        &text[..cut.end],
+        "大金字塔是埃及人在公元前三四、三世纪的杰作，"
+    );
+    for text in [
+        "我们先去了北京：然后去上海，最后回家了吧",
+        "我们先去了北京；然后去上海，最后回家了吧",
+    ] {
         let mark = text.find(['：', '；']).expect("mark");
         let stable = units(&text[..mark]).len();
         let cut = cut_of(&p, Lang::Zh, text, 0, stable, ms(0)).expect("cut");
@@ -234,8 +240,14 @@ fn chinese_chunks_do_not_split_a_name_a_number_or_a_phrase_on_a_function_word() 
         ("明天上午我们要和王建国一起去机场接客人", "王建国"),
         ("这个项目的总预算大概是三点五百万美元左右", "三点五百万美元"),
         ("我们明天下午三点在公司楼下见面然后出发", "下午三点"),
-        ("会议定在二零二六年十一月二十日下午三点十五分开始", "二零二六年十一月二十日"),
-        ("我们的航班起飞时间是二零二六年十二月二日早上六点四十五分", "早上"),
+        (
+            "会议定在二零二六年十一月二十日下午三点十五分开始",
+            "二零二六年十一月二十日",
+        ),
+        (
+            "我们的航班起飞时间是二零二六年十二月二日早上六点四十五分",
+            "早上",
+        ),
         ("我下周三下午三点不能参加会议请改到周四上午十点钟", "参加"),
         ("请把一百零八号房间的钥匙交给李明不要给别人", "房间的"),
         ("苹果公司的首席执行官是蒂姆库克先生他们说", "首席执行官"),

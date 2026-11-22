@@ -47,7 +47,10 @@ pub(crate) const EN: &[(&str, &str)] = &[
     ("settings.pipeline.fallback", "If it fails: {0}"),
     ("settings.pipeline.role.vad", "Speech detection"),
     ("settings.pipeline.role.asr", "Speech recognition"),
-    ("settings.pipeline.role.refine", "Recognition refinement (two-pass mode only; off by default)"),
+    (
+        "settings.pipeline.role.refine",
+        "Recognition refinement (two-pass mode only; off by default)",
+    ),
     ("settings.pipeline.role.mt", "Translation"),
     ("settings.pipeline.role.tts", "Voice"),
     ("settings.pipeline.role.dialogue", "Assistant dialogue"),
@@ -289,9 +292,18 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "Remove models no step uses, to free disk space.",
     ),
     ("settings.pipeline.assistant", "Voice assistant"),
-    ("settings.pipeline.assistant.desc", "What runs when you talk to the assistant: the same speech models as a call, and its own dialogue backend."),
-    ("settings.pipeline.problem.not_available_yet", "{1} is not available yet. Choose another dialogue backend on the Assistant page."),
-    ("settings.pipeline.problem.server_not_answering", "The server at {0} does not answer ({1}). Start it, or choose another dialogue backend."),
+    (
+        "settings.pipeline.assistant.desc",
+        "What runs when you talk to the assistant: the same speech models as a call, and its own dialogue backend.",
+    ),
+    (
+        "settings.pipeline.problem.not_available_yet",
+        "{1} is not available yet. Choose another dialogue backend on the Assistant page.",
+    ),
+    (
+        "settings.pipeline.problem.server_not_answering",
+        "The server at {0} does not answer ({1}). Start it, or choose another dialogue backend.",
+    ),
 ];
 
 /// Simplified Chinese strings.
@@ -334,7 +346,10 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
     ("settings.pipeline.fallback", "出错时改用：{0}"),
     ("settings.pipeline.role.vad", "语音检测"),
     ("settings.pipeline.role.asr", "语音识别"),
-    ("settings.pipeline.role.refine", "识别精修（仅两遍识别模式使用，默认关闭）"),
+    (
+        "settings.pipeline.role.refine",
+        "识别精修（仅两遍识别模式使用，默认关闭）",
+    ),
     ("settings.pipeline.role.mt", "翻译"),
     ("settings.pipeline.role.tts", "语音合成"),
     ("settings.pipeline.role.dialogue", "助手对话"),
@@ -564,9 +579,18 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "删除没有任何环节使用的模型，释放磁盘空间。",
     ),
     ("settings.pipeline.assistant", "语音助手"),
-    ("settings.pipeline.assistant.desc", "与助手对话时运行的内容：与通话相同的语音模型，加上助手自己的对话后端。"),
-    ("settings.pipeline.problem.not_available_yet", "{1}暂不可用。请在“助手”页选择其他对话后端。"),
-    ("settings.pipeline.problem.server_not_answering", "{0} 处的服务器没有响应（{1}）。请启动它，或选择其他对话后端。"),
+    (
+        "settings.pipeline.assistant.desc",
+        "与助手对话时运行的内容：与通话相同的语音模型，加上助手自己的对话后端。",
+    ),
+    (
+        "settings.pipeline.problem.not_available_yet",
+        "{1}暂不可用。请在“助手”页选择其他对话后端。",
+    ),
+    (
+        "settings.pipeline.problem.server_not_answering",
+        "{0} 处的服务器没有响应（{1}）。请启动它，或选择其他对话后端。",
+    ),
 ];
 
 #[cfg(test)]

@@ -116,7 +116,10 @@ impl ZeroWatchdog {
             let reported = self.phase != Phase::Watching;
             self.phase = Phase::Watching;
             self.restart_window(now, obs);
-            return ZeroStep { emit: reported.then_some(TapEvent::SignalRestored), rebuild: false };
+            return ZeroStep {
+                emit: reported.then_some(TapEvent::SignalRestored),
+                rebuild: false,
+            };
         }
         if self.proven {
             // The consent works: zeros are the other side being quiet.
@@ -138,12 +141,20 @@ impl ZeroWatchdog {
             Phase::Watching => {
                 self.phase = Phase::Rebuilt;
                 let silent_ms = u64::try_from(silent_for.as_millis()).unwrap_or(u64::MAX);
-                ZeroStep { emit: Some(TapEvent::SilentWhilePlaying { silent_ms }), rebuild: true }
+                ZeroStep {
+                    emit: Some(TapEvent::SilentWhilePlaying { silent_ms }),
+                    rebuild: true,
+                }
             }
             Phase::Rebuilt => {
                 self.phase = Phase::Failed;
-                let error = TapError::NoSignal { target: self.target.clone() };
-                ZeroStep { emit: Some(TapEvent::NoSignal { error }), rebuild: false }
+                let error = TapError::NoSignal {
+                    target: self.target.clone(),
+                };
+                ZeroStep {
+                    emit: Some(TapEvent::NoSignal { error }),
+                    rebuild: false,
+                }
             }
             Phase::Failed => ZeroStep::default(),
         }

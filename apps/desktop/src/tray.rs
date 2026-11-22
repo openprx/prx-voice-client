@@ -224,7 +224,9 @@ impl TrayState {
             Self::Speaking => "tray.state.speaking",
             Self::Translating => "tray.state.translating",
             Self::Paused => "tray.state.paused",
-            Self::Attention(reason) => return prxvc_i18n::t_with("tray.state.attention", &[reason]),
+            Self::Attention(reason) => {
+                return prxvc_i18n::t_with("tray.state.attention", &[reason]);
+            }
         };
         prxvc_i18n::t(key)
     }
@@ -236,7 +238,11 @@ impl TrayState {
 pub fn tray_state(session_state: &str, call: CallPhase, error: Option<&str>) -> TrayState {
     if let Some(reason) = error.map(str::trim).filter(|r| !r.is_empty()) {
         let short: String = if reason.chars().count() > SHORT_REASON {
-            reason.chars().take(SHORT_REASON - 1).chain(['\u{2026}']).collect()
+            reason
+                .chars()
+                .take(SHORT_REASON - 1)
+                .chain(['\u{2026}'])
+                .collect()
         } else {
             reason.to_owned()
         };
@@ -249,7 +255,9 @@ pub fn tray_state(session_state: &str, call: CallPhase, error: Option<&str>) -> 
             // The call's own words for its phase ("Degraded", "Recovering").
             TrayState::Attention(prxvc_i18n::t(call.key()))
         }
-        CallPhase::AudioReady | CallPhase::Initializing | CallPhase::Stopping => TrayState::Listening,
+        CallPhase::AudioReady | CallPhase::Initializing | CallPhase::Stopping => {
+            TrayState::Listening
+        }
         CallPhase::Idle => match session_state {
             "" | "Idle" | "Completed" => TrayState::Idle,
             "AssistantSpeaking" => TrayState::Speaking,
@@ -283,10 +291,10 @@ fn create_prx_icon() -> Vec<u8> {
             let ay = dy.abs();
 
             // Pointy-top hex containment: max(|dx|, |dx|*0.5 + |dy|*√3/2) ≤ r*√3/2
-            let in_outer = ax <= stroke_outer * 0.866
-                && (ax * 0.5 + ay * 0.866) <= stroke_outer * 0.866;
-            let in_inner = ax <= stroke_inner * 0.866
-                && (ax * 0.5 + ay * 0.866) <= stroke_inner * 0.866;
+            let in_outer =
+                ax <= stroke_outer * 0.866 && (ax * 0.5 + ay * 0.866) <= stroke_outer * 0.866;
+            let in_inner =
+                ax <= stroke_inner * 0.866 && (ax * 0.5 + ay * 0.866) <= stroke_inner * 0.866;
 
             let idx = (y * size + x) * 4;
 
@@ -315,13 +323,34 @@ mod tests {
     fn the_state_follows_the_session_and_the_call() {
         assert_eq!(tray_state("Idle", CallPhase::Idle, None), TrayState::Idle);
         assert_eq!(tray_state("", CallPhase::Idle, None), TrayState::Idle);
-        assert_eq!(tray_state("Completed", CallPhase::Idle, None), TrayState::Idle);
-        assert_eq!(tray_state("Listening", CallPhase::Idle, None), TrayState::Listening);
-        assert_eq!(tray_state("UserSpeaking", CallPhase::Idle, None), TrayState::Listening);
-        assert_eq!(tray_state("AssistantSpeaking", CallPhase::Idle, None), TrayState::Speaking);
-        assert_eq!(tray_state("Idle", CallPhase::Translating, None), TrayState::Translating);
-        assert_eq!(tray_state("Idle", CallPhase::Paused, None), TrayState::Paused);
-        assert_eq!(tray_state("Idle", CallPhase::AudioReady, None), TrayState::Listening);
+        assert_eq!(
+            tray_state("Completed", CallPhase::Idle, None),
+            TrayState::Idle
+        );
+        assert_eq!(
+            tray_state("Listening", CallPhase::Idle, None),
+            TrayState::Listening
+        );
+        assert_eq!(
+            tray_state("UserSpeaking", CallPhase::Idle, None),
+            TrayState::Listening
+        );
+        assert_eq!(
+            tray_state("AssistantSpeaking", CallPhase::Idle, None),
+            TrayState::Speaking
+        );
+        assert_eq!(
+            tray_state("Idle", CallPhase::Translating, None),
+            TrayState::Translating
+        );
+        assert_eq!(
+            tray_state("Idle", CallPhase::Paused, None),
+            TrayState::Paused
+        );
+        assert_eq!(
+            tray_state("Idle", CallPhase::AudioReady, None),
+            TrayState::Listening
+        );
     }
 
     #[test]
@@ -338,10 +367,19 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert!(matches!(tray_state("Idle", CallPhase::Degraded, None), TrayState::Attention(_)));
-        assert!(matches!(tray_state("Idle", CallPhase::Recovering, None), TrayState::Attention(_)));
+        assert!(matches!(
+            tray_state("Idle", CallPhase::Degraded, None),
+            TrayState::Attention(_)
+        ));
+        assert!(matches!(
+            tray_state("Idle", CallPhase::Recovering, None),
+            TrayState::Attention(_)
+        ));
         // A blank error is no error.
-        assert_eq!(tray_state("Idle", CallPhase::Idle, Some("  ")), TrayState::Idle);
+        assert_eq!(
+            tray_state("Idle", CallPhase::Idle, Some("  ")),
+            TrayState::Idle
+        );
     }
 
     #[test]
@@ -355,7 +393,10 @@ mod tests {
             TrayState::Paused,
             TrayState::Attention("x".into()),
         ] {
-            assert!(!state.text().starts_with("tray.state."), "{state:?} has no text");
+            assert!(
+                !state.text().starts_with("tray.state."),
+                "{state:?} has no text"
+            );
         }
     }
 }

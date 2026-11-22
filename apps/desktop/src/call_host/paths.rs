@@ -25,10 +25,10 @@ use prxvc_audio::tap_incidents::TapIncidents;
 use prxvc_audio::tap_pump_source::TapPumpSource;
 use prxvc_audio::tap_types::{TapConfig, TapMuteMode};
 use prxvc_audio::virtual_mic::{VirtualMicOptions, VirtualMicSink};
+use prxvc_media::{ClauseId, PcmChunk};
 use prxvc_ports::BundleId;
 use prxvc_session::Endpoint;
 use prxvc_session::OutputSource;
-use prxvc_media::{ClauseId, PcmChunk};
 use prxvc_session::call::{
     AudioPath, CallErrorCode, HostFault, LocalOutputMode, OutputRoute, PathEvent, PathLink,
     PathStats, PlaybackReport, Playout,
@@ -71,7 +71,8 @@ impl PumpPath {
     }
 
     fn apply(&self) {
-        self.pump.set_mode(mix_mode(self.kind, self.hears, self.local_mode));
+        self.pump
+            .set_mode(mix_mode(self.kind, self.hears, self.local_mode));
     }
 }
 
@@ -145,7 +146,10 @@ impl AudioPath for PumpPath {
             .ok_or_else(|| {
                 HostFault::new(
                     CallErrorCode::TranslationUnavailable,
-                    format!("the {} path plays nothing, so it cannot carry translation", self.pump.name()),
+                    format!(
+                        "the {} path plays nothing, so it cannot carry translation",
+                        self.pump.name()
+                    ),
                 )
             })?;
         Ok(Arc::new(FeedPlayout(feed)))
@@ -341,7 +345,9 @@ pub(super) fn start_incoming(plan: &IncomingPlan<'_>) -> Result<Box<dyn AudioPat
         echo: plan.echo.clone().map(EchoRole::Playback),
     };
     match Pump::start(spec) {
-        Ok(pump) => Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, plan.route).with_tap(incidents))),
+        Ok(pump) => Ok(Box::new(
+            PumpPath::new(pump, PathKind::Incoming, plan.route).with_tap(incidents),
+        )),
         Err(e) if e.stage == PumpStage::Sink => {
             events.push(PumpEvent::LocalOutputFailed {
                 detail: format!("{e}; the call application plays the original itself"),
@@ -387,7 +393,9 @@ fn meter_only(
             e.to_string(),
         )
     })?;
-    Ok(Box::new(PumpPath::new(pump, PathKind::Incoming, route).with_tap(incidents)))
+    Ok(Box::new(
+        PumpPath::new(pump, PathKind::Incoming, route).with_tap(incidents),
+    ))
 }
 
 #[cfg(test)]
@@ -447,13 +455,34 @@ mod tests {
         use OutputSource as S;
         for local in [L::Translation, L::Both, L::Original] {
             // The remote party never hears the original lowered under the translation.
-            assert_eq!(mix_mode(PathKind::Outgoing, S::Translation, local), MixMode::Translation);
-            assert_eq!(mix_mode(PathKind::Outgoing, S::Original, local), MixMode::Original);
-            assert_eq!(mix_mode(PathKind::Incoming, S::Original, local), MixMode::Original);
-            assert_eq!(mix_mode(PathKind::Incoming, S::Nothing, local), MixMode::Translation);
+            assert_eq!(
+                mix_mode(PathKind::Outgoing, S::Translation, local),
+                MixMode::Translation
+            );
+            assert_eq!(
+                mix_mode(PathKind::Outgoing, S::Original, local),
+                MixMode::Original
+            );
+            assert_eq!(
+                mix_mode(PathKind::Incoming, S::Original, local),
+                MixMode::Original
+            );
+            assert_eq!(
+                mix_mode(PathKind::Incoming, S::Nothing, local),
+                MixMode::Translation
+            );
         }
-        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Translation), MixMode::Translation);
-        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Both), MixMode::Both);
-        assert_eq!(mix_mode(PathKind::Incoming, S::Translation, L::Original), MixMode::Original);
+        assert_eq!(
+            mix_mode(PathKind::Incoming, S::Translation, L::Translation),
+            MixMode::Translation
+        );
+        assert_eq!(
+            mix_mode(PathKind::Incoming, S::Translation, L::Both),
+            MixMode::Both
+        );
+        assert_eq!(
+            mix_mode(PathKind::Incoming, S::Translation, L::Original),
+            MixMode::Original
+        );
     }
 }

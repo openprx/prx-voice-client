@@ -64,9 +64,15 @@ fn menu(
             tk.text,
         ));
         let current = CaptionSize::from_setting(&settings.call_captions_size);
-        let labels: Vec<String> = CaptionSize::ALL.iter().map(|s| prxvc_i18n::t(s.key())).collect();
+        let labels: Vec<String> = CaptionSize::ALL
+            .iter()
+            .map(|s| prxvc_i18n::t(s.key()))
+            .collect();
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-        let selected = CaptionSize::ALL.iter().position(|s| *s == current).unwrap_or(1);
+        let selected = CaptionSize::ALL
+            .iter()
+            .position(|s| *s == current)
+            .unwrap_or(1);
         if let Some(i) = widgets::segmented(ui, tk, selected, &refs) {
             settings.call_captions_size = CaptionSize::ALL[i].setting().to_owned();
         }

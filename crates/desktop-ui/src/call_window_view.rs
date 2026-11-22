@@ -57,16 +57,19 @@ fn reason(panel: &CallPanel) -> Option<&str> {
 fn empty_state(panel: &CallPanel) -> EmptyState {
     let t = prxvc_i18n::t;
     let (title, body) = match panel.phase {
-        CallPhase::Idle | CallPhase::Stopping => ("callwin.empty.idle.title", "callwin.empty.idle.body"),
+        CallPhase::Idle | CallPhase::Stopping => {
+            ("callwin.empty.idle.title", "callwin.empty.idle.body")
+        }
         CallPhase::Initializing => ("callwin.empty.loading.title", "callwin.empty.loading.body"),
         CallPhase::AudioReady if !panel.translate_enabled => {
             ("callwin.empty.audio.title", "callwin.empty.audio.body")
         }
         CallPhase::AudioReady => ("callwin.empty.loading.title", "callwin.empty.loading.body"),
         CallPhase::Paused => ("callwin.empty.paused.title", "callwin.empty.paused.body"),
-        CallPhase::Translating | CallPhase::Degraded | CallPhase::Recovering => {
-            ("callwin.empty.listening.title", "callwin.empty.listening.body")
-        }
+        CallPhase::Translating | CallPhase::Degraded | CallPhase::Recovering => (
+            "callwin.empty.listening.title",
+            "callwin.empty.listening.body",
+        ),
     };
     EmptyState {
         title: t(title),
@@ -128,7 +131,8 @@ pub(crate) fn body(
             });
     });
     ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
-        ui.painter().hline(bottom.x_range(), bottom.top(), hairline(tk.line));
+        ui.painter()
+            .hline(bottom.x_range(), bottom.top(), hairline(tk.line));
         ui.add_space(space::S8);
         call_window_footer::footer_row(ui, tk, panel, w);
     });
@@ -160,12 +164,17 @@ fn flow(
                 .id_salt("call_details")
                 .auto_shrink([false, false])
                 .max_height(left)
-                .show(ui, |ui| call_window_details::details(ui, tk, panel, settings));
+                .show(ui, |ui| {
+                    call_window_details::details(ui, tk, panel, settings)
+                });
         });
         return;
     }
     let (own, peer) = language_codes(panel, settings);
-    let names = [prxvc_i18n::t("callwin.caption.me"), prxvc_i18n::t("callwin.caption.peer")];
+    let names = [
+        prxvc_i18n::t("callwin.caption.me"),
+        prxvc_i18n::t("callwin.caption.peer"),
+    ];
     call_captions_bar::bar(ui, tk, w, settings, [&names[0], &names[1]]);
     ui.add_space(space::S8);
     // The remote party hears the user's translation (into the peer's language), the user
@@ -178,7 +187,9 @@ fn flow(
         targets: [&targets[0], &targets[1]],
         empty: empty_state(panel),
     };
-    flexible(ui, left, |ui| call_timeline_view::timeline(ui, tk, w, &args));
+    flexible(ui, left, |ui| {
+        call_timeline_view::timeline(ui, tk, w, &args)
+    });
 }
 
 /// What is left of `height` below the cursor (`origin` is where the flow began), at least

@@ -222,7 +222,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--notice" => o.notice = notice::NoticeMode::parse(&value(arg, &mut it)?)?,
             "--notice-old-text" => o.notice_old_text = true,
             "--conversation" => {
-                o.conversation = Some(value(arg, &mut it)?.parse().map_err(|_| "bad --conversation")?)
+                o.conversation = Some(
+                    value(arg, &mut it)?
+                        .parse()
+                        .map_err(|_| "bad --conversation")?,
+                )
             }
             "--gap-ms" => o.gap_ms = value(arg, &mut it)?.parse().map_err(|_| "bad --gap-ms")?,
             "--no-catch-up" => o.no_catch_up = true,
@@ -463,7 +467,11 @@ fn execute(o: &Options) -> Result<bool, String> {
         params.commit.early.as_str(),
         config.pipeline.early_commit,
         config.pipeline.early_commit_without_context,
-        if build.providers.mt.descriptor().supports_context { "uses" } else { "does not use" },
+        if build.providers.mt.descriptor().supports_context {
+            "uses"
+        } else {
+            "does not use"
+        },
     );
     println!("{}", units::in_force_line(&params));
     if o.vad_profile {
@@ -571,7 +579,10 @@ fn execute(o: &Options) -> Result<bool, String> {
         }
         let whole = run_utterance(&rig, "conversation", "", &joined.recording, joined.bounds)?;
         runs = conversation::split(&whole);
-        println!("{}", conversation::summary(&runs, &whole, whole.speech_end_ns));
+        println!(
+            "{}",
+            conversation::summary(&runs, &whole, whole.speech_end_ns)
+        );
         println!("counters: {}", whole.counters);
         println!("{}", sysinfo::snapshot("machine after"));
         println!("\n{}", table(&runs));
@@ -614,7 +625,8 @@ fn execute(o: &Options) -> Result<bool, String> {
                 println!(
                     "    recognised: {} (error rate {})",
                     r.recognised,
-                    r.recognition_error.map_or("-".to_owned(), |e| format!("{e:.3}"))
+                    r.recognition_error
+                        .map_or("-".to_owned(), |e| format!("{e:.3}"))
                 );
                 for c in &r.clauses {
                     let text = |s| {

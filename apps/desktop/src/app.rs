@@ -10,7 +10,10 @@ use crate::{hotkey, settings, settings_host, tray};
 
 /// Open the Call translation window from the tray. The tool windows are drawn inside the orb
 /// window's pass, which does not run while that window is hidden, so the orb window is shown first.
-pub(crate) fn open_call_window(ctx: &egui::Context, ui_state: &mut prxvc_desktop_ui::DesktopUiState) {
+pub(crate) fn open_call_window(
+    ctx: &egui::Context,
+    ui_state: &mut prxvc_desktop_ui::DesktopUiState,
+) {
     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
     ui_state.windows.request_open(ToolKind::Call);
 }
@@ -126,7 +129,6 @@ impl eframe::App for PrxVoiceApp {
                 }
             }
         }
-
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -135,10 +137,7 @@ impl eframe::App for PrxVoiceApp {
 
         // Apply pending theme change (if settings changed the theme)
         if let Some(theme_name) = self.ui_state.pending_theme.take() {
-            if let Some(new_theme) = Theme::all()
-                .into_iter()
-                .find(|t| t.name == theme_name)
-            {
+            if let Some(new_theme) = Theme::all().into_iter().find(|t| t.name == theme_name) {
                 // The new theme's style is applied by the UI on its next frame.
                 self.ui_state.theme = new_theme;
             }

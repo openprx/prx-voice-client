@@ -28,7 +28,13 @@ impl Rig {
         let incidents = Arc::new(TapIncidents::default());
         let stats = TapStats::default();
         Self {
-            health: TapHealth::new(t0, "net.whatsapp.WhatsApp".into(), &stats, proven, Arc::clone(&incidents)),
+            health: TapHealth::new(
+                t0,
+                "net.whatsapp.WhatsApp".into(),
+                &stats,
+                proven,
+                Arc::clone(&incidents),
+            ),
             incidents,
             t0,
             now: t0,
@@ -126,11 +132,18 @@ fn silence_after_proof_from_an_earlier_tap_of_the_run_causes_nothing() {
 fn never_any_signal_raises_the_issue_after_the_window_and_rebuilds_exactly_once() {
     let mut rig = Rig::new(false);
     rig.run_zeros(14);
-    assert!(rig.events.is_empty(), "nothing before the window: {:?}", rig.events);
+    assert!(
+        rig.events.is_empty(),
+        "nothing before the window: {:?}",
+        rig.events
+    );
     rig.run_zeros(4);
     assert!(rig.has(is_silent_while_playing));
     assert_eq!((rig.teardowns, rig.creates), (1, 1));
-    assert!(!rig.has(is_no_signal), "the issue follows only a second window");
+    assert!(
+        !rig.has(is_no_signal),
+        "the issue follows only a second window"
+    );
     rig.run_zeros(20);
     assert!(rig.has(is_no_signal));
     // Minutes more of zeros: no further rebuild, no second report.
@@ -206,6 +219,9 @@ fn the_target_quitting_and_returning_is_counted_apart_and_not_as_an_interruption
     rig.poll(false, true);
     let c = rig.counts();
     assert_eq!((c.target_returned, c.stall, c.silence), (1, 0, 0));
-    assert_eq!(c.longest_interruption_ms, 300, "only the creation, not the absence");
+    assert_eq!(
+        c.longest_interruption_ms, 300,
+        "only the creation, not the absence"
+    );
     assert!(rig.elapsed_ms() > 60_000);
 }

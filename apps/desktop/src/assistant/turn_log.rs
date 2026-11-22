@@ -57,7 +57,9 @@ impl TurnLog {
             }
             AssistantEvent::Phase(Phase::Speaking) => {
                 if let (true, Some(at)) = (self.in_turn, self.final_at) {
-                    self.current.to_first_audio.get_or_insert(now.saturating_duration_since(at));
+                    self.current
+                        .to_first_audio
+                        .get_or_insert(now.saturating_duration_since(at));
                 }
             }
             AssistantEvent::Phase(Phase::Listening) => {
@@ -81,7 +83,9 @@ impl TurnLog {
             }
             AssistantEvent::ReplyDelta { .. } if self.in_turn => {
                 if let Some(at) = self.final_at {
-                    self.current.to_first_token.get_or_insert(now.saturating_duration_since(at));
+                    self.current
+                        .to_first_token
+                        .get_or_insert(now.saturating_duration_since(at));
                 }
                 self.current.reply_deltas += 1;
             }
@@ -112,8 +116,10 @@ impl TurnLog {
             self.turns.len() + 1,
             ms(turn.speech),
             turn.to_final.map_or("-".into(), |d| ms(d).to_string()),
-            turn.to_first_token.map_or("-".into(), |d| ms(d).to_string()),
-            turn.to_first_audio.map_or("-".into(), |d| ms(d).to_string()),
+            turn.to_first_token
+                .map_or("-".into(), |d| ms(d).to_string()),
+            turn.to_first_audio
+                .map_or("-".into(), |d| ms(d).to_string()),
             turn.reply_deltas,
             turn.interrupted,
             turn.faults,
@@ -167,21 +173,36 @@ mod tests {
         let events = [
             (0, AssistantEvent::Phase(Phase::UserSpeaking)),
             (1_500, AssistantEvent::Phase(Phase::Thinking)),
-            (1_700, AssistantEvent::UserTurn { text: text("secret words") }),
-            (2_100, AssistantEvent::ReplyDelta { text: text("a secret reply") }),
+            (
+                1_700,
+                AssistantEvent::UserTurn {
+                    text: text("secret words"),
+                },
+            ),
+            (
+                2_100,
+                AssistantEvent::ReplyDelta {
+                    text: text("a secret reply"),
+                },
+            ),
             (2_300, AssistantEvent::Phase(Phase::Speaking)),
             (2_400, AssistantEvent::ReplyDelta { text: text("more") }),
         ];
         for (when, e) in &events {
             assert!(log.on_event(at(t0, *when), e).is_none());
         }
-        let line = log.on_event(at(t0, 5_000), &AssistantEvent::ReplyDone).expect("a line");
+        let line = log
+            .on_event(at(t0, 5_000), &AssistantEvent::ReplyDone)
+            .expect("a line");
         assert!(line.contains("speech_ms=1500"), "{line}");
         assert!(line.contains("end_of_speech_to_final_ms=200"), "{line}");
         assert!(line.contains("to_first_reply_token_ms=400"), "{line}");
         assert!(line.contains("to_first_reply_audio_ms=600"), "{line}");
         assert!(line.contains("reply_chunks=2 interrupted=false"), "{line}");
-        assert!(!line.contains("secret"), "no spoken or reply text in the log");
+        assert!(
+            !line.contains("secret"),
+            "no spoken or reply text in the log"
+        );
     }
 
     #[test]
@@ -189,15 +210,23 @@ mod tests {
         let t0 = Instant::now();
         let mut log = TurnLog::default();
         log.on_event(at(t0, 0), &AssistantEvent::Phase(Phase::UserSpeaking));
-        assert!(log.on_event(at(t0, 300), &AssistantEvent::Phase(Phase::Listening)).is_none());
+        assert!(
+            log.on_event(at(t0, 300), &AssistantEvent::Phase(Phase::Listening))
+                .is_none()
+        );
         log.on_event(at(t0, 1_000), &AssistantEvent::Phase(Phase::UserSpeaking));
         log.on_event(at(t0, 2_000), &AssistantEvent::Phase(Phase::Thinking));
         log.on_event(at(t0, 2_100), &AssistantEvent::UserTurn { text: text("x") });
         log.on_event(at(t0, 2_200), &AssistantEvent::MicPaused(true));
-        let line = log.on_event(at(t0, 2_600), &AssistantEvent::ReplyCut).expect("a line");
+        let line = log
+            .on_event(at(t0, 2_600), &AssistantEvent::ReplyCut)
+            .expect("a line");
         assert!(line.contains("interrupted=true"), "{line}");
         let s = log.summary();
-        assert!(s.contains("turns=1 interruptions=1 filler_only_inputs_dropped=1"), "{s}");
+        assert!(
+            s.contains("turns=1 interruptions=1 filler_only_inputs_dropped=1"),
+            "{s}"
+        );
         assert!(s.contains("echo_gate_closures=1"), "{s}");
     }
 

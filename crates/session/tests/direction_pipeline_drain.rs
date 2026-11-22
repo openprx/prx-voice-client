@@ -11,8 +11,10 @@ use pipeline_rig::{Rig, vad_runs};
 #[test]
 fn draining_commits_the_open_segment_and_plays_it_to_the_end() {
     let clock = ManualClock::new();
-    let mt = FakeTranslator::new(clock.clone())
-        .with_script("今天天气很好", MtScript::tokens(["The ", "weather ", "is ", "nice."]));
+    let mt = FakeTranslator::new(clock.clone()).with_script(
+        "今天天气很好",
+        MtScript::tokens(["The ", "weather ", "is ", "nice."]),
+    );
     let tts = FakeSpeechSynth::new(clock.clone())
         .with_script("The weather is nice.", TtsScript::chunks(3, 2400));
     // Speech that has not paused: the segment is still open when the stop comes.
@@ -27,13 +29,23 @@ fn draining_commits_the_open_segment_and_plays_it_to_the_end() {
 
     rig.pipeline.drain();
     rig.wait_snapshot("the last sentence is playing", |s| {
-        s.clauses.first().is_some_and(|c| c.state == prxvc_session::ClauseState::Playing)
+        s.clauses
+            .first()
+            .is_some_and(|c| c.state == prxvc_session::ClauseState::Playing)
     });
     rig.advance(pipeline_rig::ms(2_000));
-    let snap = rig.wait_snapshot("the last sentence was played", |s| s.counters.clauses_played >= 1);
+    let snap = rig.wait_snapshot("the last sentence was played", |s| {
+        s.counters.clauses_played >= 1
+    });
     assert_eq!(snap.counters.clauses_failed, 0);
     assert!(rig.pipeline.drain_flushed());
-    assert!(rig.fakes.mt.requests().iter().any(|r| r.text == "今天天气很好"));
+    assert!(
+        rig.fakes
+            .mt
+            .requests()
+            .iter()
+            .any(|r| r.text == "今天天气很好")
+    );
     assert!(rig.stop().clean);
 }
 
@@ -42,7 +54,13 @@ fn nothing_new_is_accepted_after_a_drain() {
     let clock = ManualClock::new();
     let mt = FakeTranslator::new(clock.clone());
     let tts = FakeSpeechSynth::new(clock.clone());
-    let rig = Rig::start(&clock, vad_runs(&[(0.0, 400)]), AsrScript::new([], ""), mt, tts);
+    let rig = Rig::start(
+        &clock,
+        vad_runs(&[(0.0, 400)]),
+        AsrScript::new([], ""),
+        mt,
+        tts,
+    );
     rig.wait_running();
     rig.feed(5);
     let consumed = rig.pipeline.stats().frames_consumed;
@@ -64,13 +82,22 @@ fn a_drain_with_nothing_open_is_flushed_at_once() {
     let clock = ManualClock::new();
     let mt = FakeTranslator::new(clock.clone());
     let tts = FakeSpeechSynth::new(clock.clone());
-    let rig = Rig::start(&clock, vad_runs(&[(0.0, 400)]), AsrScript::new([], ""), mt, tts);
+    let rig = Rig::start(
+        &clock,
+        vad_runs(&[(0.0, 400)]),
+        AsrScript::new([], ""),
+        mt,
+        tts,
+    );
     rig.wait_running();
     rig.feed(5);
     rig.pipeline.drain();
     let began = std::time::Instant::now();
     while !rig.pipeline.drain_flushed() {
-        assert!(began.elapsed() < std::time::Duration::from_secs(5), "never flushed");
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(5),
+            "never flushed"
+        );
         std::thread::yield_now();
     }
     assert!(rig.stop().clean);

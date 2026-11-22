@@ -17,7 +17,6 @@ pub(crate) mod disclosure;
 pub(crate) mod engine_report;
 pub(crate) mod main_loop;
 pub(crate) mod model_server;
-pub(crate) mod server_locate;
 pub(crate) mod models;
 pub(crate) mod params;
 pub(crate) mod problems;
@@ -26,4 +25,5 @@ pub(crate) mod providers;
 pub(crate) mod readiness;
 #[cfg(target_os = "macos")]
 pub(crate) mod route;
+pub(crate) mod server_locate;
 pub(crate) mod trace;

@@ -95,7 +95,10 @@ fn translate(
 /// What the pipeline asks again for: a flagged reply or one that opens like an answer or refusal.
 fn needs_retry(source: &str, out: &str, suspects: &[Suspect]) -> bool {
     suspects.iter().any(|s| {
-        matches!(s, Suspect::AnswerLike | Suspect::WrongLanguage | Suspect::Refusal)
+        matches!(
+            s,
+            Suspect::AnswerLike | Suspect::WrongLanguage | Suspect::Refusal
+        )
     }) || prxvc_media::answer::opens_like_answer(source, out)
         || prxvc_media::answer::opens_like_refusal(source, out)
 }
@@ -116,7 +119,10 @@ fn live_mt_answer_eval() {
     let mut params = serde_json::Map::new();
     params.insert("temperature".into(), json!(0));
     params.insert("cache_prompt".into(), json!(true));
-    params.insert("chat_template_kwargs".into(), json!({"enable_thinking": false}));
+    params.insert(
+        "chat_template_kwargs".into(),
+        json!({"enable_thinking": false}),
+    );
     let cfg = OpenAiChatConfig::new(&url, &model)
         .with_provider_id("live-eval")
         .with_template(template)
@@ -140,27 +146,45 @@ fn live_mt_answer_eval() {
         let set = sentences(file);
         assert!(set.len() >= 40, "{file} has {} sentences", set.len());
         for context_pairs in [0usize, 2] {
-            println!("\n== {} -> {}, {context_pairs} context pairs, {} sentences ==", langs.0, langs.1, set.len());
+            println!(
+                "\n== {} -> {}, {context_pairs} context pairs, {} sentences ==",
+                langs.0,
+                langs.1,
+                set.len()
+            );
             let mut history: Vec<(String, String)> = Vec::new();
             let mut counts = [0usize; 6];
             for (i, text) in set.iter().enumerate() {
-                let context: Vec<(String, String)> = history.iter().rev().take(context_pairs).rev().cloned().collect();
+                let context: Vec<(String, String)> = history
+                    .iter()
+                    .rev()
+                    .take(context_pairs)
+                    .rev()
+                    .cloned()
+                    .collect();
                 let index = u16::try_from(i).unwrap_or(0);
                 let (mut out, mut suspects, first) =
                     translate(&mt, &reports, index, langs, text, context.clone(), false);
                 first_tokens.push(first);
                 if retry_enabled() && needs_retry(text, &out, &suspects) {
                     retried += 1;
-                    println!("  retry [{:>2}] {text}\n       -> {out}   {suspects:?}", i + 1);
-                    (out, suspects, _) = translate(&mt, &reports, index, langs, text, context, true);
+                    println!(
+                        "  retry [{:>2}] {text}\n       -> {out}   {suspects:?}",
+                        i + 1
+                    );
+                    (out, suspects, _) =
+                        translate(&mt, &reports, index, langs, text, context, true);
                 }
                 let answer = suspects.contains(&Suspect::AnswerLike);
                 let wrong = suspects.contains(&Suspect::WrongLanguage);
                 let refusal = suspects.contains(&Suspect::Refusal);
                 let unmarked = is_question(text) && !is_question(&out);
-                let other = suspects
-                    .iter()
-                    .any(|s| !matches!(s, Suspect::AnswerLike | Suspect::WrongLanguage | Suspect::Refusal));
+                let other = suspects.iter().any(|s| {
+                    !matches!(
+                        s,
+                        Suspect::AnswerLike | Suspect::WrongLanguage | Suspect::Refusal
+                    )
+                });
                 let tags = out.contains("source>") || out.contains("<source");
                 for (slot, hit) in counts
                     .iter_mut()
@@ -169,7 +193,15 @@ fn live_mt_answer_eval() {
                     *slot += usize::from(hit);
                 }
                 if answer || wrong || refusal || unmarked || other || tags {
-                    println!("  [{:>2}] {text}\n       -> {out}   {suspects:?}{}", i + 1, if unmarked { " (question lost its mark)" } else { "" });
+                    println!(
+                        "  [{:>2}] {text}\n       -> {out}   {suspects:?}{}",
+                        i + 1,
+                        if unmarked {
+                            " (question lost its mark)"
+                        } else {
+                            ""
+                        }
+                    );
                 }
                 history.push((text.clone(), out));
                 requests += 1;
@@ -188,7 +220,8 @@ fn live_mt_answer_eval() {
         totals[0], totals[1], totals[2], totals[3], totals[4], totals[5]
     );
     first_tokens.sort_by(f64::total_cmp);
-    let at = |p: f64| -> f64 { first_tokens[((first_tokens.len() as f64 - 1.0) * p).round() as usize] };
+    let at =
+        |p: f64| -> f64 { first_tokens[((first_tokens.len() as f64 - 1.0) * p).round() as usize] };
     println!(
         "time to first token ms (first attempts): p50 {:.0}, p95 {:.0}, max {:.0}",
         at(0.5),

@@ -27,7 +27,10 @@ pub struct HostTimeMap {
 impl HostTimeMap {
     /// Calibrate from a host time (nanoseconds) and a pipeline time read together.
     pub fn new(host_now_ns: u64, mono_now: MonoTime) -> Self {
-        Self { host_ref_ns: host_now_ns, mono_ref: mono_now }
+        Self {
+            host_ref_ns: host_now_ns,
+            mono_ref: mono_now,
+        }
     }
 
     /// The pipeline time of a host time, or `None` when it falls before the
@@ -53,7 +56,12 @@ pub struct FrameStamper {
 impl FrameStamper {
     /// A stamper using `map`, believing mapped times within [`MAX_SKEW`] of the read time.
     pub fn new(map: HostTimeMap) -> Self {
-        Self { map, max_skew: MAX_SKEW, last: MonoTime::ZERO, fallbacks: 0 }
+        Self {
+            map,
+            max_skew: MAX_SKEW,
+            last: MonoTime::ZERO,
+            fallbacks: 0,
+        }
     }
 
     /// Frames stamped with the read time because the capture time was missing or implausible.
@@ -63,9 +71,17 @@ impl FrameStamper {
 
     /// The stamp for a frame captured at `host_ns` (0 = unknown) and read at `now`.
     pub fn stamp(&mut self, host_ns: u64, now: MonoTime) -> MonoTime {
-        let mapped = if host_ns == 0 { None } else { self.map.to_mono(host_ns) };
+        let mapped = if host_ns == 0 {
+            None
+        } else {
+            self.map.to_mono(host_ns)
+        };
         let believed = mapped.filter(|m| {
-            let skew = if *m >= now { m.saturating_since(now) } else { now.saturating_since(*m) };
+            let skew = if *m >= now {
+                m.saturating_since(now)
+            } else {
+                now.saturating_since(*m)
+            };
             skew <= self.max_skew
         });
         let stamp = match believed {
@@ -117,7 +133,10 @@ mod tests {
         let mut s = stamper();
         let first = s.stamp(6_200_000_000, ms(1_300));
         let second = s.stamp(6_200_000_000 + 21_333_333, ms(1_300));
-        assert_eq!(second.saturating_since(first), Duration::from_nanos(21_333_333));
+        assert_eq!(
+            second.saturating_since(first),
+            Duration::from_nanos(21_333_333)
+        );
     }
 
     #[test]

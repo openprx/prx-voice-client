@@ -111,12 +111,12 @@ impl Resolver<'_> {
             return Err(vec![ProblemKind::VoiceProfileNotSet]);
         }
         let for_language = format!("{configured}-{}", lang.code());
-        let profile_id = if plain_id(&for_language) && self.dirs.profiles.join(&for_language).is_dir()
-        {
-            for_language
-        } else {
-            configured
-        };
+        let profile_id =
+            if plain_id(&for_language) && self.dirs.profiles.join(&for_language).is_dir() {
+                for_language
+            } else {
+                configured
+            };
         let dir = self.dirs.profiles.join(&profile_id);
         let missing = || {
             vec![ProblemKind::VoiceProfileMissing {
@@ -276,7 +276,11 @@ impl Resolver<'_> {
                         detail: format!("preset.json: {e}"),
                     }]
                 })?;
-                let declared = file.language.as_deref().map(str::trim).filter(|l| !l.is_empty());
+                let declared = file
+                    .language
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty());
                 if declared.is_some_and(|l| Lang::from_str(l).ok() != Some(lang)) {
                     return Err(vec![ProblemKind::VoicePresetLanguage {
                         preset: name.to_owned(),

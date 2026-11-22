@@ -53,11 +53,16 @@ impl AssistantPlayer {
         }
         let sequence_no = self.sequence_no;
         self.sequence_no += 1;
-        let frame = AudioFrame::new(chunk.samples.clone(), chunk.rate, self.clock.now(), sequence_no)
-            .map_err(|e| AudioError::FormatMismatch {
-                expected: "non-empty finite samples".to_owned(),
-                got: e.to_string(),
-            })?;
+        let frame = AudioFrame::new(
+            chunk.samples.clone(),
+            chunk.rate,
+            self.clock.now(),
+            sequence_no,
+        )
+        .map_err(|e| AudioError::FormatMismatch {
+            expected: "non-empty finite samples".to_owned(),
+            got: e.to_string(),
+        })?;
         if let Some(output) = self.ensure_output()? {
             // Samples the sink could not queue are counted in its stats.
             output.write(&frame);
@@ -189,7 +194,11 @@ mod tests {
         }
     }
 
-    fn player() -> (AssistantPlayer, Arc<parking_lot::Mutex<Spy>>, Arc<parking_lot::Mutex<u32>>) {
+    fn player() -> (
+        AssistantPlayer,
+        Arc<parking_lot::Mutex<Spy>>,
+        Arc<parking_lot::Mutex<u32>>,
+    ) {
         let spy = Arc::new(parking_lot::Mutex::new(Spy::default()));
         let opens = Arc::new(parking_lot::Mutex::new(0u32));
         let (s, o) = (Arc::clone(&spy), Arc::clone(&opens));
@@ -221,7 +230,10 @@ mod tests {
         assert_eq!(spy.frames[1].rate().hz(), 16_000);
         assert_eq!(spy.frames[1].len(), 160);
         assert_eq!(spy.frames[1].seq(), 1);
-        assert!(spy.frames[1].ts() >= f.ts(), "frames carry the clock's time");
+        assert!(
+            spy.frames[1].ts() >= f.ts(),
+            "frames carry the clock's time"
+        );
     }
 
     #[test]

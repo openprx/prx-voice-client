@@ -118,38 +118,14 @@ pub(crate) const EN: &[(&str, &str)] = &[
         "assistant.issue.server_failed",
         "The local language model server could not start or stopped answering. See the reason below.",
     ),
-    (
-        "settings.engine.chip.stopped",
-        "Stopped",
-    ),
-    (
-        "settings.engine.chip.starting",
-        "Starting",
-    ),
-    (
-        "settings.engine.chip.ready",
-        "Ready",
-    ),
-    (
-        "settings.engine.chip.stopping",
-        "Stopping",
-    ),
-    (
-        "settings.engine.chip.failed",
-        "Failed",
-    ),
-    (
-        "settings.engine.chip.checking",
-        "Checking",
-    ),
-    (
-        "settings.engine.chip.pack_missing",
-        "Pack missing",
-    ),
-    (
-        "settings.engine.chip.unavailable",
-        "Unavailable",
-    ),
+    ("settings.engine.chip.stopped", "Stopped"),
+    ("settings.engine.chip.starting", "Starting"),
+    ("settings.engine.chip.ready", "Ready"),
+    ("settings.engine.chip.stopping", "Stopping"),
+    ("settings.engine.chip.failed", "Failed"),
+    ("settings.engine.chip.checking", "Checking"),
+    ("settings.engine.chip.pack_missing", "Pack missing"),
+    ("settings.engine.chip.unavailable", "Unavailable"),
 ];
 
 /// Simplified Chinese strings.
@@ -272,30 +248,12 @@ pub(crate) const ZH_CN: &[(&str, &str)] = &[
         "assistant.issue.server_failed",
         "\u{672c}\u{5730}\u{8bed}\u{8a00}\u{6a21}\u{578b}\u{670d}\u{52a1}\u{65e0}\u{6cd5}\u{542f}\u{52a8}\u{6216}\u{5df2}\u{4e0d}\u{518d}\u{54cd}\u{5e94}\u{3002}\u{8bf7}\u{67e5}\u{770b}\u{4e0b}\u{65b9}\u{7684}\u{539f}\u{56e0}\u{3002}",
     ),
-    (
-        "settings.engine.chip.stopped",
-        "\u{5df2}\u{505c}\u{6b62}",
-    ),
-    (
-        "settings.engine.chip.starting",
-        "\u{542f}\u{52a8}\u{4e2d}",
-    ),
-    (
-        "settings.engine.chip.ready",
-        "\u{5c31}\u{7eea}",
-    ),
-    (
-        "settings.engine.chip.stopping",
-        "\u{505c}\u{6b62}\u{4e2d}",
-    ),
-    (
-        "settings.engine.chip.failed",
-        "\u{5931}\u{8d25}",
-    ),
-    (
-        "settings.engine.chip.checking",
-        "\u{68c0}\u{67e5}\u{4e2d}",
-    ),
+    ("settings.engine.chip.stopped", "\u{5df2}\u{505c}\u{6b62}"),
+    ("settings.engine.chip.starting", "\u{542f}\u{52a8}\u{4e2d}"),
+    ("settings.engine.chip.ready", "\u{5c31}\u{7eea}"),
+    ("settings.engine.chip.stopping", "\u{505c}\u{6b62}\u{4e2d}"),
+    ("settings.engine.chip.failed", "\u{5931}\u{8d25}"),
+    ("settings.engine.chip.checking", "\u{68c0}\u{67e5}\u{4e2d}"),
     (
         "settings.engine.chip.pack_missing",
         "\u{7f3a}\u{5c11}\u{8bed}\u{8a00}\u{5305}",

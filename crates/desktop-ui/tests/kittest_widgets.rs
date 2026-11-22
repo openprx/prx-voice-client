@@ -32,12 +32,17 @@ fn switch_toggles_by_label() {
     harness.run();
 
     let switch = harness.get_by_role_and_label(Role::Switch, ROW_LABEL);
-    assert_eq!(switch.accesskit_node().toggled(), Some(accesskit_toggled(false)));
+    assert_eq!(
+        switch.accesskit_node().toggled(),
+        Some(accesskit_toggled(false))
+    );
     switch.click();
     harness.run();
     assert!(harness.state().on, "the switch must turn on");
 
-    harness.get_by_role_and_label(Role::Switch, ROW_LABEL).click();
+    harness
+        .get_by_role_and_label(Role::Switch, ROW_LABEL)
+        .click();
     harness.run();
     assert!(!harness.state().on, "the switch must turn off again");
 }
@@ -56,7 +61,9 @@ fn button_activates_by_label_and_by_keyboard() {
     );
     harness.run();
 
-    harness.get_by_role_and_label(Role::Button, "Save changes").click();
+    harness
+        .get_by_role_and_label(Role::Button, "Save changes")
+        .click();
     harness.run();
     assert_eq!(harness.state().clicks, 1);
 
@@ -64,7 +71,11 @@ fn button_activates_by_label_and_by_keyboard() {
     harness.run();
     harness.key_press(egui::Key::Enter);
     harness.run();
-    assert_eq!(harness.state().clicks, 2, "Enter activates the focused button");
+    assert_eq!(
+        harness.state().clicks,
+        2,
+        "Enter activates the focused button"
+    );
 }
 
 #[test]
@@ -81,11 +92,15 @@ fn segmented_control_selects_the_clicked_segment() {
     );
     harness.run();
 
-    harness.get_by_role_and_label(Role::RadioButton, "Dark").click();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Dark")
+        .click();
     harness.run();
     assert_eq!(harness.state().selected, 1);
 
-    harness.get_by_role_and_label(Role::RadioButton, "Light").click();
+    harness
+        .get_by_role_and_label(Role::RadioButton, "Light")
+        .click();
     harness.run();
     assert_eq!(harness.state().selected, 0);
 }

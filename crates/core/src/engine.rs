@@ -325,7 +325,9 @@ impl Engine {
     /// session's `auto_play_reply` is on; anything else is discarded so it
     /// cannot pile up in the transport. The caller owns playback.
     pub fn poll_assistant_audio(&mut self) -> Vec<TtsAudioChunk> {
-        let play = self.active_session().is_some_and(|s| s.config.auto_play_reply);
+        let play = self
+            .active_session()
+            .is_some_and(|s| s.config.auto_play_reply);
         let active = self.active_session.map(|id| id.0);
         let mut out = Vec::new();
         while let Some(chunk) = self.transport.poll_audio() {
@@ -372,7 +374,9 @@ impl Engine {
     /// not speaking, e.g. because the reply was interrupted meanwhile.
     pub fn playback_drained(&mut self) {
         self.reply_end_pending = false;
-        let Some(id) = self.active_session else { return };
+        let Some(id) = self.active_session else {
+            return;
+        };
         let speaking = self
             .session_manager
             .get_session(&id)
@@ -446,7 +450,11 @@ impl Engine {
         // Relay what the transport produced, except the SessionCreated for
         // the ID broadcast below.
         while let Some(event) = self.transport.poll_event()? {
-            if event == (Event::SessionCreated { session_id: session_id.0 }) {
+            if event
+                == (Event::SessionCreated {
+                    session_id: session_id.0,
+                })
+            {
                 continue;
             }
             let _ = self.event_tx.broadcast(event);
@@ -553,7 +561,10 @@ impl Engine {
         let Some(session) = self.active_session() else {
             return Ok(false);
         };
-        if !matches!(session.state, SessionState::Thinking | SessionState::Recognizing) {
+        if !matches!(
+            session.state,
+            SessionState::Thinking | SessionState::Recognizing
+        ) {
             return Ok(false);
         }
         let session_id = session.id.0;
@@ -565,9 +576,16 @@ impl Engine {
     /// Forward locally recognised text to the server and move the session
     /// through the turn: the user spoke, the speech was recognised, the
     /// reply is awaited.
-    fn handle_send_text(&mut self, session_uuid: uuid::Uuid, text: String) -> Result<(), PrxvcError> {
+    fn handle_send_text(
+        &mut self,
+        session_uuid: uuid::Uuid,
+        text: String,
+    ) -> Result<(), PrxvcError> {
         let session_id = SessionId(session_uuid);
-        let state = self.session_manager.get_session(&session_id).map(|s| s.state);
+        let state = self
+            .session_manager
+            .get_session(&session_id)
+            .map(|s| s.state);
 
         // Speaking over the assistant cuts it off first.
         if state == Some(SessionState::AssistantSpeaking) {
@@ -579,7 +597,10 @@ impl Engine {
             text,
         })?;
 
-        let state = self.session_manager.get_session(&session_id).map(|s| s.state);
+        let state = self
+            .session_manager
+            .get_session(&session_id)
+            .map(|s| s.state);
         if let Some(path) = state.and_then(send_text_path) {
             let mut sink = Vec::new();
             self.try_transition_sequence(&session_id, path, &mut sink);
@@ -600,16 +621,24 @@ impl Engine {
     /// interrupted reply, repeats) are ignored rather than forced.
     fn apply_turn_event(&mut self, event: &Event, broadcast_events: &mut Vec<Event>) {
         let (session_uuid, kind) = match event {
-            Event::FinalTranscriptProduced { session_id, .. } => (*session_id, TurnEvent::FinalTranscript),
+            Event::FinalTranscriptProduced { session_id, .. } => {
+                (*session_id, TurnEvent::FinalTranscript)
+            }
             Event::AssistantReplyStarted { session_id } => (*session_id, TurnEvent::ReplyStarted),
             Event::PlaybackCompleted { session_id } => (*session_id, TurnEvent::ReplyEnded),
             _ => return,
         };
-        let Some(active_id) = self.active_session else { return };
+        let Some(active_id) = self.active_session else {
+            return;
+        };
         if SessionId(session_uuid) != active_id {
             return;
         }
-        let Some(state) = self.session_manager.get_session(&active_id).map(|s| s.state) else {
+        let Some(state) = self
+            .session_manager
+            .get_session(&active_id)
+            .map(|s| s.state)
+        else {
             return;
         };
 
@@ -619,7 +648,11 @@ impl Engine {
             }
             TurnEvent::ReplyEnded => {
                 if state == SessionState::AssistantSpeaking {
-                    self.try_transition_sequence(&active_id, &[SessionState::Listening], broadcast_events);
+                    self.try_transition_sequence(
+                        &active_id,
+                        &[SessionState::Listening],
+                        broadcast_events,
+                    );
                 }
             }
             _ => match turn_path(state, kind) {
@@ -776,7 +809,9 @@ fn turn_path(state: SessionState, kind: TurnEvent) -> Option<&'static [SessionSt
     use SessionState::*;
     match (kind, state) {
         // Server-side recognition of speech the client streamed.
-        (TurnEvent::FinalTranscript, Listening) => Some(&[UserSpeaking, UserSpeechEnded, Recognizing]),
+        (TurnEvent::FinalTranscript, Listening) => {
+            Some(&[UserSpeaking, UserSpeechEnded, Recognizing])
+        }
         // The reply starts speaking once the client is waiting for it.
         (TurnEvent::ReplyStarted, Recognizing) => Some(&[Thinking, AssistantSpeaking]),
         (TurnEvent::ReplyStarted, Thinking) => Some(&[AssistantSpeaking]),
@@ -791,7 +826,13 @@ fn send_text_path(state: SessionState) -> Option<&'static [SessionState]> {
     use SessionState::*;
     match state {
         Listening => Some(&[UserSpeaking, UserSpeechEnded, Recognizing, Thinking]),
-        Thinking => Some(&[Listening, UserSpeaking, UserSpeechEnded, Recognizing, Thinking]),
+        Thinking => Some(&[
+            Listening,
+            UserSpeaking,
+            UserSpeechEnded,
+            Recognizing,
+            Thinking,
+        ]),
         _ => None,
     }
 }
@@ -1273,7 +1314,9 @@ mod tests {
     #[test]
     fn test_create_session_hands_the_engine_id_to_the_transport() {
         let mut engine = stub_engine();
-        engine.process_command(Command::CreateSession).expect("create");
+        engine
+            .process_command(Command::CreateSession)
+            .expect("create");
         let id = engine.active_session_id().expect("active").0;
         assert_eq!(stub(&mut engine).created, vec![id]);
     }
@@ -1333,7 +1376,11 @@ mod tests {
         for _ in 0..3 {
             assert!(engine.poll_transport_events().expect("quiet").is_empty());
         }
-        assert_eq!(stub(&mut engine).connect_calls, calls, "no further attempts");
+        assert_eq!(
+            stub(&mut engine).connect_calls,
+            calls,
+            "no further attempts"
+        );
 
         // A manual retry that succeeds re-arms automatic reconnection.
         stub(&mut engine).connect_ok = true;
@@ -1388,7 +1435,9 @@ mod tests {
         let (event_tx, rx) = event_channel(256);
         let mut engine = Engine::new(Box::new(StubTransport::new()), event_tx);
         engine.set_external_playback(true);
-        engine.process_command(Command::CreateSession).expect("create");
+        engine
+            .process_command(Command::CreateSession)
+            .expect("create");
         let id = engine.active_session_id().expect("active").0;
         engine
             .process_command(Command::StartSession { session_id: id })
@@ -1404,7 +1453,9 @@ mod tests {
             .expect("runtime");
         let mut out = Vec::new();
         rt.block_on(async {
-            while let Ok(Ok(event)) = tokio::time::timeout(Duration::from_millis(5), rx.recv()).await {
+            while let Ok(Ok(event)) =
+                tokio::time::timeout(Duration::from_millis(5), rx.recv()).await
+            {
                 match event {
                     Event::SessionStateChanged { to, .. } => out.push(to),
                     Event::ErrorOccurred { code, .. } => out.push(format!("error:{code}")),
@@ -1421,7 +1472,10 @@ mod tests {
 
     fn send_text(engine: &mut Engine, id: uuid::Uuid, text: &str) {
         engine
-            .process_command(Command::SendText { session_id: id, text: text.into() })
+            .process_command(Command::SendText {
+                session_id: id,
+                text: text.into(),
+            })
             .expect("send text");
     }
 
@@ -1433,9 +1487,19 @@ mod tests {
 
     fn spoken_reply(id: uuid::Uuid) -> Vec<Event> {
         vec![
-            Event::SessionStateChanged { session_id: id, from: String::new(), to: "Thinking".into() },
-            Event::AssistantReplyTextDelta { session_id: id, delta: "Hello".into() },
-            Event::AssistantReplyTextDelta { session_id: id, delta: " there".into() },
+            Event::SessionStateChanged {
+                session_id: id,
+                from: String::new(),
+                to: "Thinking".into(),
+            },
+            Event::AssistantReplyTextDelta {
+                session_id: id,
+                delta: "Hello".into(),
+            },
+            Event::AssistantReplyTextDelta {
+                session_id: id,
+                delta: " there".into(),
+            },
             Event::AssistantReplyStarted { session_id: id },
             Event::PlaybackCompleted { session_id: id },
         ]
@@ -1493,8 +1557,14 @@ mod tests {
             assert_eq!(state_of(&engine), SessionState::Listening);
         }
         let states = drain_states(&mut rx);
-        assert!(!states.iter().any(|s| s.starts_with("error:")), "{states:?}");
-        assert_eq!(states.iter().filter(|s| *s == "AssistantSpeaking").count(), 2);
+        assert!(
+            !states.iter().any(|s| s.starts_with("error:")),
+            "{states:?}"
+        );
+        assert_eq!(
+            states.iter().filter(|s| *s == "AssistantSpeaking").count(),
+            2
+        );
     }
 
     #[test]
@@ -1505,13 +1575,19 @@ mod tests {
         send_text(&mut engine, id, "first part");
         assert_eq!(state_of(&engine), SessionState::Thinking);
         assert!(engine.cancel_pending_reply().expect("cancel"));
-        assert!(stub(&mut engine).sent.contains(&Command::InterruptPlayback { session_id: id }));
+        assert!(
+            stub(&mut engine)
+                .sent
+                .contains(&Command::InterruptPlayback { session_id: id })
+        );
         // The state is untouched and the replacement turn is accepted.
         assert_eq!(state_of(&engine), SessionState::Thinking);
         send_text(&mut engine, id, "first part and second part");
         assert_eq!(state_of(&engine), SessionState::Thinking);
         // Speaking: the playback interrupt is the way, not this.
-        stub(&mut engine).events.push_back(Event::AssistantReplyStarted { session_id: id });
+        stub(&mut engine)
+            .events
+            .push_back(Event::AssistantReplyStarted { session_id: id });
         engine.poll_transport_events().expect("poll");
         assert!(!engine.cancel_pending_reply().expect("cancel"));
     }
@@ -1520,7 +1596,9 @@ mod tests {
     fn test_interrupt_during_speaking_returns_to_listening() {
         let (mut engine, id, mut rx) = live_engine();
         send_text(&mut engine, id, "tell me a story");
-        stub(&mut engine).events.push_back(Event::AssistantReplyStarted { session_id: id });
+        stub(&mut engine)
+            .events
+            .push_back(Event::AssistantReplyStarted { session_id: id });
         engine.poll_transport_events().expect("poll");
         assert_eq!(state_of(&engine), SessionState::AssistantSpeaking);
 
@@ -1528,16 +1606,25 @@ mod tests {
             .process_command(Command::InterruptPlayback { session_id: id })
             .expect("interrupt");
         assert_eq!(state_of(&engine), SessionState::Listening);
-        assert!(stub(&mut engine).sent.contains(&Command::InterruptPlayback { session_id: id }));
+        assert!(
+            stub(&mut engine)
+                .sent
+                .contains(&Command::InterruptPlayback { session_id: id })
+        );
 
         // The interrupted reply's late tts_end must not disturb anything.
-        stub(&mut engine).events.push_back(Event::PlaybackCompleted { session_id: id });
+        stub(&mut engine)
+            .events
+            .push_back(Event::PlaybackCompleted { session_id: id });
         engine.poll_transport_events().expect("poll");
         engine.playback_drained();
         assert_eq!(state_of(&engine), SessionState::Listening);
 
         let states = drain_states(&mut rx);
-        assert!(!states.iter().any(|s| s.starts_with("error:")), "{states:?}");
+        assert!(
+            !states.iter().any(|s| s.starts_with("error:")),
+            "{states:?}"
+        );
         assert!(states.contains(&"Interrupted".to_owned()));
     }
 
@@ -1545,20 +1632,30 @@ mod tests {
     fn test_speaking_over_the_assistant_interrupts_it_first() {
         let (mut engine, id, mut rx) = live_engine();
         send_text(&mut engine, id, "first");
-        stub(&mut engine).events.push_back(Event::AssistantReplyStarted { session_id: id });
+        stub(&mut engine)
+            .events
+            .push_back(Event::AssistantReplyStarted { session_id: id });
         engine.poll_transport_events().expect("poll");
         assert_eq!(state_of(&engine), SessionState::AssistantSpeaking);
 
         send_text(&mut engine, id, "second");
         assert_eq!(state_of(&engine), SessionState::Thinking);
         let sent = stub(&mut engine).sent.clone();
-        let interrupt_at = sent.iter().position(|c| matches!(c, Command::InterruptPlayback { .. }));
+        let interrupt_at = sent
+            .iter()
+            .position(|c| matches!(c, Command::InterruptPlayback { .. }));
         let second_at = sent
             .iter()
             .position(|c| matches!(c, Command::SendText { text, .. } if text == "second"));
-        assert!(interrupt_at.is_some() && interrupt_at < second_at, "{sent:?}");
+        assert!(
+            interrupt_at.is_some() && interrupt_at < second_at,
+            "{sent:?}"
+        );
         let states = drain_states(&mut rx);
-        assert!(!states.iter().any(|s| s.starts_with("error:")), "{states:?}");
+        assert!(
+            !states.iter().any(|s| s.starts_with("error:")),
+            "{states:?}"
+        );
     }
 
     #[test]
@@ -1569,7 +1666,10 @@ mod tests {
         send_text(&mut engine, id, "second");
         assert_eq!(state_of(&engine), SessionState::Thinking);
         let states = drain_states(&mut rx);
-        assert!(!states.iter().any(|s| s.starts_with("error:")), "{states:?}");
+        assert!(
+            !states.iter().any(|s| s.starts_with("error:")),
+            "{states:?}"
+        );
     }
 
     #[test]

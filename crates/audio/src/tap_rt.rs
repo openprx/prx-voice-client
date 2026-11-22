@@ -24,14 +24,20 @@ pub(crate) fn slot_time_ns(host_ns: u64, start_frames: usize, sample_rate: u32) 
     if host_ns == 0 {
         return 0;
     }
-    let offset = (start_frames as u64).saturating_mul(NANOS_PER_SECOND) / u64::from(sample_rate.max(1));
+    let offset =
+        (start_frames as u64).saturating_mul(NANOS_PER_SECOND) / u64::from(sample_rate.max(1));
     host_ns.saturating_add(offset)
 }
 
 /// IO callback registered with the native shim. Runs on the Core Audio HAL
 /// thread (CS-4.1.1); `host_time_ns` is the capture time of the cycle's first
 /// frame on the Core Audio host clock, 0 if unknown.
-pub(crate) extern "C" fn on_buffers(ctx: *mut c_void, count: u32, buffers: *const RawTapBuffer, host_time_ns: u64) {
+pub(crate) extern "C" fn on_buffers(
+    ctx: *mut c_void,
+    count: u32,
+    buffers: *const RawTapBuffer,
+    host_time_ns: u64,
+) {
     if ctx.is_null() || buffers.is_null() || count == 0 {
         return;
     }
@@ -60,13 +66,20 @@ fn deliver(ctx: &TapCtx, producer: &mut RingProducer, raw: &[RawTapBuffer], host
     };
     let mut views = [InputBuffer::EMPTY; MAX_BUFFERS];
     for (view, b) in views.iter_mut().zip(raw) {
-        if b.data.is_null() || !(b.data as usize).is_multiple_of(std::mem::align_of::<f32>()) || !b.byte_size.is_multiple_of(4) {
+        if b.data.is_null()
+            || !(b.data as usize).is_multiple_of(std::mem::align_of::<f32>())
+            || !b.byte_size.is_multiple_of(4)
+        {
             counters.bad_buffers.fetch_add(1, Ordering::Relaxed);
             return;
         }
         // SAFETY: non-null, 4-byte aligned, `byte_size` bytes valid for this call.
-        let samples = unsafe { std::slice::from_raw_parts(b.data as *const f32, (b.byte_size / 4) as usize) };
-        *view = InputBuffer { channels: b.channels, samples };
+        let samples =
+            unsafe { std::slice::from_raw_parts(b.data as *const f32, (b.byte_size / 4) as usize) };
+        *view = InputBuffer {
+            channels: b.channels,
+            samples,
+        };
     }
     let views = &views[..raw.len()];
     let Some(frames) = layout.frames_in(views) else {
@@ -91,7 +104,9 @@ fn deliver(ctx: &TapCtx, producer: &mut RingProducer, raw: &[RawTapBuffer], host
         if !queued {
             // Ring full: the consumer fell behind. Drop the rest and count it.
             counters.overrun_slots.fetch_add(1, Ordering::Relaxed);
-            counters.overrun_frames.fetch_add((frames - start) as u64, Ordering::Relaxed);
+            counters
+                .overrun_frames
+                .fetch_add((frames - start) as u64, Ordering::Relaxed);
             return;
         }
         start += take;

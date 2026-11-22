@@ -45,11 +45,11 @@ pub use tokio_util::sync::CancellationToken;
 pub use asr::{
     AsrContext, AsrError, AsrHypothesis, AsrStream, RefineAsr, SegmentEnd, StreamingAsr,
 };
-pub use dialogue::{
-    ConversationId, DialogueBackend, DialogueDelta, DialogueError, DialogueMessage, DialogueRequest,
-    DialogueRole, DialogueStream,
-};
 pub use descriptor::{CapabilityError, Egress, ProviderDescriptor, ProviderId, StreamingKind};
+pub use dialogue::{
+    ConversationId, DialogueBackend, DialogueDelta, DialogueError, DialogueMessage,
+    DialogueRequest, DialogueRole, DialogueStream,
+};
 pub use endpoint::{
     AudioSink, AudioSource, EndpointError, EndpointHealth, SinkInfo, SourceInfo, WriteOutcome,
 };

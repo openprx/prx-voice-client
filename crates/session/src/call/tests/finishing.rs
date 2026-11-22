@@ -34,13 +34,29 @@ fn stop_with_a_sentence_in_flight_waits_for_it_and_plays_it_to_the_end() {
     assert!(s.finishing_s.is_some(), "the snapshot says it is finishing");
     assert_eq!(s.state, CallState::Translating, "the call does not end yet");
     let first = clause(Direction::Outgoing, 1, 0);
-    rig.until_world("the open sentence was committed, translated and handed to the lane", |w| {
-        w.played("outgoing").contains(&Played::End(first))
-    });
-    assert!(!rig.world.played("outgoing").contains(&Played::Flush), "nothing was cut");
+    rig.until_world(
+        "the open sentence was committed, translated and handed to the lane",
+        |w| w.played("outgoing").contains(&Played::End(first)),
+    );
+    assert!(
+        !rig.world.played("outgoing").contains(&Played::Flush),
+        "nothing was cut"
+    );
     // The mixer plays it; then the call ends by itself.
-    rig.world.report_playback("outgoing", PlaybackReport::Started { clause: first, at: prxvc_media::Clock::now(&rig.clock) });
-    rig.world.report_playback("outgoing", PlaybackReport::Finished { clause: first, at: prxvc_media::Clock::now(&rig.clock) });
+    rig.world.report_playback(
+        "outgoing",
+        PlaybackReport::Started {
+            clause: first,
+            at: prxvc_media::Clock::now(&rig.clock),
+        },
+    );
+    rig.world.report_playback(
+        "outgoing",
+        PlaybackReport::Finished {
+            clause: first,
+            at: prxvc_media::Clock::now(&rig.clock),
+        },
+    );
     for _ in 0..40 {
         rig.tick_after(1);
         if rig.last().state == CallState::Idle {
@@ -60,7 +76,9 @@ fn the_limit_ends_a_stop_that_would_wait_for_ever() {
     say_without_pause(&rig);
     rig.stop();
     let first = clause(Direction::Outgoing, 1, 0);
-    rig.until_world("handed to the lane", |w| w.played("outgoing").contains(&Played::End(first)));
+    rig.until_world("handed to the lane", |w| {
+        w.played("outgoing").contains(&Played::End(first))
+    });
     // Playback is never reported as finished: the limit ends the stop.
     rig.tick_after(1);
     assert!(rig.last().finishing_s.is_some());
@@ -94,7 +112,11 @@ fn without_a_grace_period_or_a_translation_stop_acts_at_once() {
     });
     rig.start();
     rig.stop();
-    assert_eq!(rig.last().state, CallState::Idle, "audio only has nothing to finish");
+    assert_eq!(
+        rig.last().state,
+        CallState::Idle,
+        "audio only has nothing to finish"
+    );
 }
 
 #[test]

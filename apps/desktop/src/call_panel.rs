@@ -1,21 +1,21 @@
 //! Maps the coordinator's snapshot into the debug control's view model: enums, stable i18n keys for issues, numbers for levels and counters.
 
+use prxvc_desktop_ui::call_view::IssueAction;
 use prxvc_desktop_ui::call_view::{
     CaptionFlag, CaptionView, ClauseStatus, CountersView, LatencyView, NoticeState, NoticeView,
     PartialView, SkipView,
 };
-use prxvc_desktop_ui::call_view::IssueAction;
 use prxvc_desktop_ui::{
     ActivityView, CallPanel, CallPhase, Heard, IssueSeverity, IssueView, LaneView,
 };
 use prxvc_media::Direction;
 use prxvc_ports::MtFlag;
 use prxvc_session::ClauseState;
-use prxvc_session::pipeline::SkipReason;
 use prxvc_session::call::{
     ActivityJudgement, CallErrorCode, CallIssue, CallSnapshot, DirectionSnapshot,
     DisclosureSnapshot, DisclosureState, ProviderIssue, Severity,
 };
+use prxvc_session::pipeline::SkipReason;
 use prxvc_session::{CallState, OutputSource};
 
 use crate::call_kit::trace::{LastClause, TraceSlot};
@@ -167,7 +167,9 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
     }
     if let Some(p) = &d.pipeline {
         view.translating = true;
-        view.languages = d.languages.map(|(a, b)| (a.code().to_owned(), b.code().to_owned()));
+        view.languages = d
+            .languages
+            .map(|(a, b)| (a.code().to_owned(), b.code().to_owned()));
         view.partial = p.partial.as_ref().map(|x| PartialView {
             utterance: x.segment.seq(),
             text: x.text.clone(),
@@ -490,8 +492,10 @@ mod tests {
 
     #[test]
     fn a_translating_direction_shows_captions_counters_languages_and_the_last_latency() {
-        use prxvc_session::pipeline::{ClauseSnapshot, Counters, DirectionSnapshot as Pipe, PartialSnapshot};
         use prxvc_media::{ClauseId, Lang, SegmentId};
+        use prxvc_session::pipeline::{
+            ClauseSnapshot, Counters, DirectionSnapshot as Pipe, PartialSnapshot,
+        };
         let seg = SegmentId::first(Direction::Outgoing);
         let pipe = Pipe {
             version: 1,
@@ -500,7 +504,12 @@ mod tests {
             reasons: Default::default(),
             output: OutputSource::Translation,
             activity: prxvc_session::Activity::Recognizing,
-            partial: Some(PartialSnapshot { segment: seg, revision: 2, text: "你好吗".into(), stable_prefix_len: 3 }),
+            partial: Some(PartialSnapshot {
+                segment: seg,
+                revision: 2,
+                text: "你好吗".into(),
+                stable_prefix_len: 3,
+            }),
             clauses: vec![ClauseSnapshot {
                 clause: ClauseId::new(seg, 0),
                 state: ClauseState::Translated,
@@ -510,7 +519,11 @@ mod tests {
                 flags: Vec::new(),
                 retried: false,
             }],
-            counters: Counters { late_dropped: 4, forced_cuts: 1, ..Counters::default() },
+            counters: Counters {
+                late_dropped: 4,
+                forced_cuts: 1,
+                ..Counters::default()
+            },
             backlog_ms: 0,
             recent_skips: Vec::new(),
             last_error: None,
@@ -530,6 +543,10 @@ mod tests {
         let c = lane.counters.expect("counters");
         assert_eq!((c.late_dropped, c.forced_cuts), (4, 1));
         assert!(lane.latency.is_none(), "no clause finished yet");
-        assert!(!panel_of(&snapshot(), &TraceSlot::default()).incoming.translating);
+        assert!(
+            !panel_of(&snapshot(), &TraceSlot::default())
+                .incoming
+                .translating
+        );
     }
 }

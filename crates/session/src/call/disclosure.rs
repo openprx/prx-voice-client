@@ -206,7 +206,13 @@ impl Disclosure {
         if let Prep::Ready(chunks) = &inner.prep {
             let chunks = Arc::clone(chunks);
             inner.auto_pending = false;
-            Self::queue(&mut inner, &chunks, playout, self.shared.audible.load(Ordering::SeqCst), false);
+            Self::queue(
+                &mut inner,
+                &chunks,
+                playout,
+                self.shared.audible.load(Ordering::SeqCst),
+                false,
+            );
         }
     }
 
@@ -224,7 +230,13 @@ impl Disclosure {
         if let Prep::Ready(chunks) = &inner.prep {
             let chunks = Arc::clone(chunks);
             inner.auto_pending = false;
-            Self::queue(&mut inner, &chunks, playout, self.shared.audible.load(Ordering::SeqCst), false);
+            Self::queue(
+                &mut inner,
+                &chunks,
+                playout,
+                self.shared.audible.load(Ordering::SeqCst),
+                false,
+            );
         }
     }
 
@@ -235,11 +247,23 @@ impl Disclosure {
             return false;
         };
         let chunks = Arc::clone(chunks);
-        Self::queue(&mut inner, &chunks, playout, self.shared.audible.load(Ordering::SeqCst), true);
+        Self::queue(
+            &mut inner,
+            &chunks,
+            playout,
+            self.shared.audible.load(Ordering::SeqCst),
+            true,
+        );
         true
     }
 
-    fn queue(inner: &mut Inner, chunks: &[PcmChunk], playout: &dyn Playout, audible: bool, manual: bool) {
+    fn queue(
+        inner: &mut Inner,
+        chunks: &[PcmChunk],
+        playout: &dyn Playout,
+        audible: bool,
+        manual: bool,
+    ) {
         let id = clause_of(inner.next);
         inner.next = inner.next.wrapping_add(1);
         for c in chunks {
@@ -253,7 +277,9 @@ impl Disclosure {
     /// A playback report; `true` when it was about the notice (and so is not the pipeline's).
     pub(super) fn report(&self, report: PlaybackReport, clock_now: MonoTime) -> bool {
         let clause = match report {
-            PlaybackReport::Started { clause, .. } | PlaybackReport::Finished { clause, .. } => clause,
+            PlaybackReport::Started { clause, .. } | PlaybackReport::Finished { clause, .. } => {
+                clause
+            }
         };
         if !is_notice(clause) {
             return false;
@@ -325,9 +351,10 @@ impl Disclosure {
             state,
             plays: inner.plays,
             interrupted: inner.interrupted,
-            last_played_s: inner.last_played.zip(began).map(|(at, b)| {
-                u32::try_from(at.saturating_since(b).as_secs()).unwrap_or(u32::MAX)
-            }),
+            last_played_s: inner
+                .last_played
+                .zip(began)
+                .map(|(at, b)| u32::try_from(at.saturating_since(b).as_secs()).unwrap_or(u32::MAX)),
         }
     }
 }
@@ -483,9 +510,16 @@ mod tests {
         started(&d, 0);
         assert!(finished(&d, 0, 5_000));
         d.before_audio(&lane);
-        assert_eq!(lane.chunks.load(Ordering::SeqCst), 2, "the second clause does not repeat it");
+        assert_eq!(
+            lane.chunks.load(Ordering::SeqCst),
+            2,
+            "the second clause does not repeat it"
+        );
         let s = d.snapshot(Some(at(0)));
-        assert_eq!((s.state, s.plays, s.last_played_s), (DisclosureState::Played, 1, Some(5)));
+        assert_eq!(
+            (s.state, s.plays, s.last_played_s),
+            (DisclosureState::Played, 1, Some(5))
+        );
     }
 
     #[test]
@@ -511,7 +545,10 @@ mod tests {
         d.on_speech_start(&lane);
         assert!(began.elapsed() < Duration::from_secs(1), "no waiting");
         assert!(lane.log.lock().is_empty());
-        assert!(d.shared.inner.lock().auto_pending, "it is still owed before the first audio");
+        assert!(
+            d.shared.inner.lock().auto_pending,
+            "it is still owed before the first audio"
+        );
     }
 
     #[test]
@@ -570,7 +607,11 @@ mod tests {
         assert_eq!(lane.log.lock().last().map(String::as_str), Some("end 1"));
         d.flushed();
         d.before_audio(&lane);
-        assert_eq!(lane.chunks.load(Ordering::SeqCst), 2, "a cut repeat is not automatic");
+        assert_eq!(
+            lane.chunks.load(Ordering::SeqCst),
+            2,
+            "a cut repeat is not automatic"
+        );
     }
 
     #[test]
@@ -588,6 +629,12 @@ mod tests {
         let d = Disclosure::ready(vec![chunk()]);
         let real = ClauseId::new(SegmentId::first(Direction::Outgoing), 0);
         assert!(!is_notice(real));
-        assert!(!d.report(PlaybackReport::Started { clause: real, at: at(1) }, at(1)));
+        assert!(!d.report(
+            PlaybackReport::Started {
+                clause: real,
+                at: at(1)
+            },
+            at(1)
+        ));
     }
 }

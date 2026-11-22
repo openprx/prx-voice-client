@@ -44,7 +44,12 @@ fn commit_for_refine(h: &mut Harness, text: &str) {
         reason: CommitReason::ClausePause,
         continues: false,
     };
-    let e = Envelope::new(seg(1), 1, MonoTime::from_millis(100), RecognitionEvent::Commit(c));
+    let e = Envelope::new(
+        seg(1),
+        1,
+        MonoTime::from_millis(100),
+        RecognitionEvent::Commit(c),
+    );
     h.core.handle(Inbound::Recognition(e));
 }
 
@@ -78,10 +83,22 @@ fn a_late_final_after_the_segment_ended_is_translated_and_never_switches_to_the_
     end_segment(&mut h, 1);
     // The refine pass answers after the pause that ended the segment.
     let id = cl(1, 0);
-    h.stage(id, StageEvent::Refined { clause: id, result: Ok(IN_TARGET.to_owned()) });
-    assert!(passthroughs(&h.drain()).is_empty(), "nothing would switch it back");
+    h.stage(
+        id,
+        StageEvent::Refined {
+            clause: id,
+            result: Ok(IN_TARGET.to_owned()),
+        },
+    );
+    assert!(
+        passthroughs(&h.drain()).is_empty(),
+        "nothing would switch it back"
+    );
     assert_eq!(h.snapshot().counters.in_target_passed, 0);
-    assert!(h.w.mt_in.try_pop().is_some(), "the content is translated, not lost");
+    assert!(
+        h.w.mt_in.try_pop().is_some(),
+        "the content is translated, not lost"
+    );
 }
 
 #[test]
@@ -89,15 +106,28 @@ fn a_late_final_of_a_segment_that_was_passed_through_is_neither_repeated_nor_stu
     let mut h = two_pass();
     h.speech(1);
     hypothesis(&mut h, 1, IN_TARGET);
-    assert_eq!(passthroughs(&h.drain()), [true], "the draft starts the pass-through");
+    assert_eq!(
+        passthroughs(&h.drain()),
+        [true],
+        "the draft starts the pass-through"
+    );
     commit_for_refine(&mut h, "ok");
     end_segment(&mut h, 1);
     assert_eq!(passthroughs(&h.drain()), [false]);
     let id = cl(1, 0);
     // Refined text arrives late, still in the target language: skipped, no second pass-through.
-    h.stage(id, StageEvent::Refined { clause: id, result: Ok(IN_TARGET.to_owned()) });
+    h.stage(
+        id,
+        StageEvent::Refined {
+            clause: id,
+            result: Ok(IN_TARGET.to_owned()),
+        },
+    );
     assert!(passthroughs(&h.drain()).is_empty());
-    assert!(h.w.mt_in.try_pop().is_none(), "the listener heard it live; no duplicate");
+    assert!(
+        h.w.mt_in.try_pop().is_none(),
+        "the listener heard it live; no duplicate"
+    );
     assert_eq!(h.snapshot().counters.in_target_passed, 1);
 }
 
@@ -117,7 +147,12 @@ fn a_next_segment_that_needs_translation_does_not_inherit_the_pass_through() {
         reason: CommitReason::ClausePause,
         continues: false,
     };
-    let e = Envelope::new(seg(2), 1, MonoTime::from_millis(100), RecognitionEvent::Commit(c));
+    let e = Envelope::new(
+        seg(2),
+        1,
+        MonoTime::from_millis(100),
+        RecognitionEvent::Commit(c),
+    );
     h.core.handle(Inbound::Recognition(e));
     assert!(!passthroughs(&h.drain()).contains(&true));
     assert!(h.w.mt_in.try_pop().is_some());

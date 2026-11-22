@@ -134,7 +134,12 @@ mod tests {
 
     #[test]
     fn speech_and_reply_states_repaint_every_frame() {
-        for state in ["UserSpeaking", "Recognizing", "Thinking", "AssistantSpeaking"] {
+        for state in [
+            "UserSpeaking",
+            "Recognizing",
+            "Thinking",
+            "AssistantSpeaking",
+        ] {
             assert_eq!(decide(&inputs(state)), Repaint::Now, "{state}");
         }
         assert_eq!(Repaint::Now.max_frames_per_second(60.0), 60.0);
@@ -144,7 +149,10 @@ mod tests {
     #[test]
     fn hidden_orb_without_tool_windows_schedules_nothing() {
         for state in ["Idle", "Listening", "AssistantSpeaking"] {
-            let r = decide(&RepaintInputs { orb_hidden: true, ..inputs(state) });
+            let r = decide(&RepaintInputs {
+                orb_hidden: true,
+                ..inputs(state)
+            });
             assert_eq!(r, Repaint::Never, "{state}");
             assert_eq!(r.max_frames_per_second(60.0), 0.0);
         }
@@ -158,7 +166,10 @@ mod tests {
             ..inputs(state)
         };
         // Visible orb: the faster of the orb and the window wins.
-        assert_eq!(decide(&open("Idle", false)), Repaint::After(IDLE_REPAINT_INTERVAL));
+        assert_eq!(
+            decide(&open("Idle", false)),
+            Repaint::After(IDLE_REPAINT_INTERVAL)
+        );
         assert_eq!(decide(&open("Thinking", false)), Repaint::Now);
         // Hidden orb: only the window's safety net remains.
         let r = decide(&open("Idle", true));
@@ -168,16 +179,25 @@ mod tests {
 
     #[test]
     fn disabled_idle_animation_stops_the_idle_repaints() {
-        let off = RepaintInputs { idle_animation: false, ..inputs("Idle") };
+        let off = RepaintInputs {
+            idle_animation: false,
+            ..inputs("Idle")
+        };
         assert_eq!(decide(&off), Repaint::Never);
         // Active states still animate.
         assert_eq!(
-            decide(&RepaintInputs { idle_animation: false, ..inputs("Thinking") }),
+            decide(&RepaintInputs {
+                idle_animation: false,
+                ..inputs("Thinking")
+            }),
             Repaint::Now
         );
         // A tool window still gets its safety net.
         assert_eq!(
-            decide(&RepaintInputs { tool_window_open: true, ..off }),
+            decide(&RepaintInputs {
+                tool_window_open: true,
+                ..off
+            }),
             Repaint::After(TOOL_WINDOW_REPAINT_INTERVAL)
         );
     }
@@ -188,9 +208,19 @@ mod tests {
         let fps = |i: RepaintInputs<'_>| decide(&i).max_frames_per_second(60.0).round();
         assert_eq!(fps(inputs("Idle")), 30.0);
         assert_eq!(fps(inputs("AssistantSpeaking")), 60.0);
-        assert_eq!(fps(RepaintInputs { orb_hidden: true, ..inputs("Idle") }), 0.0);
         assert_eq!(
-            fps(RepaintInputs { orb_hidden: true, tool_window_open: true, ..inputs("Idle") }),
+            fps(RepaintInputs {
+                orb_hidden: true,
+                ..inputs("Idle")
+            }),
+            0.0
+        );
+        assert_eq!(
+            fps(RepaintInputs {
+                orb_hidden: true,
+                tool_window_open: true,
+                ..inputs("Idle")
+            }),
             10.0
         );
     }

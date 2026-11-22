@@ -4,7 +4,8 @@
 static APP_PATHS: std::sync::OnceLock<prxvc_config::paths::AppPaths> = std::sync::OnceLock::new();
 
 /// What the settings file load reported (unreadable file kept aside, migration, secrets).
-static LOAD_NOTICES: std::sync::OnceLock<Vec<prxvc_config::LoadNotice>> = std::sync::OnceLock::new();
+static LOAD_NOTICES: std::sync::OnceLock<Vec<prxvc_config::LoadNotice>> =
+    std::sync::OnceLock::new();
 
 /// The notices of the start-up load, for the settings window to show.
 pub(crate) fn load_notices() -> &'static [prxvc_config::LoadNotice] {
@@ -46,7 +47,10 @@ fn log_notices(notices: &[prxvc_config::LoadNotice]) {
                 tracing::info!("settings file migrated in memory from schema {from} to {to}");
             }
             LoadNotice::SecretsMoved { entry_ids } => {
-                tracing::info!("moved API keys of {} provider(s) out of the settings file", entry_ids.len());
+                tracing::info!(
+                    "moved API keys of {} provider(s) out of the settings file",
+                    entry_ids.len()
+                );
             }
             LoadNotice::SecretsNotMoved { locations } => tracing::warn!(
                 "API keys found in the settings file could not be moved to a credential store: {}",
@@ -70,7 +74,12 @@ pub(crate) fn initialize_config() -> prxvc_config::AppConfig {
     if let (Some(l), Some(p)) = (&legacy_dirs, &default_paths) {
         log_migration(
             "config and database migration",
-            &legacy::migrate_legacy_config_and_database(&l.config_dir, &l.data_dir, &p.config_dir, &p.data_dir),
+            &legacy::migrate_legacy_config_and_database(
+                &l.config_dir,
+                &l.data_dir,
+                &p.config_dir,
+                &p.data_dir,
+            ),
         );
     }
     let config = match prxvc_config::AppConfigManager::with_default_dir() {

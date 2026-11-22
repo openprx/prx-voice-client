@@ -493,7 +493,12 @@ impl Launcher for SlowLauncher {
             .expect("seen")
             .push(self.shared.snapshot_for_ui().session_state);
         // Three more clicks and an unrelated command while the engines load.
-        for cmd in [command::CREATE, command::START, command::STOP, "ExportDiagnostics"] {
+        for cmd in [
+            command::CREATE,
+            command::START,
+            command::STOP,
+            "ExportDiagnostics",
+        ] {
             self.shared.push_command(cmd);
         }
         Err(Vec::new())
@@ -516,7 +521,11 @@ fn clicks_while_the_assistant_is_starting_are_ignored_and_the_orb_says_it_is_sta
         Box::new(AppConfig::default),
     );
     host.command(command::START);
-    assert_eq!(seen.lock().expect("seen").as_slice(), ["Starting"], "visible from the first click");
+    assert_eq!(
+        seen.lock().expect("seen").as_slice(),
+        ["Starting"],
+        "visible from the first click"
+    );
     assert_eq!(
         shared.take_commands(),
         vec!["ExportDiagnostics".to_owned()],
@@ -524,6 +533,9 @@ fn clicks_while_the_assistant_is_starting_are_ignored_and_the_orb_says_it_is_sta
     );
     // The start failed: the orb is idle again and nothing else is queued.
     let snap = shared.snapshot_for_ui();
-    assert_eq!((snap.session_state.as_str(), snap.session_active), ("Idle", false));
+    assert_eq!(
+        (snap.session_state.as_str(), snap.session_active),
+        ("Idle", false)
+    );
     assert!(!host.is_active());
 }

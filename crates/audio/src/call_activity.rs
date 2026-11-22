@@ -20,7 +20,9 @@ pub mod watcher;
 
 pub use judge::{CallJudgement, judge_call};
 pub use model::{AppAudioActivity, ProcessDevice};
-pub use watcher::{ActivityError, ActivitySource, CallActivityEvent, CallActivityWatcher, WatcherConfig};
+pub use watcher::{
+    ActivityError, ActivitySource, CallActivityEvent, CallActivityWatcher, WatcherConfig,
+};
 
 #[cfg(test)]
 mod tests;

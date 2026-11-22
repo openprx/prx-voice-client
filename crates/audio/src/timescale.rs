@@ -111,7 +111,10 @@ impl TimeScaler {
     }
 
     fn sample(&self, abs: usize) -> f32 {
-        self.buf.get(abs.wrapping_sub(self.origin)).copied().unwrap_or(0.0)
+        self.buf
+            .get(abs.wrapping_sub(self.origin))
+            .copied()
+            .unwrap_or(0.0)
     }
 
     fn input_end(&self) -> usize {
@@ -189,7 +192,10 @@ impl TimeScaler {
             }
             c += COARSE_STEP;
         }
-        let (from, to) = (best.1.saturating_sub(COARSE_STEP - 1).max(lo), (best.1 + COARSE_STEP - 1).min(hi));
+        let (from, to) = (
+            best.1.saturating_sub(COARSE_STEP - 1).max(lo),
+            (best.1 + COARSE_STEP - 1).min(hi),
+        );
         for c in from..=to {
             let s = score(c);
             if s > best.0 {
@@ -258,14 +264,21 @@ mod tests {
     }
 
     fn max_step(x: &[f32]) -> f32 {
-        x.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0, f32::max)
+        x.windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0, f32::max)
     }
 
     #[test]
     fn at_speed_one_the_output_is_the_input() {
         let input = voiced(0.6);
         let out = run(&input, 1.0, 480);
-        assert!(out.len().abs_diff(input.len()) <= 1_100, "{} vs {}", out.len(), input.len());
+        assert!(
+            out.len().abs_diff(input.len()) <= 1_100,
+            "{} vs {}",
+            out.len(),
+            input.len()
+        );
         for (i, (a, b)) in input.iter().zip(&out).enumerate().take(input.len() - 1_100) {
             assert!((a - b).abs() < 1e-4, "sample {i}: {a} vs {b}");
         }
@@ -294,7 +307,12 @@ mod tests {
         let input = voiced(2.0);
         let out = run(&input, 1.25, 700);
         let limit = max_step(&input) * 1.6 + 0.02;
-        assert!(max_step(&out) < limit, "step {} against the input's {}", max_step(&out), max_step(&input));
+        assert!(
+            max_step(&out) < limit,
+            "step {} against the input's {}",
+            max_step(&out),
+            max_step(&input)
+        );
     }
 
     #[test]
@@ -326,7 +344,10 @@ mod tests {
         let out = run(&vec![0.0; 24_000], 1.25, 480);
         assert!(out.iter().all(|s| s.abs() < 1e-6));
         let short = run(&sine(300.0, 0.01), 1.25, 100);
-        assert!(!short.is_empty(), "a stream shorter than a frame still comes out");
+        assert!(
+            !short.is_empty(),
+            "a stream shorter than a frame still comes out"
+        );
         assert!(short.iter().any(|s| s.abs() > 0.1));
         let mut s = TimeScaler::new(RATE);
         let mut out = Vec::new();
@@ -366,7 +387,10 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> u64 {
-            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             self.0 >> 33
         }
         fn below(&mut self, n: u64) -> usize {
@@ -387,13 +411,19 @@ mod tests {
             let mut left = total;
             while left > 0 {
                 let n = (1 + rng.below(9_000)).min(left);
-                let block: Vec<f32> = (0..n).map(|i| 0.4 * ((i + round) as f32 * 0.07).sin()).collect();
+                let block: Vec<f32> = (0..n)
+                    .map(|i| 0.4 * ((i + round) as f32 * 0.07).sin())
+                    .collect();
                 s.process(&block, speed, &mut out);
                 left -= n;
             }
             s.finish(speed, &mut out);
             assert!(s.is_empty());
-            assert!(out.len() <= total + 2_200, "round {round}: {} out of {total}", out.len());
+            assert!(
+                out.len() <= total + 2_200,
+                "round {round}: {} out of {total}",
+                out.len()
+            );
         }
     }
 
@@ -402,7 +432,12 @@ mod tests {
     #[test]
     #[ignore = "a timing measurement for release builds"]
     fn iteration_time() {
-        for (label, ms) in [("one 10 ms block", 10usize), ("a 100 ms chunk", 100), ("a 1 s chunk", 1000), ("a 4 s chunk", 4000)] {
+        for (label, ms) in [
+            ("one 10 ms block", 10usize),
+            ("a 100 ms chunk", 100),
+            ("a 1 s chunk", 1000),
+            ("a 4 s chunk", 4000),
+        ] {
             let input = voiced(ms as f32 / 1000.0);
             let mut worst = std::time::Duration::ZERO;
             let mut total = std::time::Duration::ZERO;

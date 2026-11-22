@@ -60,12 +60,20 @@ pub fn trailing_silence(samples: &[f32], threshold: f32) -> usize {
 impl ShapeConfig {
     /// The silence kept at the start under `pace`.
     pub fn lead(&self, pace: Pace) -> usize {
-        if pace.tight { self.lead_keep / 3 } else { self.lead_keep }
+        if pace.tight {
+            self.lead_keep / 3
+        } else {
+            self.lead_keep
+        }
     }
 
     /// The silence kept at the end under `pace`.
     pub fn trail(&self, pace: Pace) -> usize {
-        if pace.tight { self.trail_keep / 3 } else { self.trail_keep }
+        if pace.tight {
+            self.trail_keep / 3
+        } else {
+            self.trail_keep
+        }
     }
 }
 
@@ -91,8 +99,14 @@ mod tests {
             threshold: 0.01,
             max_speed: 1.25,
         };
-        let tight = Pace { speed: 1.0, tight: true };
-        assert_eq!((c.lead(Pace::default()), c.trail(Pace::default())), (3_000, 6_000));
+        let tight = Pace {
+            speed: 1.0,
+            tight: true,
+        };
+        assert_eq!(
+            (c.lead(Pace::default()), c.trail(Pace::default())),
+            (3_000, 6_000)
+        );
         assert_eq!((c.lead(tight), c.trail(tight)), (1_000, 2_000));
     }
 }

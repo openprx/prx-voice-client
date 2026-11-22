@@ -86,7 +86,9 @@ impl<T: Translator, S: Synthesizer> InterpretDriver<T, S> {
     pub fn process_recognized(&mut self, text: String) -> Result<TurnOutput, DriverError> {
         let started_dir = self.session.current_direction();
 
-        let mut events = self.session.apply(InterpretCommand::RecognitionDone { text: text.clone() })?;
+        let mut events = self
+            .session
+            .apply(InterpretCommand::RecognitionDone { text: text.clone() })?;
 
         // Empty recognition: the machine aborted back to Idle.
         let dir = match self.session.current_direction() {
@@ -113,7 +115,10 @@ impl<T: Translator, S: Synthesizer> InterpretDriver<T, S> {
             text: translated.clone(),
         })?);
 
-        let audio = match self.synthesizer.synthesize(&translated, &target_lang, clone_voice) {
+        let audio = match self
+            .synthesizer
+            .synthesize(&translated, &target_lang, clone_voice)
+        {
             Ok(a) => a,
             Err(e) => return Err(self.fail(e)),
         };
@@ -162,14 +167,19 @@ impl<T: Translator, S: Synthesizer> InterpretDriver<T, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SessionId;
     use crate::adapter::AdapterError;
     use crate::interpret::{InterpretConfig, InterpretState};
-    use crate::SessionId;
 
     /// Echoing translator: tags the text with the target language.
     struct MockTranslator;
     impl Translator for MockTranslator {
-        fn translate(&mut self, text: &str, _src: &str, target: &str) -> Result<String, AdapterError> {
+        fn translate(
+            &mut self,
+            text: &str,
+            _src: &str,
+            target: &str,
+        ) -> Result<String, AdapterError> {
             Ok(format!("[{target}] {text}"))
         }
     }
@@ -177,7 +187,12 @@ mod tests {
     /// Synthesizer that returns one sample per character at 24 kHz.
     struct MockSynth;
     impl Synthesizer for MockSynth {
-        fn synthesize(&mut self, text: &str, _lang: &str, _clone: bool) -> Result<SynthesizedAudio, AdapterError> {
+        fn synthesize(
+            &mut self,
+            text: &str,
+            _lang: &str,
+            _clone: bool,
+        ) -> Result<SynthesizedAudio, AdapterError> {
             Ok(SynthesizedAudio {
                 samples: vec![0.0; text.chars().count()],
                 sample_rate: 24_000,
@@ -193,7 +208,8 @@ mod tests {
     }
 
     fn driver_with<T: Translator, S: Synthesizer>(t: T, s: S) -> InterpretDriver<T, S> {
-        let session = InterpretSession::new(SessionId(uuid::Uuid::nil()), InterpretConfig::default());
+        let session =
+            InterpretSession::new(SessionId(uuid::Uuid::nil()), InterpretConfig::default());
         InterpretDriver::new(session, t, s)
     }
 
@@ -204,7 +220,10 @@ mod tests {
         d.end_utterance().unwrap();
 
         let out = d.process_recognized("hello".into()).unwrap();
-        assert_eq!(d.session().state(), InterpretState::Speaking(Direction::SelfToPeer));
+        assert_eq!(
+            d.session().state(),
+            InterpretState::Speaking(Direction::SelfToPeer)
+        );
         let audio = out.audio.expect("audio");
         assert_eq!(audio.sample_rate, 24_000);
         // MockTranslator yields "[en] hello"; MockSynth makes one sample per char.
@@ -248,7 +267,10 @@ mod tests {
         d.begin_turn(Direction::SelfToPeer).unwrap();
         d.end_utterance().unwrap();
         let err = d.process_recognized("hello".into()).unwrap_err();
-        assert!(matches!(err, DriverError::Adapter(AdapterError::Translation(_))));
+        assert!(matches!(
+            err,
+            DriverError::Adapter(AdapterError::Translation(_))
+        ));
         assert_eq!(d.session().state(), InterpretState::Failed);
         // Recoverable: reset returns to idle.
         d.reset().unwrap();

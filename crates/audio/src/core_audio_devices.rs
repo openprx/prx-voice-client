@@ -56,7 +56,9 @@ fn map_transport(raw: u32) -> InputTransport {
 fn read_string(field: &[c_char; STRING_LEN]) -> String {
     // SAFETY: the shim NUL-terminates every string it writes and the struct is
     // zero-initialised, so the array always contains a terminator.
-    unsafe { CStr::from_ptr(field.as_ptr()) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(field.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Enumerate input-capable devices through Core Audio.
@@ -66,7 +68,9 @@ fn read_string(field: &[c_char; STRING_LEN]) -> String {
 /// device list cannot be read.
 pub fn list_input_devices() -> Result<Vec<InputDevice>, AudioError> {
     // SAFETY: an all-zero `RawInputDevice` is a valid value (integers and char arrays).
-    let mut raw: Vec<RawInputDevice> = (0..MAX_DEVICES).map(|_| unsafe { std::mem::zeroed() }).collect();
+    let mut raw: Vec<RawInputDevice> = (0..MAX_DEVICES)
+        .map(|_| unsafe { std::mem::zeroed() })
+        .collect();
     // SAFETY: `raw` holds `MAX_DEVICES` initialised elements; the shim writes at
     // most `capacity` entries and returns the count or a negative status.
     let n = unsafe { prxvc_list_input_devices(raw.as_mut_ptr(), MAX_DEVICES as i32) };
@@ -94,7 +98,9 @@ pub fn list_input_devices() -> Result<Vec<InputDevice>, AudioError> {
 /// device list cannot be read.
 pub fn list_devices() -> Result<Vec<DeviceEntry>, AudioError> {
     // SAFETY: an all-zero `RawDevice` is a valid value (integers and char arrays).
-    let mut raw: Vec<RawDevice> = (0..MAX_DEVICES).map(|_| unsafe { std::mem::zeroed() }).collect();
+    let mut raw: Vec<RawDevice> = (0..MAX_DEVICES)
+        .map(|_| unsafe { std::mem::zeroed() })
+        .collect();
     // SAFETY: `raw` holds `MAX_DEVICES` initialised elements; the shim writes at
     // most `capacity` entries and returns the count or a negative status.
     let n = unsafe { prxvc_list_devices(raw.as_mut_ptr(), MAX_DEVICES as i32) };
@@ -103,11 +109,7 @@ pub fn list_devices() -> Result<Vec<DeviceEntry>, AudioError> {
             "Core Audio device enumeration failed (status {n})"
         )));
     }
-    Ok(raw
-        .iter()
-        .take(n as usize)
-        .map(entry_of)
-        .collect())
+    Ok(raw.iter().take(n as usize).map(entry_of).collect())
 }
 
 fn entry_of(d: &RawDevice) -> DeviceEntry {

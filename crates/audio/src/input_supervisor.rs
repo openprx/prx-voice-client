@@ -15,8 +15,8 @@ use prxvc_media::AudioFrame;
 use prxvc_ports::AudioSource;
 use uuid::Uuid;
 
-use crate::input_policy::{InputDevice, InputSelector, SelectionReason, SelectionUpdate};
 use crate::AudioError;
+use crate::input_policy::{InputDevice, InputSelector, SelectionReason, SelectionUpdate};
 
 /// How often the device list is re-read while capturing.
 pub const DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -51,7 +51,11 @@ pub trait InputBackend {
     ///
     /// # Errors
     /// The device cannot be opened.
-    fn open(&mut self, session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError>;
+    fn open(
+        &mut self,
+        session_id: Uuid,
+        device: &InputDevice,
+    ) -> Result<Box<dyn AudioSource>, AudioError>;
 }
 
 /// The real backend: Core Audio / cpal enumeration and cpal capture.
@@ -63,7 +67,11 @@ impl InputBackend for PlatformInputBackend {
         crate::input_devices::list_input_devices()
     }
 
-    fn open(&mut self, _session_id: Uuid, device: &InputDevice) -> Result<Box<dyn AudioSource>, AudioError> {
+    fn open(
+        &mut self,
+        _session_id: Uuid,
+        device: &InputDevice,
+    ) -> Result<Box<dyn AudioSource>, AudioError> {
         Ok(Box::new(crate::cpal_input::open(device)?))
     }
 }
@@ -85,7 +93,12 @@ pub struct InputSupervisor<B: InputBackend> {
 impl<B: InputBackend> InputSupervisor<B> {
     /// A supervisor with no capture open. `preference` is the configured
     /// device UID or name; empty follows the policy's default rules.
-    pub fn new(backend: B, session_id: Uuid, preference: &str, events: Sender<AudioLoopEvent>) -> Self {
+    pub fn new(
+        backend: B,
+        session_id: Uuid,
+        preference: &str,
+        events: Sender<AudioLoopEvent>,
+    ) -> Self {
         Self {
             backend,
             selector: InputSelector::new(preference),
@@ -107,9 +120,9 @@ impl<B: InputBackend> InputSupervisor<B> {
         self.last_poll = now;
         let devices = self.backend.list()?;
         match self.selector.update(&devices) {
-            SelectionUpdate::Changed { from, to } => {
-                self.switch(from, to.device, to.reason).inspect_err(|_| self.selector.forget_current())
-            }
+            SelectionUpdate::Changed { from, to } => self
+                .switch(from, to.device, to.reason)
+                .inspect_err(|_| self.selector.forget_current()),
             SelectionUpdate::Lost(e) => Err(AudioError::InputPolicy(e)),
             SelectionUpdate::Unchanged => Ok(()),
         }
@@ -178,7 +191,9 @@ impl<B: InputBackend> InputSupervisor<B> {
     fn close(&mut self) {
         self.pending.clear();
         self.last_read_error = None;
-        let Some(mut mic) = self.mic.take() else { return };
+        let Some(mut mic) = self.mic.take() else {
+            return;
+        };
         mic.stop();
     }
 
@@ -192,7 +207,11 @@ impl<B: InputBackend> InputSupervisor<B> {
         let mut mic = self.backend.open(self.session_id, &device)?;
         mic.start()?;
         self.mic = Some(mic);
-        self.send(AudioLoopEvent::InputOpened { device, reason, previous });
+        self.send(AudioLoopEvent::InputOpened {
+            device,
+            reason,
+            previous,
+        });
         Ok(())
     }
 

@@ -340,8 +340,15 @@ fn continuous_speech_builds_a_backlog_and_the_stale_oldest_clause_is_skipped_vis
     )));
     // The condition ends when what is left is below half the bound.
     h.command(Command::CancelSegment(seg(1)));
-    assert!(!h.snapshot().reasons.contains(&DegradeReason::BacklogSkipping));
-    assert!(h.drain().contains(&PipelineEvent::Recovered(DegradeReason::BacklogSkipping)));
+    assert!(
+        !h.snapshot()
+            .reasons
+            .contains(&DegradeReason::BacklogSkipping)
+    );
+    assert!(
+        h.drain()
+            .contains(&PipelineEvent::Recovered(DegradeReason::BacklogSkipping))
+    );
 }
 
 #[test]
@@ -383,10 +390,11 @@ fn with_skipping_disabled_everything_is_kept_however_late() {
     h.core.on_timer(h.clock.now());
     let snap = h.snapshot();
     assert!(snap.backlog_ms > 15_000);
-    assert!(snap
-        .clauses
-        .iter()
-        .all(|c| c.state == ClauseState::Recognized && c.skipped.is_none()));
+    assert!(
+        snap.clauses
+            .iter()
+            .all(|c| c.state == ClauseState::Recognized && c.skipped.is_none())
+    );
     assert_eq!(snap.counters.skipped, 0);
     assert!(snap.recent_skips.is_empty());
     assert!(!snap.reasons.contains(&DegradeReason::BacklogSkipping));
@@ -698,7 +706,13 @@ fn a_unit_that_continues_its_sentence_reaches_translation_as_such_and_its_outcom
         ContinuationOutcome::Diverged,
         ContinuationOutcome::Empty,
     ] {
-        h.stage(id, StageEvent::MtContinuation { clause: id, outcome });
+        h.stage(
+            id,
+            StageEvent::MtContinuation {
+                clause: id,
+                outcome,
+            },
+        );
     }
     let counters = h.snapshot().counters;
     assert_eq!(
@@ -714,5 +728,5 @@ fn a_unit_that_continues_its_sentence_reaches_translation_as_such_and_its_outcom
 
 mod aging;
 mod figures;
-mod pass_through;
 mod pace;
+mod pass_through;

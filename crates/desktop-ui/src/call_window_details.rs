@@ -103,11 +103,20 @@ fn languages(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut U
         ui.label(widgets::text(&label, size::META, tk.text));
         if editable {
             let width = ui.available_width().min(layout::FIELD_WIDTH);
-            widgets::select_named(ui, tk, salt, width, &label, &options[selected], &options, selected)
-                .map(|i| LANGUAGES[i])
-                // The two languages must differ; a clash is refused.
-                .filter(|l| l.is_empty() || *l != other)
-                .map(str::to_owned)
+            widgets::select_named(
+                ui,
+                tk,
+                salt,
+                width,
+                &label,
+                &options[selected],
+                &options,
+                selected,
+            )
+            .map(|i| LANGUAGES[i])
+            // The two languages must differ; a clash is refused.
+            .filter(|l| l.is_empty() || *l != other)
+            .map(str::to_owned)
         } else {
             small(ui, tk, options[selected].clone());
             None
@@ -145,13 +154,24 @@ fn engine(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel) {
 }
 
 /// The details content.
-pub(crate) fn details(ui: &mut egui::Ui, tk: &Tokens, panel: &CallPanel, settings: &mut UiSettings) {
+pub(crate) fn details(
+    ui: &mut egui::Ui,
+    tk: &Tokens,
+    panel: &CallPanel,
+    settings: &mut UiSettings,
+) {
     ui.spacing_mut().item_spacing.y = space::S4;
     languages(ui, tk, panel, settings);
     engine(ui, tk, panel);
     crate::call_window_notice::switch_row(ui, tk, settings);
     ui.add_space(space::S8);
-    lane(ui, tk, "callwin.lane.out", "call.they_hear", &panel.outgoing);
+    lane(
+        ui,
+        tk,
+        "callwin.lane.out",
+        "call.they_hear",
+        &panel.outgoing,
+    );
     ui.add_space(space::S4);
     lane(ui, tk, "callwin.lane.in", "call.you_hear", &panel.incoming);
     if !panel.issues.is_empty() {
@@ -187,7 +207,10 @@ mod tests {
             assert!(line.contains(n), "{n} in {line}");
         }
         assert_eq!(flags_line(&c), None);
-        c.flags[CaptionFlag::ALL.iter().position(|f| *f == CaptionFlag::Refusal).unwrap()] = 5;
+        c.flags[CaptionFlag::ALL
+            .iter()
+            .position(|f| *f == CaptionFlag::Refusal)
+            .unwrap()] = 5;
         assert!(flags_line(&c).unwrap().contains('5'));
     }
 }

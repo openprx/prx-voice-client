@@ -296,7 +296,10 @@ impl CallControl {
     /// Call mode takes the microphone (the test of an assistant that is refused while a call runs).
     #[cfg(test)]
     pub(crate) fn hold_for_call(&self) -> prxvc_session::call::MicClaim {
-        self.0.ownership.claim(MicOwner::Call).expect("the microphone is free")
+        self.0
+            .ownership
+            .claim(MicOwner::Call)
+            .expect("the microphone is free")
     }
 
     /// The call commands sent so far, by name.
@@ -361,7 +364,10 @@ fn spawn(
         outgoing_mixer: outgoing_mixer(config),
         data_dir: paths.data_dir.clone(),
         config_source: crate::call_kit::config::current_source(),
-        translate: vec![prxvc_media::Direction::Outgoing, prxvc_media::Direction::Incoming],
+        translate: vec![
+            prxvc_media::Direction::Outgoing,
+            prxvc_media::Direction::Incoming,
+        ],
         trace: trace.clone(),
     };
     let settings = settings_from(config);
@@ -525,7 +531,11 @@ mod tests {
         );
         assert_eq!(c.0.ownership.holder(), Some(MicOwner::Assistant));
         c.release_assistant();
-        assert_eq!(c.0.ownership.holder(), None, "the claim is free when the start goes");
+        assert_eq!(
+            c.0.ownership.holder(),
+            None,
+            "the claim is free when the start goes"
+        );
         assert_eq!(
             sent(&c),
             vec![command::START_TRANSLATED, "CallEndAssistantAndStart"]
@@ -547,7 +557,11 @@ mod tests {
         assert_eq!(h.released(), Some(true));
         let mut h = Handoff::default();
         h.arm(true);
-        assert_eq!(h.released(), Some(true), "without an earlier start the setting applies");
+        assert_eq!(
+            h.released(),
+            Some(true),
+            "without an earlier start the setting applies"
+        );
     }
 
     #[test]
@@ -557,7 +571,11 @@ mod tests {
         c.arm_start_after_assistant();
         assert!(c.handle_command(command::STOP));
         c.release_assistant();
-        assert_eq!(sent(&c), vec![command::STOP], "nothing started after a stop");
+        assert_eq!(
+            sent(&c),
+            vec![command::STOP],
+            "nothing started after a stop"
+        );
 
         let c = control();
         assert!(c.claim_assistant().is_ok());
@@ -569,7 +587,10 @@ mod tests {
         c.arm_start_after_assistant();
         assert!(c.claim_assistant().is_ok());
         c.release_assistant();
-        assert!(sent(&c).is_empty(), "a new assistant session replaced the hand-off");
+        assert!(
+            sent(&c).is_empty(),
+            "a new assistant session replaced the hand-off"
+        );
     }
 
     #[test]

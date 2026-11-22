@@ -102,7 +102,10 @@ fn the_translate_switch_is_on_by_default_and_start_sends_the_translated_command(
     prxvc_i18n::set_locale(prxvc_i18n::Locale::En);
     let mut h = app_harness(state_with(CallPanel::default()), 420.0);
     h.run_steps(3);
-    assert!(h.state().call_translate, "the window's purpose is translation");
+    assert!(
+        h.state().call_translate,
+        "the window's purpose is translation"
+    );
     h.get_by_role_and_label(Role::Button, "Start").click();
     h.run_steps(2);
     assert_eq!(h.state().pending_commands, [command::START_TRANSLATED]);
@@ -272,7 +275,10 @@ fn the_languages_swap_while_idle_and_are_edited_in_the_details_and_locked_while_
         h.query_by_role_and_label(Role::ComboBox, "You speak")
             .is_none()
     );
-    assert!(has_label(&h, "The languages change while call mode is off."));
+    assert!(has_label(
+        &h,
+        "The languages change while call mode is off."
+    ));
 }
 
 #[test]
@@ -287,7 +293,8 @@ fn the_details_hold_the_counters_and_stay_closed_until_asked() {
     assert!(has_label(&h, "Filler dropped 3"));
     assert!(has_label(&h, "Already in target language 1"));
     assert!(has_label(&h, "2500 ms"));
-    h.get_by_role_and_label(Role::Button, "Hide details").click();
+    h.get_by_role_and_label(Role::Button, "Hide details")
+        .click();
     h.run_steps(3);
     assert!(!has_label(&h, "Filler dropped 3"));
 }
@@ -311,8 +318,18 @@ fn the_footer_shows_the_delay_when_there_is_room_and_drops_it_before_running_ove
 fn a_graceful_stop_shows_the_chip_the_hint_and_stop_now() {
     let _guard = lock_locale();
     for (locale, chip, hint, stop_now) in [
-        (prxvc_i18n::Locale::En, "Finishing", "Press Stop again to end now (4 s at most)", "Stop now"),
-        (prxvc_i18n::Locale::ZhCn, "正在收尾", "最多 4 秒", "立即停止"),
+        (
+            prxvc_i18n::Locale::En,
+            "Finishing",
+            "Press Stop again to end now (4 s at most)",
+            "Stop now",
+        ),
+        (
+            prxvc_i18n::Locale::ZhCn,
+            "正在收尾",
+            "最多 4 秒",
+            "立即停止",
+        ),
     ] {
         prxvc_i18n::set_locale(locale);
         let mut panel = panel("translating");
@@ -341,7 +358,8 @@ fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
     let mut h = app_harness(state_with(call_fixtures::listening_panel()), 420.0);
     h.run_steps(3);
     assert!(has_label(&h, "Plays when you first speak."));
-    h.get_by_role_and_label(Role::Button, "Say it again").click();
+    h.get_by_role_and_label(Role::Button, "Say it again")
+        .click();
     h.run_steps(2);
     assert_eq!(h.state().pending_commands, [command::SAY_DISCLOSURE]);
 
@@ -357,22 +375,32 @@ fn the_notice_to_the_other_party_is_shown_repeatable_and_switchable() {
     let mut h = app_harness(state_with(panel("loading")), 420.0);
     h.run_steps(3);
     assert!(has_label(&h, "Getting the spoken notice ready."));
-    assert!(h.query_by_role_and_label(Role::Button, "Say it again").is_none());
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Say it again")
+            .is_none()
+    );
 
     // Off: a quiet line says the other party is not being told, and there is nothing to repeat.
     let mut h = app_harness(state_with(call_fixtures::undisclosed_panel()), 420.0);
     h.run_steps(3);
     assert!(has_label(&h, "The other party is not being told"));
-    assert!(h.query_by_role_and_label(Role::Button, "Say it again").is_none());
+    assert!(
+        h.query_by_role_and_label(Role::Button, "Say it again")
+            .is_none()
+    );
 
     // The switch lives in the details and is the setting.
     let mut h = app_harness(state_with(CallPanel::default()), 420.0);
     h.run_steps(3);
     assert!(!h.state().settings.call_disclosure, "off by default");
-    assert!(!has_label(&h, "The other party is not being told"), "idle: quiet");
+    assert!(
+        !has_label(&h, "The other party is not being told"),
+        "idle: quiet"
+    );
     h.get_by_role_and_label(Role::Button, "Details").click();
     h.run_steps(3);
-    h.get_by_role_and_label(Role::Switch, "Tell the other party (spoken notice)").click();
+    h.get_by_role_and_label(Role::Switch, "Tell the other party (spoken notice)")
+        .click();
     h.run_steps(3);
     assert!(h.state().settings.call_disclosure);
     // The line is about a running call; idle, the switch is the only place that says it.

@@ -29,11 +29,11 @@
 mod app;
 mod assistant;
 mod bundle;
+mod call_compose;
 mod call_engine;
-mod call_kit;
 #[cfg(target_os = "macos")]
 mod call_host;
-mod call_compose;
+mod call_kit;
 mod call_panel;
 mod cli;
 mod compose;
@@ -131,7 +131,10 @@ fn init_logging() {
         "PRX Voice starting"
     );
     match bundle::current() {
-        bundle::BundleStatus::Bundled { identifier, app_dir } => {
+        bundle::BundleStatus::Bundled {
+            identifier,
+            app_dir,
+        } => {
             tracing::info!(%identifier, app = %app_dir.display(), "running from the application bundle");
         }
         bundle::BundleStatus::Unbundled if cfg!(target_os = "macos") => tracing::warn!(

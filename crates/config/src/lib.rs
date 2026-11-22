@@ -19,21 +19,23 @@ pub mod credentials;
 mod error;
 pub mod legacy;
 mod manager;
-pub mod net_policy;
 pub mod migrate;
+pub mod net_policy;
 pub mod paths;
 mod providers;
 mod sections;
-mod translation_engine;
 #[cfg(test)]
 mod test_util;
 #[cfg(test)]
 mod tests;
+mod translation_engine;
 
 pub use app_config::AppConfig;
-pub use credentials::{CredentialError, CredentialStore, PendingSecret, UnavailableCredentialStore};
+pub use credentials::{
+    CredentialError, CredentialStore, PendingSecret, UnavailableCredentialStore,
+};
 pub use error::ConfigError;
-pub use manager::{AppConfigManager, ConfigManager, LoadNotice, LoadReport, CONFIG_FILE_NAME};
+pub use manager::{AppConfigManager, CONFIG_FILE_NAME, ConfigManager, LoadNotice, LoadReport};
 pub use migrate::CURRENT_SCHEMA_VERSION;
 pub use net_policy::{Blocked, NetworkPolicy};
 pub use providers::*;
@@ -45,7 +47,7 @@ pub use translation_engine::TranslationEngine;
 // ---------------------------------------------------------------------------
 
 pub mod prelude {
-    pub use crate::paths::{AppPaths, APP_ID};
+    pub use crate::paths::{APP_ID, AppPaths};
     pub use crate::{
         AppConfig, AppConfigManager, AudioConfig, ConfigError, ConfigManager, DebugConfig,
         EchoMode, LoadNotice, LoadReport, PrivacyConfig, UiConfig,

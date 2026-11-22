@@ -41,7 +41,11 @@ impl Synthesizer for SineToneSynthesizer {
         let chars = text.chars().count().max(1) as u32;
         let total_ms = chars * self.ms_per_char;
         let n = ((self.sample_rate as u64 * total_ms as u64) / 1000) as usize;
-        let freq = if clone_voice { self.clone_freq_hz } else { self.default_freq_hz };
+        let freq = if clone_voice {
+            self.clone_freq_hz
+        } else {
+            self.default_freq_hz
+        };
 
         let mut samples = Vec::with_capacity(n);
         let step = std::f32::consts::TAU * freq / self.sample_rate as f32;
