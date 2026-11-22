@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk] [--retranslate auto|on|off] [--retranslate-agreement N] [--redecode-ms N] [--units-out FILE]
+//!              [--hold-max-words N] [--hold-max-chars N] [--jitter-ms N]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
 //!              [--engine system|llm] [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
 //!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--conversation N [--gap-ms 900]] [--no-catch-up] [--no-trim] [--recognition streaming|two_pass] [--file X.wav --reference "text"] [--bench-asr DIR]
@@ -63,6 +64,7 @@ mod run;
 mod sinks;
 mod source;
 mod sysinfo;
+mod tuning;
 mod units;
 mod vad_profile;
 
@@ -123,6 +125,7 @@ struct Options {
     retranslate_agreement: Option<u32>,
     redecode_ms: Option<u32>,
     units_out: Option<PathBuf>,
+    tuning: tuning::Overrides,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -159,6 +162,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         retranslate_agreement: None,
         redecode_ms: None,
         units_out: None,
+        tuning: tuning::Overrides::default(),
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -245,7 +249,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
             "--file" => file = Some(PathBuf::from(value(arg, &mut it)?)),
             "--reference" => reference = value(arg, &mut it)?,
-            other => return Err(format!("unknown argument {other}")),
+            other => match o.tuning.set(other, it.next().cloned()) {
+                Some(done) => done?,
+                None => return Err(format!("unknown argument {other}")),
+            },
         }
     }
     o.file = file.map(|f| (f, reference));
@@ -344,14 +351,6 @@ fn load_items(o: &Options) -> Result<Vec<Item>, String> {
     Ok(items)
 }
 
-fn lang_of(set: &str) -> Option<Lang> {
-    match set {
-        "zh" => Some(Lang::Zh),
-        "en" => Some(Lang::En),
-        _ => None,
-    }
-}
-
 fn execute(o: &Options) -> Result<bool, String> {
     let items = load_items(o)?;
     let mut config = load_current();
@@ -394,6 +393,8 @@ fn execute(o: &Options) -> Result<bool, String> {
     if let Some(ms) = o.max_backlog_ms {
         config.pipeline.max_backlog_ms = ms;
     }
+    o.tuning.apply(&mut config.pipeline);
+    let hold = prxvc_providers::tts_loader::hold_limit(&config.pipeline);
     let registry = ProviderHost::registry_for(&config, None).map_err(|f| f.detail)?;
     let plan = registry.resolve_directions(&[o.direction]).map_err(|p| {
         p.iter()
@@ -406,7 +407,7 @@ fn execute(o: &Options) -> Result<bool, String> {
         .first()
         .ok_or("no direction planned")?
         .clone();
-    if let Some(want) = lang_of(&o.set).filter(|_| o.file.is_none())
+    if let Some(want) = tuning::lang_of(&o.set).filter(|_| o.file.is_none())
         && want != direction_plan.source
     {
         return Err(format!(
@@ -574,6 +575,7 @@ fn execute(o: &Options) -> Result<bool, String> {
         println!("counters: {}", whole.counters);
         println!("{}", sysinfo::snapshot("machine after"));
         println!("\n{}", table(&runs));
+        println!("{}", tuning::table(&runs, hold, direction_plan.target));
         println!("utterances measured: {} of the set", runs.len());
         write_units(o, &runs)?;
         return Ok(!runs.is_empty());
@@ -663,6 +665,7 @@ fn execute(o: &Options) -> Result<bool, String> {
     }
     println!("{}", sysinfo::snapshot("machine after"));
     println!("\n{}", table(&runs));
+    println!("{}", tuning::table(&runs, hold, direction_plan.target));
     summary(&runs, o);
     write_units(o, &runs)?;
     drop(rig);
