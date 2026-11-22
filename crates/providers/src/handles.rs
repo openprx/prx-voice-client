@@ -123,6 +123,8 @@ impl Drop for SharedSynth {
                 failed = s.failed,
                 runaways = s.runaways,
                 retries = s.retries,
+                held = s.held,
+                streamed = s.streamed,
                 overruns = s.overruns,
                 warm_up_requests = s.warm_up_requests,
                 "synthesis engine totals"

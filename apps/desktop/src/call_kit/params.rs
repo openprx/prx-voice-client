@@ -288,7 +288,7 @@ mod tests {
         assert!(params.interrupt.barge_in);
         assert_eq!(params.interrupt.max_lag, Duration::from_millis(3000));
         assert_eq!((params.source, params.target), (Lang::Zh, Lang::En));
-        assert_eq!(params.jitter_buffer, Duration::from_millis(150));
+        assert_eq!(params.jitter_buffer, Duration::from_millis(100));
         assert_eq!(params.backlog, BacklogParams::default());
         assert_eq!(params.catch_up, prxvc_session::CatchUpParams::default());
     }

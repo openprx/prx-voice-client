@@ -35,7 +35,7 @@ use prxvc_ports::{
     TtsRequest, TtsStream, VoiceReference, VoiceSelection,
 };
 
-use super::cap::{self, RunawayRetry};
+use super::cap::{self, HoldLimit, RunawayRetry};
 use super::request::{AttemptSink, Counters, Outcome, QwenStream, RequestFlags, queue_capacity};
 use super::seam::{CallEnd, EngineError, SynthCall, SynthEngine};
 use super::voice::{
@@ -61,6 +61,8 @@ pub struct QwenTtsConfig {
     pub queue_depth: usize,
     /// Whether a runaway is retried with another seed. Default: no; the runaway is reported.
     pub runaway_retry: RunawayRetry,
+    /// Which clauses `RunawayRetry::ShortOnce` holds back; the default is the cap rule.
+    pub hold: HoldLimit,
     /// Seed of the first attempt; `None` lets the runtime choose a random one.
     pub seed: Option<i64>,
     /// Replaces the cap computed from the text, in codec frames. For tests and diagnostics (a
@@ -77,6 +79,7 @@ impl QwenTtsConfig {
             workers: 2,
             queue_depth: 8,
             runaway_retry: RunawayRetry::Off,
+            hold: HoldLimit::LEGACY,
             seed: None,
             cap_frames_override: None,
         }
@@ -113,6 +116,10 @@ pub struct TtsStats {
     pub runaways: u64,
     /// Retries started after a runaway.
     pub retries: u64,
+    /// Requests whose audio was held back until the clause ended (the runaway guard could retry).
+    pub held: u64,
+    /// Requests that streamed from their first chunk (a runaway ends them with an error).
+    pub streamed: u64,
     /// Chunk queues that overflowed (requests failed, no audio dropped silently).
     pub overruns: u64,
     /// Requests the load's warm-up synthesis made. They are not in the counters above: the
@@ -282,6 +289,8 @@ impl QwenTts {
         c.failed.store(0, Ordering::Relaxed);
         c.runaways.store(0, Ordering::Relaxed);
         c.retries.store(0, Ordering::Relaxed);
+        c.held.store(0, Ordering::Relaxed);
+        c.streamed.store(0, Ordering::Relaxed);
         c.warm_up_requests.store(spent, Ordering::Relaxed);
         Ok(tts)
     }
@@ -307,6 +316,8 @@ impl QwenTts {
             failed: get(&c.failed),
             runaways: get(&c.runaways),
             retries: get(&c.retries),
+            held: get(&c.held),
+            streamed: get(&c.streamed),
             overruns: get(&c.overruns),
             warm_up_requests: get(&c.warm_up_requests),
         }
@@ -647,7 +658,18 @@ fn run_job(inner: &Inner, job: Job) {
         finish(inner, &job, Err(TtsError::Cancelled));
         return;
     }
-    let retries = inner.cfg.runaway_retry.extra_attempts(job.cap_frames);
+    let retries = inner.cfg.runaway_retry.extra_attempts_for(
+        inner.cfg.hold,
+        &job.text,
+        job.lang,
+        job.cap_frames,
+    );
+    let held = if retries > 0 {
+        &inner.counters.held
+    } else {
+        &inner.counters.streamed
+    };
+    held.fetch_add(1, Ordering::Relaxed);
     let mut attempt = 0;
     let outcome = loop {
         let seed = if attempt == 0 {

@@ -1,6 +1,7 @@
 //! The live policy of the runaway guard (`RunawayRetry::ShortOnce`) and the speakable-text check.
 
 use super::*;
+use crate::tts::qwentts::HoldLimit;
 
 const LONG: &str = "we should meet at the office tomorrow morning and then go home"; // cap well above the floor
 
@@ -120,4 +121,88 @@ fn text_with_nothing_to_say_is_rejected_before_the_engine() {
         );
     }
     assert_eq!(attempts.load(Ordering::SeqCst), 0);
+}
+
+// The hold limit (`pipeline.tts_hold_max_*`): only a very short clause is held back.
+
+const THREE_WORDS: &str = "see you later";
+const FOUR_WORDS: &str = "we should go there";
+
+fn limited() -> QwenTtsConfig {
+    let mut c = cfg();
+    c.runaway_retry = RunawayRetry::ShortOnce;
+    c.hold = HoldLimit::clamped(3, 4);
+    c
+}
+
+#[test]
+fn a_clause_above_the_hold_limit_streams_its_first_chunk_before_the_clause_ends() {
+    let gate = Arc::new(AtomicBool::new(false));
+    let opened = Arc::new(AtomicBool::new(false));
+    let (g, o) = (Arc::clone(&gate), Arc::clone(&opened));
+    let script: Script = Box::new(move |_, ctl| {
+        ctl.on_chunk(&vec![1.0; FRAME]);
+        // The clause cannot end until the consumer has the first chunk: a held clause would wait
+        // for the end and never open the gate.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if g.load(Ordering::SeqCst) {
+                o.store(true, Ordering::SeqCst);
+                break;
+            }
+            std::thread::yield_now();
+        }
+        ctl.on_chunk(&vec![2.0; FRAME]);
+        Ok(CallEnd::Completed)
+    });
+    let (tts, _p) = ready(script, limited());
+    let mut s = open(&tts, Direction::Outgoing, FOUR_WORDS);
+    let never = CancellationToken::new();
+    let first = s.next(&never);
+    assert!(matches!(first, Some(Ok(TtsItem::Chunk(_)))), "{first:?}");
+    gate.store(true, Ordering::SeqCst);
+    let rest = drain(s.as_mut());
+    assert!(opened.load(Ordering::SeqCst), "the first chunk came before the clause ended");
+    assert!(matches!(rest.last(), Some(Ok(TtsItem::Done { .. }))), "{rest:?}");
+    let stats = tts.stats();
+    assert_eq!((stats.held, stats.streamed), (0, 1));
+}
+
+#[test]
+fn a_streamed_clause_that_runs_away_is_cut_by_the_cap_without_a_retry_and_keeps_what_played() {
+    let (tts, _p) = ready(runaway_script(), limited());
+    let items = drain(open(&tts, Direction::Outgoing, FOUR_WORDS).as_mut());
+    assert!(matches!(items.last(), Some(Err(TtsError::Runaway { .. }))), "{items:?}");
+    assert!(!chunk_values(&items).is_empty(), "what was produced before the cap was delivered");
+    let stats = tts.stats();
+    assert_eq!((stats.runaways, stats.retries), (1, 0));
+    assert_eq!((stats.held, stats.streamed), (0, 1));
+}
+
+#[test]
+fn a_clause_at_the_hold_limit_is_held_and_retried_exactly_as_before() {
+    for (text, lang) in [(THREE_WORDS, Lang::En), ("\u{4f60}\u{597d}\u{5417}\u{ff1f}", Lang::Zh)] {
+        let (script, attempts) = runaway_once_then_fine();
+        let (tts, _p) = ready(script, limited());
+        let mut req = request(Direction::Outgoing, text, clone_of("me"));
+        req.lang = lang;
+        let items = drain(tts.synthesize(req).expect("stream").as_mut());
+        assert_eq!(attempts.load(Ordering::SeqCst), 2, "{text}: retried");
+        assert_eq!(chunk_values(&items), vec![1.0, 2.0, 3.0, 4.0, 5.0], "{text}");
+        let stats = tts.stats();
+        assert_eq!((stats.runaways, stats.retries), (1, 1), "{text}");
+        assert_eq!((stats.held, stats.streamed), (1, 0), "{text}");
+    }
+}
+
+#[test]
+fn the_legacy_hold_limit_holds_the_clause_that_the_limit_streams() {
+    let (script, attempts) = runaway_once_then_fine();
+    let mut c = limited();
+    c.hold = HoldLimit::LEGACY;
+    let (tts, _p) = ready(script, c);
+    let items = drain(open(&tts, Direction::Outgoing, FOUR_WORDS).as_mut());
+    assert_eq!(attempts.load(Ordering::SeqCst), 2, "held and retried as before");
+    assert_eq!(chunk_values(&items), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+    assert_eq!((tts.stats().held, tts.stats().streamed), (1, 0));
 }

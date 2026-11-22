@@ -66,7 +66,8 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert_eq!(p.early_max_wait_ms, 2_500);
     assert!(!p.split_target_clauses && !p.speculative_mt);
     assert_eq!(p.mt_context_clauses, 4);
-    assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 15_000));
+    assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (100, 15_000));
+    assert_eq!((p.tts_hold_max_words, p.tts_hold_max_chars), (3, 4));
     assert!(p.backlog_skipping);
     assert_eq!(p.max_lag_ms, 20_000);
     assert!(p.catch_up && p.trim_silence);
@@ -368,4 +369,14 @@ fn a_saved_off_stays_off_through_a_save_and_a_load() {
     assert_eq!(loaded.pipeline.retranslate_align_max_ratio, 0.25);
     m.save(&loaded).unwrap();
     assert_eq!(m.load().unwrap(), loaded);
+}
+
+#[test]
+fn the_synthesis_hold_keys_default_when_absent_and_read_from_the_pipeline_section() {
+    let old: AppConfig = toml::from_str("[pipeline]\njitter_buffer_ms = 150\n").unwrap();
+    assert_eq!((old.pipeline.tts_hold_max_words, old.pipeline.tts_hold_max_chars), (3, 4));
+    assert_eq!(old.pipeline.jitter_buffer_ms, 150, "a saved value is kept");
+    let legacy: AppConfig =
+        toml::from_str("[pipeline]\ntts_hold_max_words = 0\ntts_hold_max_chars = 0\n").unwrap();
+    assert_eq!((legacy.pipeline.tts_hold_max_words, legacy.pipeline.tts_hold_max_chars), (0, 0));
 }
