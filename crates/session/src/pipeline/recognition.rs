@@ -12,7 +12,7 @@ use prxvc_ports::{
 use super::align::{Alignment, align_after_committed};
 use super::draft::DraftLink;
 use super::faults::{asr_failure, vad_failure};
-use super::messages::{Commit, CommitReason, RecognitionEvent, StageFailure};
+use super::messages::{Commit, CommitReason, DraftTally, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
 use super::segmenter::Segmenter;
 use super::trace::Tracer;
@@ -116,6 +116,8 @@ struct OpenSegment {
     rejected_counted: u64,
     /// A unit of this round was committed by the re-translation rule.
     retranslated_round: bool,
+    /// What the draft worker did for this segment, reported when it ends.
+    tally: DraftTally,
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
@@ -343,6 +345,7 @@ impl RecognitionStage {
             last_draft: None,
             rejected_counted: 0,
             retranslated_round: false,
+            tally: DraftTally::default(),
             hyp: None,
             partial_seen: false,
             tail: String::new(),
@@ -407,6 +410,7 @@ impl RecognitionStage {
         let Some(mut old) = self.open.take() else {
             return;
         };
+        self.push_draft_tally(&mut old, out);
         out.push(Envelope::new(
             old.id,
             old.revision,
@@ -431,6 +435,7 @@ impl RecognitionStage {
                 Stats::add(&self.stats.stable_violations, 1);
                 if open.retranslated_round {
                     Stats::add(&self.stats.retranslate_src_rewrites, 1);
+                    open.tally.src_rewrites += 1;
                 }
             }
             committed = align_after_committed(&open.committed_prefix, &text).start;
@@ -680,9 +685,10 @@ impl RecognitionStage {
     /// The segment-end pause or the length limit: commit what is left and close the segment.
     fn end_segment(&mut self, out: &mut Out) -> Result<(), RecognitionFault> {
         self.commit_final(CommitReason::SegmentEnd, out)?;
-        let Some(open) = self.open.take() else {
+        let Some(mut open) = self.open.take() else {
             return Ok(());
         };
+        self.push_draft_tally(&mut open, out);
         out.push(Envelope::new(
             open.id,
             open.revision,
@@ -715,7 +721,7 @@ impl RecognitionStage {
 /// final that disagrees with the committed text is counted and traced, never patched into what was
 /// committed and never spoken again.
 fn committed_remainder(
-    open: &OpenSegment,
+    open: &mut OpenSegment,
     fin: &AsrHypothesis,
     stats: &Stats,
     tracer: &Tracer,
@@ -728,6 +734,7 @@ fn committed_remainder(
         Stats::add(&stats.final_rewrites, 1);
         if open.retranslated_round {
             Stats::add(&stats.retranslate_src_rewrites, 1);
+            open.tally.src_rewrites += 1;
         }
         if aligned.alignment == Alignment::Unaligned {
             Stats::add(&stats.final_unaligned, 1);

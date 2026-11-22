@@ -3,7 +3,7 @@
 use super::{ClauseInfo, Core, Stats};
 use crate::interrupt::CancelAction;
 use crate::pipeline::events::PipelineEvent;
-use crate::pipeline::messages::{MtItem, TtsItem};
+use crate::pipeline::messages::{CommitReason, MtItem, TtsItem};
 use crate::pipeline::queue::Pushed;
 use crate::pipeline::snapshot::{ClauseSnapshot, SkipReason};
 use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
@@ -91,7 +91,12 @@ impl Core {
         );
         let token = self.w.tree.clause(clause);
         Stats::add(&self.w.stats.clauses_committed, 1);
-        self.tallies.entry(clause.segment()).or_default().clauses += 1;
+        let tally = self.tallies.entry(clause.segment()).or_default();
+        tally.clauses += 1;
+        tally.first_cut.get_or_insert(commit.reason.name());
+        if commit.reason == CommitReason::Retranslation {
+            tally.retranslated += 1;
+        }
         self.w
             .tracer
             .mark_text(clause, prxvc_ports::TraceStage::ClauseCommitted, || {
@@ -162,6 +167,16 @@ impl Core {
             clauses = u.tally.clauses,
             outcome = u.outcome(),
             speech_ms = %Ms(u.speech_ms),
+            first_commit_ms = %Ms(u.first_commit_ms),
+            first_cut = u.tally.first_cut.unwrap_or("-"),
+            retranslated = u.tally.retranslated,
+            drafts = u.tally.drafts,
+            draft_hits = u.tally.draft_hits,
+            drafts_stale = u.tally.drafts_stale,
+            continued = u.tally.continued,
+            diverged = u.tally.diverged,
+            remainder_empty = u.tally.remainder_empty,
+            src_rewrites = u.tally.src_rewrites,
             asr_final_ms = %Ms(u.asr_final_ms),
             mt_first_token_ms = %Ms(u.mt_first_token_ms),
             first_audio_ms = %Ms(u.first_audio_ms),

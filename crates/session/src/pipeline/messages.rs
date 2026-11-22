@@ -66,7 +66,6 @@ impl CommitReason {
     }
 
     /// The name used in logs and reports.
-    #[allow(dead_code, reason = "named in the utterance figures of a later task")]
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::SegmentEnd => "segment_end",
@@ -90,7 +89,6 @@ pub(crate) struct Commit {
     /// The audio of the clause, only when a refine pass will use it.
     pub(crate) audio: Option<Arc<ClauseSamples>>,
     /// Why it was committed.
-    #[allow(dead_code, reason = "read by the utterance figures of a later task")]
     pub(crate) reason: CommitReason,
     /// The unit does not end its source sentence: what follows in the segment goes on with it, so
     /// the translation stage translates from the start of the sentence.
@@ -106,7 +104,25 @@ pub(crate) enum RecognitionEvent {
         stable_prefix_len: usize,
     },
     Commit(Commit),
+    /// What the draft worker did for the segment, sent just before `EndSegment` (only with
+    /// re-translation on).
+    DraftTally(DraftTally),
     EndSegment,
+}
+
+/// The re-translation figures of one segment, counted by the recognition stage.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct DraftTally {
+    /// Engine calls made for drafts.
+    pub(crate) drafts: u32,
+    /// Draft texts served from the cache.
+    pub(crate) hits: u32,
+    /// Replies discarded as stale.
+    pub(crate) stale: u32,
+    /// Partials or finals that contradicted text committed by the rule.
+    pub(crate) src_rewrites: u32,
+    /// Elapsed time of each engine call, in milliseconds.
+    pub(crate) engine_ms: Vec<u64>,
 }
 
 /// Clause-level events of the refine, translation and synthesis stages (envelope: the clause's segment, frozen revision and onset).

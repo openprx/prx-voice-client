@@ -20,6 +20,7 @@ const MAX_FIGURES: usize = 2000;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SegmentTimes {
     speech_start: Option<MonoTime>,
+    first_commit: Option<MonoTime>,
     first_pause: Option<MonoTime>,
     last_pause: Option<MonoTime>,
     asr_final: Option<MonoTime>,
@@ -38,6 +39,7 @@ impl SegmentTimes {
         }
         match stage {
             TraceStage::SpeechStart => first(&mut self.speech_start, at),
+            TraceStage::ClauseCommitted => first(&mut self.first_commit, at),
             TraceStage::ClausePause => {
                 first(&mut self.first_pause, at);
                 self.last_pause = Some(at);
@@ -84,6 +86,24 @@ pub(crate) struct SegmentTally {
     pub(crate) flags: Vec<MtFlag>,
     pub(crate) retried: u32,
     pub(crate) suspect: u32,
+    /// The name of the reason the segment's first unit was committed for.
+    pub(crate) first_cut: Option<&'static str>,
+    /// Units committed by the re-translation rule.
+    pub(crate) retranslated: u32,
+    /// Engine calls made for drafts while the segment was open.
+    pub(crate) drafts: u32,
+    /// Draft texts served from the cache.
+    pub(crate) draft_hits: u32,
+    /// Draft replies discarded as stale.
+    pub(crate) drafts_stale: u32,
+    /// Units whose translation continued the sentence.
+    pub(crate) continued: u32,
+    /// Units whose translation no longer began with the part already spoken.
+    pub(crate) diverged: u32,
+    /// Units that continued the sentence with nothing left to say.
+    pub(crate) remainder_empty: u32,
+    /// Partials or finals that contradicted text committed by the re-translation rule.
+    pub(crate) src_rewrites: u32,
 }
 
 /// The name of a skip reason in the log.
@@ -111,6 +131,8 @@ pub(crate) struct Utterance {
     pub(crate) tally: SegmentTally,
     /// The speech itself: its start to the last pause that ended a clause.
     pub(crate) speech_ms: Option<u64>,
+    /// The speech start to the first unit committed.
+    pub(crate) first_commit_ms: Option<u64>,
     /// Recognition final of the first clause.
     pub(crate) asr_final_ms: Option<u64>,
     /// Translation: request sent to first token, of the first clause that got one.
@@ -133,6 +155,7 @@ impl Utterance {
             segment,
             tally,
             speech_ms: between(t.speech_start, t.last_pause),
+            first_commit_ms: between(t.speech_start, t.first_commit),
             asr_final_ms: between(t.speech_start, t.asr_final),
             mt_first_token_ms: between(t.mt_request, t.mt_first_token),
             first_audio_ms: between(t.speech_start, t.first_audio),
@@ -239,10 +262,22 @@ pub struct Ledger {
     /// How long the first clause of an utterance waited behind earlier translated speech (not
     /// processing time: translation and synthesis were done).
     pub queue_wait: Percentiles,
+    /// Speech start to the first unit committed.
+    pub first_commit: Percentiles,
+    /// Engine time of one draft translation (re-translation).
+    pub draft_ms: Percentiles,
     /// Clauses released at a speed above 1 while a backlog was caught up.
     pub sped_clauses: u64,
     /// The highest speed used, in percent (125 is 1.25x); 100 when none.
     pub max_speed_pct: u32,
+}
+
+/// Keep the newest [`MAX_FIGURES`] figures.
+fn push_bounded(list: &mut Vec<u64>, figure: u64) {
+    list.push(figure);
+    if list.len() > MAX_FIGURES {
+        list.remove(0);
+    }
 }
 
 /// The figure lists behind a [`Ledger`].
@@ -252,6 +287,8 @@ pub(crate) struct LedgerBook {
     start: Vec<u64>,
     end: Vec<u64>,
     wait: Vec<u64>,
+    first_commit: Vec<u64>,
+    draft_ms: Vec<u64>,
     sped: u64,
     max_speed_pct: u32,
 }
@@ -263,13 +300,18 @@ impl LedgerBook {
             (&mut self.start, u.first_audio_ms),
             (&mut self.end, u.pause_to_first_audio_ms),
             (&mut self.wait, u.queue_wait_ms),
+            (&mut self.first_commit, u.first_commit_ms),
         ] {
             if let Some(v) = figure {
-                list.push(v);
-                if list.len() > MAX_FIGURES {
-                    list.remove(0);
-                }
+                push_bounded(list, v);
             }
+        }
+    }
+
+    /// The engine times of the draft calls of one segment.
+    pub(crate) fn note_drafts(&mut self, engine_ms: &[u64]) {
+        for v in engine_ms {
+            push_bounded(&mut self.draft_ms, *v);
         }
     }
 
@@ -285,6 +327,8 @@ impl LedgerBook {
             start_to_first_audio: Percentiles::of(&self.start),
             end_to_first_audio: Percentiles::of(&self.end),
             queue_wait: Percentiles::of(&self.wait),
+            first_commit: Percentiles::of(&self.first_commit),
+            draft_ms: Percentiles::of(&self.draft_ms),
             sped_clauses: self.sped,
             max_speed_pct: self.max_speed_pct.max(100),
         }
@@ -323,6 +367,7 @@ mod tests {
         let s = seg(5);
         for (stage, ms) in [
             (TraceStage::SpeechStart, 1000),
+            (TraceStage::ClauseCommitted, 2100),
             (TraceStage::ClausePause, 2500),
             (TraceStage::AsrFinalReady, 2900),
             (TraceStage::MtRequestSent, 2910),
@@ -341,6 +386,11 @@ mod tests {
         };
         let u = Utterance::new(s, tally, &open.take(s));
         assert_eq!(u.speech_ms, Some(3200));
+        assert_eq!(
+            u.first_commit_ms,
+            Some(1100),
+            "the first unit, not a later one"
+        );
         assert_eq!(u.asr_final_ms, Some(1900));
         assert_eq!(u.mt_first_token_ms, Some(140));
         assert_eq!(u.first_audio_ms, Some(2600));
@@ -367,6 +417,21 @@ mod tests {
         assert_eq!((l.sped_clauses, l.max_speed_pct), (1, 125));
         let none = Utterance::new(seg(1), SegmentTally::default(), &SegmentTimes::default());
         assert_eq!(none.queue_wait_ms, None);
+    }
+
+    #[test]
+    fn the_ledger_keeps_the_first_commit_and_the_draft_times() {
+        let mut book = LedgerBook::default();
+        let mut u = Utterance::new(seg(1), SegmentTally::default(), &SegmentTimes::default());
+        u.first_commit_ms = Some(1900);
+        book.record(&u);
+        book.note_drafts(&[80, 120, 100]);
+        let l = book.snapshot();
+        assert_eq!((l.first_commit.n, l.first_commit.median_ms), (1, 1900));
+        assert_eq!(
+            (l.draft_ms.n, l.draft_ms.median_ms, l.draft_ms.p95_ms),
+            (3, 100, 120)
+        );
     }
 
     #[test]

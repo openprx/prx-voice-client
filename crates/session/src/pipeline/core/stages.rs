@@ -165,10 +165,20 @@ impl Core {
             self.drop_late();
             return;
         }
+        let tally = self.tallies.entry(clause.segment()).or_default();
         let counter = match outcome {
-            ContinuationOutcome::Continued => &self.w.stats.continued,
-            ContinuationOutcome::Diverged => &self.w.stats.continuation_diverged,
-            ContinuationOutcome::Empty => &self.w.stats.remainder_empty,
+            ContinuationOutcome::Continued => {
+                tally.continued += 1;
+                &self.w.stats.continued
+            }
+            ContinuationOutcome::Diverged => {
+                tally.diverged += 1;
+                &self.w.stats.continuation_diverged
+            }
+            ContinuationOutcome::Empty => {
+                tally.remainder_empty += 1;
+                &self.w.stats.remainder_empty
+            }
             ContinuationOutcome::Standalone => return,
         };
         Stats::add(counter, 1);

@@ -5,7 +5,9 @@ use prxvc_media::text_units::units;
 use prxvc_ports::{MtFlag, TraceStage};
 
 use super::super::draft::{DraftJob, DraftKey, DraftLink, DraftReply, DraftRole, DraftText};
-use super::super::messages::CommitReason;
+use prxvc_media::Envelope;
+
+use super::super::messages::{CommitReason, DraftTally, RecognitionEvent};
 use super::{OpenSegment, Out, RecognitionStage};
 use crate::commit_policy::{
     DraftReplyView, DraftTranslation, HypInput, MAX_SENTENCE_UNITS, join_carry, join_sentence,
@@ -95,9 +97,28 @@ impl RecognitionStage {
         }
     }
 
+    /// Report what the draft worker did for a segment that is ending (only with re-translation on
+    /// and something to report).
+    pub(super) fn push_draft_tally(&self, open: &mut OpenSegment, out: &mut Out) {
+        let tally = std::mem::take(&mut open.tally);
+        if self.p.retranslate.enabled && tally != DraftTally::default() {
+            out.push(Envelope::new(
+                open.id,
+                open.revision,
+                open.onset,
+                RecognitionEvent::DraftTally(tally),
+            ));
+        }
+    }
+
     fn on_draft_reply(&mut self, reply: &DraftReply, out: &mut Out) {
         let p = self.p.retranslate;
         let target = self.p.target;
+        if let Some(open) = self.open.as_mut().filter(|o| o.id == reply.key.segment) {
+            open.tally.drafts += u32::try_from(reply.engine_ms.len()).unwrap_or(u32::MAX);
+            open.tally.hits += reply.cache_hits;
+            open.tally.engine_ms.extend_from_slice(&reply.engine_ms);
+        }
         let fresh = self.open.as_ref().is_some_and(|open| {
             reply.key.segment == open.id
                 && reply.key.round == open.round
@@ -105,6 +126,9 @@ impl RecognitionStage {
         });
         if !fresh {
             Stats::add(&self.stats.drafts_stale, 1);
+            if let Some(open) = self.open.as_mut().filter(|o| o.id == reply.key.segment) {
+                open.tally.stale += 1;
+            }
             return;
         }
         let Some(open) = self.open.as_mut() else {

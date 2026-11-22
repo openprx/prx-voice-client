@@ -279,6 +279,16 @@ impl Core {
                 self.commit_stash = None;
                 self.partial = None;
             }
+            RecognitionEvent::DraftTally(t) => {
+                if self.book.segment_state(segment).is_some() {
+                    let tally = self.tallies.entry(segment).or_default();
+                    tally.drafts += t.drafts;
+                    tally.draft_hits += t.hits;
+                    tally.drafts_stale += t.stale;
+                    tally.src_rewrites += t.src_rewrites;
+                    self.ledger.note_drafts(&t.engine_ms);
+                }
+            }
             RecognitionEvent::EndSegment => {
                 self.partial = None;
                 if self.passthrough == Some(segment) {
