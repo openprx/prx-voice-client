@@ -1,6 +1,4 @@
-# Native runtimes (work package CT-9, the native link spike)
-
-Status: spike result, 2026-11-20. Machine: Apple M5 Max, macOS 26.6, Metal.
+# Native runtimes
 
 This tree holds the two native runtimes of the call-translation pipeline, vendored and built as
 **one dynamic library per runtime, each with its own ggml linked statically inside and only its own C API
@@ -11,10 +9,6 @@ exported** (pipeline-design PD-2.7.2):
 | `qwentts-sys` (`prxvc-qwentts-sys`) | `qwentts.cpp` text to speech, commit `2edb35f87b709a070b2d5379f77e5c52a1daa585`, ggml fork `ef4555b` (version 1.0.0) | `libprxvc_qwentts.dylib` | 18 `_qt_*` symbols | `qwentts` |
 | `transcribe-sys` (`prxvc-transcribe-sys`) | `transcribe.cpp` ASR and VAD, commit `275cd50d2c4104c204009a197ac091b9687668e5`, ggml `d7cb574` (version 0.26.0, four downstream patches) | `libprxvc_transcribe.dylib` | 147 `_transcribe_*` symbols | `transcribe` |
 | `link` (`prxvc-native-link`) | the spike itself: thin owning wrappers and the tests below | none | none | `qwentts`, `transcribe` |
-
-Result in one sentence: the two runtimes load into one process, run concurrently on Metal, give correct
-output and exit cleanly, with no duplicate-class warning and no collision, so the fallbacks of PD-2.7.2
-(a shared ggml, a sidecar, `sherpa-onnx`) are not needed for linking reasons.
 
 ## How to run
 
@@ -112,105 +106,6 @@ Layout checks: `transcribe_abi_struct_size` / `_align` against `size_of` / `alig
 chunk callback documented as running on the library's compute worker thread. The adapters of later packages
 replace them.
 
-## Symbol isolation result
-
-`nm -gU` on the built libraries (release build):
-
-```text
-libprxvc_qwentts.dylib:    18 exported symbols, 0 matching ggml|gguf (case-insensitive)
-  _qt_audio_free _qt_duration_sec_to_tokens _qt_extract_voice_ref _qt_free _qt_init
-  _qt_init_default_params _qt_language_name _qt_last_error _qt_log_set _qt_model_type
-  _qt_n_languages _qt_n_speakers _qt_num_codebooks _qt_speaker_name _qt_synthesize
-  _qt_tts_default_params _qt_version _qt_voice_ref_free
-libprxvc_transcribe.dylib: 147 exported symbols, all `_transcribe_*`, 0 matching ggml|gguf
-```
-
-The non-ignored tests `qwentts_library_exports_only_its_c_api`, `transcribe_library_exports_only_its_c_api`
-(every exported symbol starts with the runtime's prefix, none contains `ggml` or `gguf`) and
-`libraries_depend_only_on_system_libraries_and_themselves` (`otool -L`: only `@rpath/<self>`, `/System/Library/`,
-`/usr/lib/`) enforce this. Each library still holds about 900 private `ggml_` / `gguf_` symbols
-(`nm` without `-g`): two complete ggml copies live in the process.
-
-- **ggml versions differ and it is harmless.** `qwentts.cpp` pins a fork, `ServeurpersoCom/ggml` at `ef4555b`
-  (version 1.0.0); `transcribe.cpp` pins upstream `ggml-org/ggml` at `d7cb574` (0.26.0) with four patches.
-  Their public headers differ, so one shared ggml would need a port; isolation makes the difference irrelevant
-  because neither copy is visible outside its library.
-- **Objective-C class clash: not present.** Both ggml-metal copies define `GGMLMetalClass`, but only when
-  `GGML_METAL_EMBED_LIBRARY` is off (it is a handle to find the `.metallib` bundle). With the library embedded
-  the class is not compiled, so there is nothing for the runtime to complain about. In every process run (more than a dozen) the
-  output contains no `objc` or "implemented in both" line. Keep `GGML_METAL_EMBED_LIBRARY=ON` (set by `build.rs`).
-- **Metal.** Each ggml has its own device object, command queue, residency set and embedded shader library; both
-  report `MTL0 (Apple M5 Max)`. The GPU serialises the work; see the timings below for the cost.
-- **Negative control** (not shipped, scratch only): relinking both libraries without the exported-symbols list
-  (72 and 70 `ggml_` symbols then exported) and running the same concurrent test with `DYLD_LIBRARY_PATH`
-  also works. macOS two-level namespaces already keep same-named symbols of different dylibs apart. The export
-  list is therefore defence in depth against weak-symbol coalescing and future flat-namespace consumers, and it
-  is what the design's acceptance check measures; the part that matters for safety is that the ggml copies are
-  inside the dylibs and not in the executable (the `whisper-cpp-plus` ggml, linked into the executable, is the one
-  to remove in CT-20).
-
-## Concurrency and exit result
-
-`tests/live.rs::tts_and_asr_run_concurrently_and_round_trip` (ignored). One process: `qwentts.cpp` 1.7B Q8_0
-(`max_batch = 2`, owner's English reference, speaker-embedding mode, seed fixed, `max_new_tokens` from the
-text length: 0.28 s per word times 3 in 80 ms frames, floor 40) and `transcribe.cpp` with Qwen3-ASR 0.6B Q8_0, both
-on Metal. Steps: load both, warm-up synthesis and decode, one solo synthesis (baseline in the same process),
-then the synthesis of `The meeting has been moved to Thursday afternoon, so please update your calendar before
-the call.` while a second thread decodes the owner's reference WAV in a loop (at least two decodes, until the
-synthesis ends), then the synthesized audio (24 kHz resampled to 16 kHz) through the ASR, then everything freed
-in dependency order. Asserts: audio between 0.5x and 2x the expected duration, finite and not silent; every
-concurrent ASR result within 0.15 word error rate of the known transcript; round trip within 0.25; return
-code 0. TTFA is the time from the `qt_synthesize` call to the first chunk callback.
-
-Ten runs in a row (separate processes, release build). Batch A ran with nothing on the GPU but an idle
-`llama-server`; batch B ran while the e2e prototype (`bench/e2e`, a TTS worker and an LLM server) and a
-benchmark were active (their load is not quantified).
-
-| Run | TTFA solo (ms) | TTFA concurrent (ms) | RTF solo | RTF concurrent | ASR decodes during synthesis | ASR decode median (ms) | Round-trip WER |
-|---|---|---|---|---|---|---|---|
-| A1 | 37.3 | 42.5 | 0.196 | 0.232 | 10 | 140 | 0.000 |
-| A2 | 36.8 | 41.7 | 0.193 | 0.256 | 9 | 150 | 0.000 |
-| A3 | 37.1 | 45.4 | 0.200 | 0.321 | 9 | 200 | 0.000 |
-| A4 | 36.8 | 47.7 | 0.195 | 0.291 | 10 | 173 | 0.000 |
-| A5 | 36.8 | 46.8 | 0.196 | 0.294 | 10 | 182 | 0.000 |
-| B1 | 88.9 | 43.7 | 0.215 | 0.306 | 10 | 195 | 0.000 |
-| B2 | 36.5 | 54.2 | 0.216 | 0.404 | 9 | 246 | 0.000 |
-| B3 | 83.9 | 70.6 | 0.420 | 0.348 | 9 | 191 | 0.000 |
-| B4 | 37.4 | 46.8 | 0.194 | 0.292 | 10 | 172 | 0.000 |
-| B5 | 37.6 | 46.2 | 0.228 | 0.367 | 9 | 224 | 0.000 |
-
-All ten exit with status 0, no Metal assertion, no warning. Solo, in the Rust process: TTFA 36.5 to 37.6 ms
-(the harness measured about 40 ms) and RTF 0.19 to 0.20 on a quiet GPU (the harness: about 0.2): the FFI path adds
-nothing measurable. With the recognizer decoding at the same time TTFA rises by 5 to 10 ms and RTF to 0.23 to
-0.32 (0.35 to 0.40 in the busier batch); the recognizer's decode of 7 s of audio takes 110 to 160 ms alone and
-140 to 250 ms during synthesis. Both stay far inside real time. The ASR text equals the transcript exactly
-(WER 0.000 in every concurrent decode and in all round trips; the round trip returns the sentence with a changed
-punctuation only).
-
-Other ignored tests, all passing in one process (`--test-threads=1`, which creates and frees five engines
-and models in sequence): TTS alone (TTFA 35.6 to 52.8 ms, RTF 0.19 to 0.25), cancel through the `cancel` callback
-(status `-5` 336 ms after a 300 ms request, engine usable afterwards), Qwen3-ASR alone (WER 0.000, 104 to 128 ms for 6.96 s),
-and the streaming API with the Nemotron streaming model (first text after chunk 6 of 44 of 160 ms,
-final WER 0.000, 494 ms for the whole 6.96 s).
-
-Cold start: the first launch after a rebuild compiles the embedded Metal shaders of each ggml copy, about 2.7 s for each
-(`ggml_metal_library_compile_all: loaded 36 libraries from embedded data in 2.755 sec`): TTS load 3.6 s and
-ASR load 2.5 s in the first process, against 0.6 to 0.9 s and about 0.1 s afterwards (the system caches the
-compiled pipelines). The app should load the engines in parallel with startup work and show a "preparing" state.
-
-## ASR runtime recommendation, linking point of view
-
-**`transcribe.cpp` can be the ASR runtime and the VAD runtime** (`TranscribeVad`, PD-2.5.1) in the same
-process as `qwentts.cpp`. Nothing in linking forces the `sherpa-onnx` fallback and no sidecar process is
-needed for isolation. Conditions: keep the two-dylib shape with static ggml and the export lists, keep the Metal
-library embedded, load both libraries from `Contents/Frameworks`, and remove `whisper-cpp-plus` (a third ggml,
-linked into the executable) from the call build as planned (CT-20) so that no ggml sits in the executable.
-For completeness: the prebuilt `sherpa-onnx` C API and `libonnxruntime` dylibs of the benchmark venv
-(read-only, not used or modified) load into the same process as the two libraries here (a `dlopen` check only;
-`libsherpa-onnx-c-api` exports 189 symbols and no ggml, `libonnxruntime` exports 3), so `sherpa-onnx` stays a
-valid per-model alternative for models `transcribe.cpp` does not run well; that decision is a latency and
-accuracy one, not a linking one.
-
 ## Packaging
 
 - **Where.** `PRX Voice.app/Contents/Frameworks/libprxvc_qwentts.dylib` and `libprxvc_transcribe.dylib`.
@@ -262,22 +157,6 @@ clean check). Later packages wire the design's feature names through the adapter
 `qwentts = ["dep:prxvc-qwentts-sys", "prxvc-qwentts-sys/qwentts"]`, `transcribe = ["dep:prxvc-transcribe-sys",
 "prxvc-transcribe-sys/transcribe"]`; the features are additive, as CS-7.5 requires. `cargo check --all-features`
 builds both runtimes (24 s clean).
-
-## Open issues
-
-- Hardened-runtime launch with a Developer ID identity and notarisation of the two libraries: not testable here.
-- `x86_64` and universal builds: code path written, not run.
-- The two GPU users contend: with the recognizer running at the same time the synthesizer's RTF rose from 0.20 to
-  0.23 to 0.32 on a quiet GPU. Fine for one direction pair, but the two-direction pipeline plus the MT model
-  needs the C1b measurement of the voice-cloning plan, not this spike.
-- Cold start of the embedded shaders (about 2.7 s per ggml copy on the first launch after a rebuild; whether it
-  recurs after a macOS update or on another Mac was not measured).
-- `qt_version()` and the ggml "commit" strings are set through build definitions because the vendored trees have no
-  `.git`; refresh `QWEN_VERSION_STRING` in `qwentts-sys/build.rs` together with `VENDOR.toml`.
-- Not measured: memory of the two engines together, long-running stability (hours), and the `sherpa-onnx` path
-  beyond the load check.
-- Pre-existing and outside this package: `cargo clippy --workspace --all-targets -- -D warnings` fails in
-  `prxvc-models` and `cargo fmt --check` reports differences in other crates (both on the base commit too).
 
 ## Apple translation bridge (`apple-translation-sys`)
 
