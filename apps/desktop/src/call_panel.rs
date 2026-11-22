@@ -147,6 +147,10 @@ fn lane(d: &DirectionSnapshot, latency: Option<LastClause>) -> LaneView {
         hears: heard(d.hears),
         ..LaneView::default()
     };
+    view.in_flight = prxvc_session::call::direction_in_flight(
+        d.pipeline.as_deref(),
+        d.path.as_ref().map(|p| p.queued),
+    );
     if let Some(path) = &d.path {
         view.running = path.running;
         view.device = path.source_device.clone();
@@ -379,6 +383,21 @@ mod tests {
         assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, None);
         s.finishing_s = Some(4);
         assert_eq!(panel_of(&s, &TraceSlot::default()).finishing_s, Some(4));
+    }
+
+    #[test]
+    fn audio_queued_in_the_outgoing_sink_is_in_flight_until_it_has_played() {
+        let mut s = snapshot();
+        let outgoing = |s: &mut CallSnapshot, queued_ms| {
+            s.directions[0].path.as_mut().expect("path").queued =
+                std::time::Duration::from_millis(queued_ms);
+            panel_of(s, &TraceSlot::default()).outgoing.in_flight
+        };
+        assert!(!outgoing(&mut s, 0));
+        assert!(outgoing(&mut s, 500));
+        assert!(!outgoing(&mut s, 0));
+        // The incoming lane has no path here: nothing in flight.
+        assert!(!panel_of(&s, &TraceSlot::default()).incoming.in_flight);
     }
 
     #[test]

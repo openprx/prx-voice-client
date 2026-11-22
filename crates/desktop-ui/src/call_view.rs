@@ -332,6 +332,10 @@ pub struct LaneView {
     pub input_gated: bool,
     /// The path runs.
     pub running: bool,
+    /// Speech is pending or playing: the user is speaking, a clause is being translated,
+    /// synthesised or played, or audio is still queued in the sink. Derived by the engine with the
+    /// test the graceful stop uses, so it ends only when playback has ended.
+    pub in_flight: bool,
     /// What its listener hears.
     pub hears: Heard,
     /// The device captured from.
