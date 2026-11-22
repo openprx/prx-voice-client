@@ -65,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`pipeline.retry_wrong_language`); every assessment flag is counted and shown.
 - One log line per finished utterance and a call summary at stop (figures only, no spoken text);
   the synthesis engine and the voice log when they finish loading.
-- A spoken notice to the other party, on by default (`call.disclosure`).
+- A spoken notice to the other party, off by default (`call.disclosure`).
 - The Call translation window (first version) (menu-bar menu and the orb's menu): state, Start and Stop, Pause and
   Resume, the languages, issues with their actions, live captions of both directions. The Debug
   window keeps the raw diagnostics and a link to it.
