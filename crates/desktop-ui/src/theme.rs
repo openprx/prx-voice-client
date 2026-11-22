@@ -430,10 +430,8 @@ pub fn hairline(color: Color32) -> Stroke {
 
 /// Build the egui `Style` for a token set.
 pub fn style_for(tk: &Tokens, dark: bool) -> egui::Style {
-    let mut style = egui::Style::default();
-
     // Text styles: the closest egui text styles to the standard's scale.
-    style.text_styles = [
+    let text_styles = [
         (
             TextStyle::Small,
             FontId::new(size::META, FontFamily::Proportional),
@@ -457,6 +455,10 @@ pub fn style_for(tk: &Tokens, dark: bool) -> egui::Style {
         ),
     ]
     .into();
+    let mut style = egui::Style {
+        text_styles,
+        ..egui::Style::default()
+    };
 
     // Spacing: 8px default gap, 32px controls, 12px button padding.
     let sp = &mut style.spacing;
