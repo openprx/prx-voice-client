@@ -263,9 +263,10 @@ fn a_final_that_differs_in_punctuation_and_spacing_only_is_not_a_disagreement() 
 
 #[test]
 fn a_final_that_cannot_be_aligned_falls_back_to_the_suffix_after_the_committed_length() {
-    // The committed clause is 25 bytes long; the final shares nothing with it.
+    // The committed clause is 25 bytes long; the final shares nothing with it. Byte 25 falls
+    // inside "words", so the remainder starts at the start of that word.
     let fin = "completely different words here now";
-    let rest = &fin[25..];
+    let rest = &fin[fin.find("words").expect("word")..];
     let (snap, rig) = run_with_final(fin, &[(rest, &["Rest ", "here."])]);
     assert_eq!(texts(&snap), ["alpha bravo charlie delta", rest]);
     assert_eq!(snap.counters.final_rewrites, 1);

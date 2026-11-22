@@ -22,7 +22,7 @@ use crate::commit_policy::{
     ends_sentence, is_clause_sized, join_carry,
 };
 use crate::fault::Stage;
-use crate::filler::is_pure_filler;
+use crate::filler::{is_pure_filler, is_stray_tail};
 use crate::pipeline::snapshot::Stats;
 
 mod clips;
@@ -640,7 +640,12 @@ impl RecognitionStage {
         reason: CommitReason,
         out: &mut Out,
     ) {
-        if self.p.drop_filler && is_pure_filler(self.p.source, &text) {
+        // A stray one-word fragment ("I.", "Still.") that ends a segment which already had a unit
+        // is the recogniser's artefact on the trailing silence, and goes the way of a filler.
+        let stray_tail = reason == CommitReason::SegmentEnd
+            && self.open.as_ref().is_some_and(|o| o.clause_index > 0)
+            && is_stray_tail(self.p.source, &text);
+        if self.p.drop_filler && (stray_tail || is_pure_filler(self.p.source, &text)) {
             self.drop_filler(&text, end);
             return;
         }

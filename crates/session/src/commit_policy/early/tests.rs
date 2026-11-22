@@ -83,6 +83,27 @@ fn a_clause_mark_in_the_stable_text_commits_up_to_it() {
 }
 
 #[test]
+fn the_enumeration_comma_is_not_a_punctuation_boundary() {
+    let p = params(EarlyCommit::Punctuation);
+    let text = "大金字塔是埃及人在公元前三四、三世纪的杰作，后来又被修缮";
+    // Stable up to just after the enumeration comma: nothing to cut at.
+    let at = text.find('、').expect("mark") + '、'.len_utf8();
+    let stable = units(&text[..at]).len();
+    assert_eq!(cut_of(&p, Lang::Zh, text, 0, stable, ms(0)), None);
+    // The full-width comma still is a boundary, and the cut after it keeps the list whole.
+    let stable = units(&text[..text.find('，').expect("comma")]).len();
+    let cut = cut_of(&p, Lang::Zh, text, 0, stable, ms(0)).expect("cut");
+    assert_eq!(cut.reason, EarlyReason::Punctuation);
+    assert_eq!(&text[..cut.end], "大金字塔是埃及人在公元前三四、三世纪的杰作，");
+    for text in ["我们先去了北京：然后去上海，最后回家了吧", "我们先去了北京；然后去上海，最后回家了吧"] {
+        let mark = text.find(['：', '；']).expect("mark");
+        let stable = units(&text[..mark]).len();
+        let cut = cut_of(&p, Lang::Zh, text, 0, stable, ms(0)).expect("cut");
+        assert_eq!(cut.reason, EarlyReason::Punctuation);
+    }
+}
+
+#[test]
 fn the_last_mark_wins_and_a_sentence_mark_is_taken_with_what_precedes_it() {
     let p = params(EarlyCommit::Punctuation);
     let text = "We left early today, and then the rain started. After that we";
