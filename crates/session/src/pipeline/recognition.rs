@@ -11,18 +11,24 @@ use prxvc_ports::{
 
 use super::align::{Alignment, align_after_committed};
 use super::faults::{asr_failure, vad_failure};
-use super::messages::{ClauseSamples, Commit, RecognitionEvent, StageFailure};
+use super::messages::{Commit, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
 use super::segmenter::Segmenter;
 use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
-    ClauseReason, CommitDecision, CutPoint, EarlyInput, RecognitionInput, decide_early_cut,
-    decide_recognition_commit, is_clause_sized,
+    ClauseReason, CommitDecision, CutPoint, RecognitionInput, decide_recognition_commit,
+    is_clause_sized,
 };
 use crate::fault::Stage;
 use crate::filler::is_pure_filler;
 use crate::pipeline::snapshot::Stats;
+
+mod clips;
+mod early;
+
+use clips::{advance_past, clip_audio, trim_clips};
+use early::{floor_boundary, stable_cut};
 
 /// Stands in for the unknown text of a clause when the recogniser gives finals only: it makes the pause rule fire once speech has been heard.
 const UNKNOWN_TEXT: &str = "x x";
@@ -468,28 +474,6 @@ impl RecognitionStage {
         }
     }
 
-    /// Commit text from the recogniser's stable prefix while the speaker goes on (`early_commit`).
-    /// Not with a refine pass: it decodes the audio of a clause again and would not match a cut that
-    /// the stable text chose.
-    fn commit_early(&mut self, waited: Duration, out: &mut Out) {
-        let Some(open) = self.open.as_ref() else {
-            return;
-        };
-        let (Some(hyp), Some(stable)) = (open.hyp.as_ref(), stable_cut(open)) else {
-            return;
-        };
-        let input = EarlyInput {
-            lang: self.p.source,
-            text: &hyp.text,
-            committed: open.committed_bytes,
-            stable,
-            waited,
-        };
-        if let Some(cut) = decide_early_cut(&self.p.commit, &input) {
-            self.commit_prefix(cut.end, true, out);
-        }
-    }
-
     fn commit_clause(
         &mut self,
         reason: ClauseReason,
@@ -666,22 +650,6 @@ impl RecognitionStage {
     }
 }
 
-/// The segment's position after a unit that ended at `end` (committed or dropped): what follows
-/// starts there, and the audio before it is no longer kept for the refine pass.
-fn advance_past(open: &mut OpenSegment, end: MonoTime, pad: Duration) {
-    open.last_commit_ts = end;
-    open.carry.clear();
-    open.first_partial_traced = false;
-    let keep_from = end.as_nanos().saturating_sub(duration_nanos(pad));
-    while open
-        .clips
-        .front()
-        .is_some_and(|(ts, _)| ts.as_nanos() < keep_from)
-    {
-        open.clips.pop_front();
-    }
-}
-
 /// The part of a final that is not committed yet. Committed text stays as committed and is never
 /// taken from the final again: the remainder is found by content ([`align_after_committed`]). A
 /// final that disagrees with the committed text is counted and traced, never patched into what was
@@ -723,71 +691,4 @@ fn join_carry(carry: &str, text: &str) -> String {
     } else {
         format!("{carry} {text}")
     }
-}
-
-fn duration_nanos(d: Duration) -> u64 {
-    u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
-}
-
-/// The largest index `<= at` that is a char boundary of `text`.
-fn floor_boundary(text: &str, at: usize) -> usize {
-    let mut at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
-}
-
-/// Where the stable, uncommitted text can be cut: just after its last word,
-/// never inside an ASCII word. `None` when there is nothing to cut.
-fn stable_cut(open: &OpenSegment) -> Option<usize> {
-    let hyp = open.hyp.as_ref()?;
-    let text = &hyp.text;
-    let mut cut = floor_boundary(text, hyp.stable_prefix_len);
-    if cut <= open.committed_bytes {
-        return None;
-    }
-    let ascii_word = |c: char| c.is_ascii_alphanumeric();
-    if cut < text.len() {
-        let before = text[..cut].chars().next_back();
-        let after = text[cut..].chars().next();
-        if before.is_some_and(ascii_word) && after.is_some_and(ascii_word) {
-            cut = text[..cut].rfind(|c: char| !ascii_word(c)).map_or(0, |i| {
-                i + text[i..].chars().next().map_or(1, char::len_utf8)
-            });
-        }
-    }
-    (cut > open.committed_bytes && !text[open.committed_bytes..cut].trim().is_empty())
-        .then_some(cut)
-}
-
-/// Drop the oldest clips beyond `keep` of audio.
-fn trim_clips(clips: &mut VecDeque<(MonoTime, Vec<f32>)>, keep: Duration, rate: SampleRate) {
-    let mut total: usize = clips.iter().map(|(_, s)| s.len()).sum();
-    while rate.duration_of(total) > keep {
-        match clips.pop_front() {
-            Some((_, s)) => total -= s.len(),
-            None => break,
-        }
-    }
-}
-
-/// The audio of `[start - pad, end + pad]` from the kept clips.
-fn clip_audio(
-    clips: &VecDeque<(MonoTime, Vec<f32>)>,
-    start: MonoTime,
-    end: MonoTime,
-    pad: Duration,
-    rate: SampleRate,
-) -> ClauseSamples {
-    let from = start.as_nanos().saturating_sub(duration_nanos(pad));
-    let to = end.saturating_add(pad).as_nanos();
-    let mut samples = Vec::new();
-    for (ts, s) in clips {
-        let clip_end = ts.saturating_add(rate.duration_of(s.len())).as_nanos();
-        if clip_end > from && ts.as_nanos() < to {
-            samples.extend_from_slice(s);
-        }
-    }
-    ClauseSamples { samples, rate }
 }
