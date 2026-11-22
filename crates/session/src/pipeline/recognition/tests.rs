@@ -90,6 +90,18 @@ impl Harness {
         silence_frames: usize,
         customize: impl FnOnce(&mut PipelineParams),
     ) -> Self {
+        let mut asr = AsrScript::new([], "").then_round([], "");
+        asr.final_text = partials.last().map(|(t, _)| t.clone()).unwrap_or_default();
+        asr.partials = partials;
+        Self::scripted(asr, speech_frames, silence_frames, customize)
+    }
+
+    fn scripted(
+        asr: AsrScript,
+        speech_frames: usize,
+        silence_frames: usize,
+        customize: impl FnOnce(&mut PipelineParams),
+    ) -> Self {
         let clock = ManualClock::new();
         let mut p = PipelineParams::new(
             Direction::Incoming,
@@ -105,9 +117,6 @@ impl Harness {
         p.commit.clause_pause = Duration::from_secs(30);
         p.commit.segment_end_pause = Duration::from_secs(60);
         customize(&mut p);
-        let mut asr = AsrScript::new([], "").then_round([], "");
-        asr.final_text = partials.last().map(|(t, _)| t.clone()).unwrap_or_default();
-        asr.partials = partials;
         let mut vad = vec![0.0; 10];
         vad.extend(std::iter::repeat_n(0.9, speech_frames));
         vad.extend(std::iter::repeat_n(0.0, silence_frames));
@@ -346,6 +355,33 @@ fn a_unit_that_ends_its_sentence_does_not_continue_it() {
             continues_after(text, reason),
             expected,
             "{text:?} {reason:?}"
+        );
+    }
+}
+
+/// A recogniser that keeps reading one filler word, in every round.
+fn filler_only_script() -> AsrScript {
+    let round = vec![("the".to_owned(), 0); 2000];
+    let mut asr = AsrScript::new([], "the");
+    asr.partials.clone_from(&round);
+    asr.later_rounds = vec![(round, "the".to_owned())];
+    asr
+}
+
+#[test]
+fn filler_that_waits_as_a_carry_is_not_cut_again_on_every_frame() {
+    for retranslation in [false, true] {
+        let mut h = Harness::scripted(filler_only_script(), 600, 0, |p| {
+            p.drop_filler = true;
+            if !retranslation {
+                p.retranslate = RetranslateParams::disabled();
+            }
+        });
+        h.frames(10 + 600);
+        let dropped = h.counters().filler_dropped;
+        assert!(
+            dropped <= 4,
+            "about one length cut per 8 s of 19 s of speech, got {dropped} drops (retranslation {retranslation})"
         );
     }
 }
