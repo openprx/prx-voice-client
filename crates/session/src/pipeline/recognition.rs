@@ -18,7 +18,7 @@ use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
     ClauseReason, CommitDecision, CutPoint, RecognitionInput, decide_recognition_commit,
-    is_clause_sized,
+    is_clause_sized, join_carry,
 };
 use crate::fault::Stage;
 use crate::filler::is_pure_filler;
@@ -686,15 +686,5 @@ fn asr_fault(e: &AsrError) -> RecognitionFault {
     RecognitionFault {
         stage: Stage::Asr,
         failure: asr_failure(e, true),
-    }
-}
-
-fn join_carry(carry: &str, text: &str) -> String {
-    if carry.is_empty() {
-        text.to_owned()
-    } else if text.is_empty() {
-        carry.to_owned()
-    } else {
-        format!("{carry} {text}")
     }
 }

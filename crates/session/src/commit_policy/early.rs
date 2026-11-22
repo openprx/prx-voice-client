@@ -216,7 +216,7 @@ fn written<'a>(region: &'a str, all: &[Unit], idx: usize) -> &'a str {
 }
 
 /// Whether a cut after the first `k` units would split a token that must stay whole.
-fn splits_something(region: &str, all: &[Unit], k: usize) -> bool {
+pub(super) fn splits_something(region: &str, all: &[Unit], k: usize) -> bool {
     let prev = &all[k - 1].key;
     if prev.chars().any(|c| c.is_ascii_digit()) {
         return true;
@@ -353,7 +353,7 @@ const MONTHS: &[&str] = &[
 ];
 
 /// Words a phrase cannot end on: a cut after one leaves a fragment that cannot be translated alone.
-const DANGLING_EN: &[&str] = &[
+pub(super) const DANGLING_EN: &[&str] = &[
     "the", "a", "an", "of", "to", "in", "on", "at", "for", "with", "by", "from", "about", "into",
     "over", "under", "and", "but", "or", "so", "if", "that", "which", "who", "whom", "whose",
     "because", "as", "than", "when", "while", "where", "my", "your", "his", "her", "our", "their",
@@ -398,7 +398,7 @@ const COMPOUNDS_ZH: &[&str] = &[
 const ATTACHED_PARTICLES: &[char] = &['的', '地', '得', '了', '着', '过', '吗', '呢', '吧', '啊', '嘛'];
 
 /// Characters a Chinese phrase cannot end on.
-const DANGLING_ZH: &[char] = &[
+pub(super) const DANGLING_ZH: &[char] = &[
     '的', '在', '和', '跟', '与', '把', '被', '对', '给', '让', '从', '向', '为', '是', '有', '要',
     '会', '能', '就', '才', '都', '也', '还', '又', '不', '没', '将', '比', '而', '或',
 ];
