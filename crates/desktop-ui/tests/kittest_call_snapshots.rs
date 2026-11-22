@@ -4,6 +4,10 @@
 //! `UPDATE_SNAPSHOTS=true cargo test -p prxvc-desktop-ui --test kittest_call_snapshots` and look at
 //! the PNGs before committing; the reference machine is the developer Mac the images were made on.
 
+// The reference images were made on a Mac; the text is rendered differently on other systems,
+// so the comparison is only meaningful there. The layout tests cover the other systems.
+#![cfg(target_os = "macos")]
+
 mod call_fixtures;
 mod common;
 
