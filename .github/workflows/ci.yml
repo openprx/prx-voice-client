@@ -11,9 +11,18 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Linux and Windows are not supported yet: the desktop application, the audio
+  # layer's capture and virtual-microphone code and the call tooling are macOS
+  # only (Core Audio process tap, virtual microphone driver). The full workspace
+  # is therefore checked and tested on macOS; Linux keeps a compile, lint and
+  # test run of the platform-neutral crates (everything except `prxvc-desktop`).
+  # To restore Linux and Windows for the whole workspace, `apps/desktop` needs
+  # Linux and Windows implementations (or `cfg` gating) of `call_kit`, the
+  # call harness and dev binaries, tray and routing recovery, and the audio
+  # crate's rustdoc must stop linking to macOS-only modules.
   check:
-    name: Check
-    runs-on: ubuntu-latest
+    name: Check (macos-latest)
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.99.0
@@ -22,9 +31,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-
-      - name: Install system dependencies (Linux audio)
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libxdo-dev
 
       - name: Check formatting
         run: cargo fmt --check
@@ -35,12 +41,38 @@ jobs:
       - name: Check compilation
         run: cargo check --workspace
 
+  check-linux:
+    name: Check portable crates (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Install system dependencies (Linux)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libxdo-dev
+
+      - name: Clippy
+        run: cargo clippy --workspace --exclude prxvc-desktop --all-targets -- -D warnings
+
+      - name: Check compilation
+        run: cargo check --workspace --exclude prxvc-desktop
+
   test:
-    name: Test
-    needs: check
+    name: Test (${{ matrix.os }})
+    needs: [check, check-linux]
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: macos-latest
+            args: --workspace
+          - os: ubuntu-latest
+            args: --workspace --exclude prxvc-desktop
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -54,36 +86,20 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libxdo-dev
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test ${{ matrix.args }}
 
   build-desktop:
-    name: Build Desktop (${{ matrix.os }})
+    name: Build Desktop (macos-latest)
     needs: test
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: prxvc-desktop
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: prxvc-desktop
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: prxvc-desktop.exe
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libxdo-dev
 
       - name: Build release
         run: cargo build -p prxvc-desktop --release
@@ -91,8 +107,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
-          path: target/release/${{ matrix.artifact }}
+          name: desktop-macos-latest
+          path: target/release/prxvc-desktop
           if-no-files-found: warn
 
   build-ffi:
@@ -129,14 +145,11 @@ jobs:
 
   docs:
     name: Documentation
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.99.0
       - uses: Swatinem/rust-cache@v2
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libgtk-3-dev libxdo-dev
 
       - name: Build docs
         run: cargo doc --workspace --no-deps
