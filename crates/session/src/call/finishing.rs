@@ -39,6 +39,18 @@ fn is_idle(s: &DirectionSnapshot) -> bool {
         && s.clauses.iter().all(|c| c.state.is_terminal())
 }
 
+/// Whether a translating direction still has speech pending or playing: open speech, a clause not
+/// yet ended, or audio still queued in the sink. This is the same test the graceful stop uses to
+/// decide that the last sentences were played, so the window's "sending" indicator and the stop
+/// agree. `pipeline` is the direction's pipeline snapshot (`None` when it does not translate) and
+/// `sink_queued` the audio queued in its sink (`None` while the path does not run).
+pub fn direction_in_flight(
+    pipeline: Option<&DirectionSnapshot>,
+    sink_queued: Option<Duration>,
+) -> bool {
+    pipeline.is_some_and(|s| !is_idle(s)) || sink_queued.is_some_and(|q| q >= SINK_EMPTY)
+}
+
 impl Coordinator {
     /// Whether a graceful stop applies now: a translation runs and the limit is not zero.
     fn can_finish_gracefully(&self) -> bool {
@@ -106,8 +118,8 @@ impl Coordinator {
             let Some(r) = l.running.as_ref() else {
                 return true;
             };
-            let sink_empty = l.stats.as_ref().is_none_or(|s| s.queued < SINK_EMPTY);
-            r.drain_flushed() && r.snapshot().is_none_or(|s| is_idle(&s)) && sink_empty
+            let queued = l.stats.as_ref().map(|s| s.queued);
+            r.drain_flushed() && !direction_in_flight(r.snapshot().as_deref(), queued)
         })
     }
 
@@ -123,5 +135,93 @@ impl Coordinator {
         let f = self.finishing?;
         let left = f.deadline.saturating_since(self.now());
         Some(u32::try_from(left.as_millis().div_ceil(1000)).unwrap_or(u32::MAX))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::direction_state::{DirectionState, Reasons};
+    use crate::output::OutputSource;
+    use crate::pipeline::{ClauseSnapshot, Counters, Ledger, PartialSnapshot};
+    use crate::segment::ClauseState;
+    use prxvc_media::{ClauseId, Direction, SegmentId};
+
+    fn snapshot(activity: Activity) -> DirectionSnapshot {
+        DirectionSnapshot {
+            version: 1,
+            direction: Direction::Outgoing,
+            state: DirectionState::Off,
+            reasons: Reasons::default(),
+            output: OutputSource::Translation,
+            activity,
+            partial: None,
+            clauses: Vec::new(),
+            counters: Counters::default(),
+            backlog_ms: 0,
+            recent_skips: Vec::new(),
+            last_error: None,
+            ledger: Ledger::default(),
+        }
+    }
+
+    fn clause(state: ClauseState) -> ClauseSnapshot {
+        let seg = SegmentId::new(Direction::Outgoing, 1).expect("seq >= 1");
+        ClauseSnapshot {
+            clause: ClauseId::new(seg, 0),
+            state,
+            source_text: String::new(),
+            translation: String::new(),
+            skipped: None,
+            flags: Vec::new(),
+            retried: false,
+        }
+    }
+
+    const EMPTY: Option<Duration> = Some(Duration::ZERO);
+
+    #[test]
+    fn a_direction_that_does_not_translate_or_has_drained_is_not_in_flight() {
+        assert!(!direction_in_flight(None, None));
+        assert!(!direction_in_flight(None, EMPTY));
+        let mut s = snapshot(Activity::Listening);
+        s.clauses = vec![clause(ClauseState::Played), clause(ClauseState::Skipped)];
+        assert!(!direction_in_flight(Some(&s), EMPTY));
+    }
+
+    #[test]
+    fn open_speech_is_in_flight_before_any_clause_is_queued() {
+        let mut s = snapshot(Activity::Recognizing);
+        assert!(direction_in_flight(Some(&s), EMPTY));
+        s.activity = Activity::Listening;
+        s.partial = Some(PartialSnapshot {
+            segment: SegmentId::new(Direction::Outgoing, 1).expect("seq >= 1"),
+            revision: 1,
+            text: "hello".into(),
+            stable_prefix_len: 0,
+        });
+        assert!(direction_in_flight(Some(&s), EMPTY));
+    }
+
+    #[test]
+    fn a_clause_that_has_not_ended_is_in_flight_whatever_stage_it_is_in() {
+        for state in [
+            ClauseState::Committed,
+            ClauseState::Translating,
+            ClauseState::Synthesizing,
+            ClauseState::Playing,
+        ] {
+            let mut s = snapshot(Activity::Listening);
+            s.clauses = vec![clause(ClauseState::Played), clause(state.clone())];
+            assert!(direction_in_flight(Some(&s), EMPTY), "{state:?}");
+        }
+    }
+
+    #[test]
+    fn audio_still_queued_in_the_sink_is_in_flight_until_it_is_played() {
+        let s = snapshot(Activity::Listening);
+        assert!(direction_in_flight(Some(&s), Some(Duration::from_millis(400))));
+        assert!(direction_in_flight(Some(&s), Some(SINK_EMPTY)));
+        assert!(!direction_in_flight(Some(&s), Some(Duration::from_millis(10))));
     }
 }

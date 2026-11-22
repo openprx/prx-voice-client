@@ -58,6 +58,7 @@ mod tests;
 
 pub use disclosure::{DisclosureSnapshot, DisclosureSpec, DisclosureState};
 pub use coordinator::{CallSettings, Coordinator, CoordinatorDeps, SnapshotSink};
+pub use finishing::direction_in_flight;
 pub use error::{CallErrorCode, CallIssue, HostFault, ProviderIssue, Severity};
 pub use host::{
     ActivityJudgement, AudioPath, CallHost, DirectionBuild, EnteredRouting, LeftRouting,
