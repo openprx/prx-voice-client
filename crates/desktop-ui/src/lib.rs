@@ -8,9 +8,9 @@
 //! the egui style built from them, and [`widgets`] for the custom widgets.
 //!
 //! Module map:
-//! - [`state`]: view models and `DesktopUiState` with its sync and flush.
-//! - [`theme_presets`]: the `Theme` colour presets.
-//! - [`app`]: `render_app`, the per-frame composition.
+//! - `state`: view models and `DesktopUiState` with its sync and flush.
+//! - `theme_presets`: the `Theme` colour presets.
+//! - `app`: `render_app`, the per-frame composition.
 //! - `orb_view`, `status_pill`, `status_hint`, `context_menu`: the orb and its surroundings;
 //!   `assistant_view`: the card of the assistant's issue with the action that fixes it.
 //! - `transcript_view`, `history_view`, `debug_view`: the content views.

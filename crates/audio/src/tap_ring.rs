@@ -1,7 +1,7 @@
 //! Bounded lock-free single-producer single-consumer ring of fixed-size audio slots: construction, shared state and the consumer side.
 //!
 //! All memory is allocated in [`tap_ring`]. The producer side
-//! ([`RingProducer::push_with`], in [`crate::tap_ring_rt`]) never allocates,
+//! ([`RingProducer::push_with`], in `crate::tap_ring_rt`) never allocates,
 //! locks or blocks: when the ring is full the new slot is dropped and `false`
 //! is returned, and the caller counts the overrun. The consumer side runs on a
 //! normal thread.

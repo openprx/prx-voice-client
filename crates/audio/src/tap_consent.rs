@@ -10,7 +10,7 @@
 //! The status comes from the private `TCCAccessPreflight` and the request from
 //! the private `TCCAccessRequest` (service `kTCCServiceAudioCapture`), the calls
 //! the reference application uses; both are looked up at run time in the native
-//! shim. The decision logic ([`plan_request`], [`start_gate`]) is pure.
+//! shim. The decision logic (`plan_request`, `start_gate`) is pure.
 
 use std::time::Duration;
 

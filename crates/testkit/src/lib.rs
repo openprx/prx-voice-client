@@ -135,7 +135,7 @@ pub fn create_test_session_config() -> SessionConfig {
 /// Run a complete session lifecycle through the Engine:
 /// Create -> Start -> Stop -> Shutdown.
 ///
-/// Returns the list of events collected via [`Engine::poll_transport_events`]
+/// Returns the list of events collected via `Engine::poll_transport_events`
 /// during the lifecycle. Each call creates a fresh Engine with a
 /// [`MockGateway`](prxvc_protocol::mock::MockGateway) transport.
 pub fn run_full_session_lifecycle() -> Result<Vec<prxvc_protocol::Event>, String> {
@@ -257,7 +257,7 @@ pub fn run_session_with_interrupt() -> Result<Vec<prxvc_protocol::Event>, String
     Ok(all_events)
 }
 
-/// Verify that events contain [`SessionStateChanged`] transitions matching
+/// Verify that events contain `SessionStateChanged` transitions matching
 /// every state label in `expected_states` (in any order).
 ///
 /// Returns `Ok(())` if all expected states appear in the `to` field of at

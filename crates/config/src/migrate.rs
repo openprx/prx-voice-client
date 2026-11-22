@@ -8,7 +8,7 @@
 //! table is written back only by the next save.
 //!
 //! To add a schema version: bump [`CURRENT_SCHEMA_VERSION`] and append one
-//! entry to [`CHAIN`].
+//! entry to `CHAIN`.
 
 use crate::ConfigError;
 

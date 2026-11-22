@@ -8,7 +8,7 @@
 //! per call direction) occupy two workers and are batched by the runtime into shared decode
 //! steps. More requests than workers wait in a bounded job queue (a full queue is an
 //! `Unavailable` error, not a wait). The runtime's chunk and cancel callbacks run on its own
-//! compute thread and touch only the request's [`AttemptSink`](super::request::AttemptSink):
+//! compute thread and touch only the request's `AttemptSink`:
 //! atomics and a bounded queue, never caller code. Each request has its own flags, so cancelling
 //! one request (or dropping its stream) stops that call at its next poll and leaves the other
 //! untouched. Back-pressure is described in the `request` module.

@@ -1,7 +1,7 @@
 //! Resolution: from configuration, catalogue, model store, credentials and network policy to typed
 //! specifications, collecting every problem instead of stopping at the first.
 //!
-//! * `mod`: the [`Resolver`] and the selection rules (primary, fallback, catalogue defaults).
+//! * `mod`: the `Resolver` and the selection rules (primary, fallback, catalogue defaults).
 //! * `local`: catalogue models for VAD, recognition and synthesis.
 //! * `mt`: provider entries of the OpenAI-compatible chat protocol (translation and dialogue).
 //! * `system_mt`: system translation, the translation engine of `call.translation_engine = "system"`.

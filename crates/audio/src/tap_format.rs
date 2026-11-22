@@ -1,7 +1,7 @@
 //! Tap stream-format validation: checks the format once at start and packs the validated layout for the real-time callback.
 //!
 //! The per-callback handling of the layout (unpack, frame count, interleave,
-//! silence detection) is in [`crate::tap_format_rt`].
+//! silence detection) is in `crate::tap_format_rt`.
 
 use crate::tap_types::TapError;
 

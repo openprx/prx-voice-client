@@ -156,7 +156,7 @@ fn event_to_ffi(event: &Event) -> FfiEvent {
 /// Accepts a JSON configuration string and returns a JSON status object.
 /// An empty or invalid config string causes default configuration to be used.
 /// Creates a [`MockGateway`] transport, an event channel, and an [`Engine`],
-/// stores the engine in the global [`ENGINE`] handle.
+/// stores the engine in the global `ENGINE` handle.
 ///
 /// Returns `{"status": "initialized", "contract_version": <N>}` on success.
 pub fn ffi_initialize(config_json: &str) -> Result<String, FfiError> {

@@ -1,7 +1,7 @@
 //! `QwenAsr`: recognition by re-decoding, behind the streaming and refine ports.
 //!
 //! One engine (one loaded model) on one worker thread serves every stream and every refine call; see
-//! [`super::core`] for how the work is ordered. Threading in short: callers (`feed`, `finalize`,
+//! `super::core` for how the work is ordered. Threading in short: callers (`feed`, `finalize`,
 //! `transcribe`) never decode; they hand the worker a request and read results from shared state.
 
 use std::sync::Arc;

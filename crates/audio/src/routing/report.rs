@@ -92,7 +92,7 @@ pub struct Restored {
     /// The device now the default input.
     pub to: DeviceRef,
     /// Whether it is the remembered device or the policy's choice (then the UI
-    /// says "Your previous microphone is gone; using <name>").
+    /// says "Your previous microphone is gone; using `<name>`").
     pub reason: RestoreReason,
 }
 

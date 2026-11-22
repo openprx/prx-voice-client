@@ -1,13 +1,13 @@
 //! Core Audio process-tap capture (macOS 14.4+): safe wrapper over `native/prxvc_tap.m` that delivers one application's audio as frames.
 //!
-//! The IO callback ([`crate::tap_rt::on_buffers`]) runs on the Core Audio HAL
+//! The IO callback (`crate::tap_rt::on_buffers`) runs on the Core Audio HAL
 //! thread, a real-time thread: it only validates the buffer shape, copies
 //! samples into a preallocated lock-free ring ([`crate::tap_ring`]) and bumps
 //! atomic counters. It lives in a `*_rt.rs` file and is covered by the
 //! real-time check (`tests/realtime_files.rs`). This file holds the FFI
 //! declarations, the callback context and everything that runs on normal
 //! threads (frame building, health checks, re-creation; see
-//! [`crate::tap_supervisor`]).
+//! `crate::tap_supervisor`).
 //!
 //! Frames are emitted as raw interleaved **float32 at the tap's native rate**
 //! (typically 48 kHz stereo); downmix-to-mono and resampling to 16 kHz for ASR

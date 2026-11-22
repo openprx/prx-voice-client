@@ -10,7 +10,7 @@ use crate::input_policy::InputTransport;
 /// List input devices with UID and transport type.
 ///
 /// On macOS this goes through Core Audio. On other platforms it uses cpal; the
-/// UID is the device name and the transport is [`InputTransport::Unknown`].
+/// UID is the device name and the transport is `InputTransport::Unknown`.
 ///
 /// # Errors
 /// [`AudioError::InitializationFailed`] when the platform list cannot be read.

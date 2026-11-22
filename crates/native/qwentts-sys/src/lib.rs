@@ -14,13 +14,13 @@
 //!   process exits (the Metal backend aborts at exit while a device is still in use). `qt_free`
 //!   on null is a no-op. The context must not be used after `qt_free`, and `qt_free` must not
 //!   run while a `qt_synthesize` call on the same context is in flight.
-//! - `qt_extract_voice_ref` fills a [`qt_voice_ref`] with malloc-owned buffers; release them with
+//! - `qt_extract_voice_ref` fills a `qt_voice_ref` with malloc-owned buffers; release them with
 //!   `qt_voice_ref_free`. The struct must be zero-initialised first and not reassigned without
 //!   freeing. The latents are plain buffers: they may be reused for any number of
 //!   `qt_synthesize` calls and across contexts, and must stay alive during each call that
 //!   points at them.
 //! - `qt_synthesize` is blocking and thread safe on one context. Every pointer inside
-//!   [`qt_tts_params`] is only read during the call. In streaming mode (`on_chunk` set) the audio
+//!   `qt_tts_params` is only read during the call. In streaming mode (`on_chunk` set) the audio
 //!   goes to the callback and `out` stays empty; `out` must still be released with
 //!   `qt_audio_free` (safe on a zero-initialised struct).
 //! - `on_chunk` and `cancel` run on the library's internal compute worker thread, never on the

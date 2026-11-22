@@ -1,7 +1,7 @@
 //! PRX Voice Client desktop application: entry point and module table of contents.
 //!
 //! Runs the egui UI on the main thread and the assistant's host on a background thread. The two
-//! communicate through [`SharedAppState`] which uses `parking_lot::Mutex` for minimal-contention
+//! communicate through `SharedAppState` which uses `parking_lot::Mutex` for minimal-contention
 //! synchronization.
 //!
 //! Modules:

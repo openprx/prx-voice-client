@@ -240,7 +240,7 @@ impl MonoResampler {
     /// the input by up to one internal block plus the filter look-ahead until
     /// [`stream_finish`](Self::stream_finish) drains the tail.
     ///
-    /// The alignment shift is [`lead_shift`]. (An earlier version dropped
+    /// The alignment shift is `lead_shift`. (An earlier version dropped
     /// `rubato`'s reported `output_delay`, which is not a delay of its output;
     /// that cut about 8 ms off the start and moved the whole stream earlier by
     /// as much.)

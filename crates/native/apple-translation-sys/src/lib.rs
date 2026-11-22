@@ -9,11 +9,11 @@
 //! - Every function is thread-safe. `prxat_prepare`, `prxat_translate` and the availability and
 //!   create calls BLOCK the calling thread: never call them from a device callback.
 //! - Calls on one session are serialised. `prxat_cancel` may be called from any thread and makes
-//!   the blocked call return [`PRXAT_CANCELLED`]. `prxat_destroy` must not race a running call.
+//!   the blocked call return `PRXAT_CANCELLED`. `prxat_destroy` must not race a running call.
 //! - The framework delivers its work through the main dispatch queue: the process's main thread
 //!   must run its run loop (an application does; a command-line tool or a test binary runs
 //!   `prxat_run_main_loop` on its main thread and works on another thread). Otherwise the calls
-//!   return [`PRXAT_NO_MAIN_LOOP`].
+//!   return `PRXAT_NO_MAIN_LOOP`.
 //! - A returned string is owned by the caller and released with `prxat_free`.
 #![cfg(feature = "apple-translation")]
 #![allow(non_camel_case_types)]

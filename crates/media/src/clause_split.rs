@@ -6,7 +6,7 @@
 //! minimums follow the recognition commit rule (`prxvc-session`
 //! `commit_policy`: 4 Chinese characters or 2 English words) for sentence
 //! marks and are larger for clause marks (6 and 4, the values the
-//! `bench/e2e` prototype settled on [P]), so that commas do not produce
+//! `bench/e2e` prototype settled on \[P\]), so that commas do not produce
 //! fragments too short to synthesise well.
 //!
 //! The splitter never cuts inside a number (`3.5`, `1,000`, `10:30`), after a

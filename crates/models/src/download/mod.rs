@@ -2,11 +2,11 @@
 //! resume, retry, verification and atomic promotion (design 4.2). This file
 //! only wires the settings and the sub-modules together.
 //!
-//! - [`http`]: one ranged request streamed into a partial file.
+//! - `http`: one ranged request streamed into a partial file.
 //! - [`retry`]: backoff schedule and sleeper.
 //! - [`file`]: the per-file download loop (pieces, retries, redirects).
-//! - [`verify`]: SHA-256 check of a finished file.
-//! - [`job`]: the per-model procedure (adopt, disk check, files, promote).
+//! - `verify`: SHA-256 check of a finished file.
+//! - `job`: the per-model procedure (adopt, disk check, files, promote).
 
 mod file;
 mod http;

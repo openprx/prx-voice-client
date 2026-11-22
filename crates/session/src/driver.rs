@@ -15,7 +15,7 @@
 //!
 //! Upstream (`prxvc-audio`: tap → resample → ASR) produces the recognized text;
 //! downstream the caller plays `audio` (to the ear for Peer→Self, or into the
-//! virtual mic for Self→Peer) and then calls [`finish_playback`].
+//! virtual mic for Self→Peer) and then calls `finish_playback`.
 
 use crate::adapter::{AdapterError, SynthesizedAudio, Synthesizer, Translator};
 use crate::interpret::{

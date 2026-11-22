@@ -83,7 +83,7 @@ impl fmt::Display for PromptTemplate {
 /// How much context and glossary one request may carry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PromptLimits {
-    /// Most previous clause pairs (`pipeline.mt_context_clauses`, 4 [C]).
+    /// Most previous clause pairs (`pipeline.mt_context_clauses`, 4 \[C\]).
     pub max_context_pairs: usize,
     /// Most characters of context (both sides of all pairs).
     pub max_context_chars: usize,

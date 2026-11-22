@@ -60,7 +60,7 @@ fn log_notices(notices: &[prxvc_config::LoadNotice]) {
     }
 }
 
-/// Migrate the legacy directories, load [`AppConfig`] and resolve the
+/// Migrate the legacy directories, load `AppConfig` and resolve the
 /// application directories.
 ///
 /// A settings file that cannot be read is kept under another name and

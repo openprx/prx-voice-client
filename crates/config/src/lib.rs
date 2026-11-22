@@ -3,10 +3,10 @@
 //!
 //! This file only declares the modules and re-exports the public API.
 //!
-//! * [`app_config`], [`sections`] and [`providers`] hold the typed
+//! * `app_config`, `sections` and `providers` hold the typed
 //!   `config.toml` (design 2.5).
 //! * [`migrate`] upgrades an older file before it is deserialised.
-//! * [`manager`] reads and writes the file (atomic writes, unreadable files
+//! * `manager` reads and writes the file (atomic writes, unreadable files
 //!   are renamed aside, never overwritten).
 //! * [`paths`] holds [`paths::APP_ID`] and directory resolution; [`legacy`]
 //!   the one-time migration of the legacy directories.

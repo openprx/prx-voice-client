@@ -1,6 +1,6 @@
 //! Mock gateway for development and testing.
 //!
-//! Provides [`MockGateway`], a [`Transport`](crate::transport::Transport)
+//! Provides [`MockGateway`], a [`Transport`]
 //! implementation that simulates a backend by echoing commands as events.
 
 use std::collections::VecDeque;

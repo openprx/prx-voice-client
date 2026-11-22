@@ -43,7 +43,7 @@ pub struct CommitParams {
     /// Fewest English words that make a clause on a pause.
     pub min_clause_words: usize,
     /// When translatable units are committed from the recogniser's stable prefix, before the
-    /// segment ends (`pipeline.early_commit`, see [`early`]).
+    /// segment ends (`pipeline.early_commit`, see `early`).
     pub early: EarlyCommit,
     /// Fewest stable Chinese characters that make a chunk when no mark is available.
     pub chunk_chars: usize,

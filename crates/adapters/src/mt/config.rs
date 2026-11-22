@@ -34,7 +34,7 @@ impl fmt::Debug for ApiKey {
 
 /// The three timeouts of a request, each with its own error.
 ///
-/// Defaults are provisional [C]: the local server answers its first token in
+/// Defaults are provisional \[C\]: the local server answers its first token in
 /// 0.1 to 0.6 s on the development machine (`bench/e2e` logs), so these are
 /// generous for a local server and tight for a cloud one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

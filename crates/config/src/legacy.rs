@@ -19,7 +19,7 @@ pub const MOVED_NOTE_NAME: &str = "MOVED.txt";
 
 // ---------------------------------------------------------------------------
 
-/// The directories used before [`APP_ID`] existed.
+/// The directories used before `APP_ID` existed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LegacyDirs {
     /// Config directory of `com.prx.prx-voice-client`.

@@ -5,7 +5,7 @@
 //! uninstall wait for the user at the administrator prompt, so they run on their own
 //! thread; the outcome is stored in a process-wide tracker and reported as an
 //! `EventSnapshot` of type `DriverInstall`, never silently. The UI package reads
-//! [`snapshot`] and renders the typed error code with translated text.
+//! `snapshot` and renders the typed error code with translated text.
 
 use parking_lot::Mutex;
 use prxvc_desktop_ui::{EventSnapshot, SharedAppState};

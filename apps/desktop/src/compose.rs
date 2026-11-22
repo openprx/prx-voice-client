@@ -154,7 +154,7 @@ fn spawn_assistant_thread(
     }
 }
 
-/// Attempt to open a SQLite-backed [`StorageManager`].
+/// Attempt to open a SQLite-backed `StorageManager`.
 ///
 /// Returns `None` (with a warning log) if the platform data directory cannot
 /// be resolved or the database cannot be opened, so the app can continue

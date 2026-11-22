@@ -164,7 +164,7 @@ pub fn clamp_size(kind: ToolKind, size: Vec2) -> Vec2 {
 }
 
 /// Move `pos` so that the title strip of a window of `size` lies on `screen`:
-/// at least [`GRAB_STRIP`] of it is inside, the rest may hang over an edge.
+/// at least `GRAB_STRIP` of it is inside, the rest may hang over an edge.
 pub fn clamp_title_strip(screen: Rect, pos: Pos2, size: Vec2) -> Pos2 {
     let strip_w = GRAB_STRIP.x.min(size.x);
     let min_x = screen.left() - (size.x - strip_w);

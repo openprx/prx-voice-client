@@ -424,7 +424,7 @@ impl DirectionPipeline {
 
     /// A graceful stop: no new audio is accepted, the open segment is ended so that what was said
     /// last is committed, and everything already committed is translated, synthesised and
-    /// played to its end (the caller keeps reporting playback). [`Self::drained`] says when it is
+    /// played to its end (the caller keeps reporting playback). `Self::drained` says when it is
     /// all over.
     pub fn drain(&self) {
         self.input.drain();

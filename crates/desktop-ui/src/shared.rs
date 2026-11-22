@@ -188,7 +188,7 @@ impl SharedAppState {
     /// Push a new event snapshot from the runtime for the UI to consume.
     ///
     /// Also appends a formatted string to the debug event log, keeping the
-    /// log capped at [`MAX_DEBUG_EVENTS`].
+    /// log capped at `MAX_DEBUG_EVENTS`.
     pub fn push_event(&self, event: EventSnapshot) {
         let debug_line = format!(
             "[{}] {}({})",

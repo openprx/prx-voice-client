@@ -91,9 +91,9 @@ pub struct QueueStats {
     pub evicted: u64,
     /// Items refused by `DropNewest` or `FailItem`.
     pub rejected: u64,
-    /// Items removed by [`BoundedQueue::purge`].
+    /// Items removed by `BoundedQueue::purge`.
     pub purged: u64,
-    /// Items replaced in place by [`BoundedQueue::push_replacing`].
+    /// Items replaced in place by `BoundedQueue::push_replacing`.
     pub coalesced: u64,
 }
 

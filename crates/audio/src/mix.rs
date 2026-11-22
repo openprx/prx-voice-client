@@ -22,7 +22,7 @@
 //!
 //! # Inputs
 //!
-//! Each input is a [`lane::Lane`]: frames of any rate are converted to the
+//! Each input is a `lane::Lane`: frames of any rate are converted to the
 //! output rate with the crate's streaming resampler, queued, and played out
 //! after a prebuffer. The translated lane's prebuffer is the jitter buffer
 //! (`jitter_buffer_ms`): a chunk that arrives late but within that depth

@@ -439,7 +439,7 @@ pub struct PipelineConfig {
     pub drop_filler: bool,
     /// Do not translate or speak a recognised clause that is already in the language the listener
     /// hears (the other party spoke the listener's language): its original voice is passed through
-    /// and the caption says "not translated: already in <language>".
+    /// and the caption says "not translated: already in `<language>`".
     pub skip_source_in_target: bool,
     /// When a translation starts in the wrong language, ask for it once more with a stricter
     /// instruction before anything of it is spoken; a second miss fails the clause visibly and the

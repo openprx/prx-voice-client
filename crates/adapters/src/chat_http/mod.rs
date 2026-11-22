@@ -2,9 +2,9 @@
 //! streaming translator (`mt::openai_chat`) and the assistant's dialogue backend
 //! (`dialogue::openai_chat`).
 //!
-//! The ports are synchronous, the HTTP client is not. A [`ChatClient`] owns a small tokio runtime;
+//! The ports are synchronous, the HTTP client is not. A `ChatClient` owns a small tokio runtime;
 //! every request is one task on it that reads the response, parses the SSE stream (`sse`) and sends
-//! the pieces over a channel. The request's [`ChatRequest`] receives them with a blocking call that
+//! the pieces over a channel. The request's `ChatRequest` receives them with a blocking call that
 //! also watches the caller's cancellation token. Stopping a request aborts the task, which drops the
 //! response and with it the connection, so the server sees the client go away. Requests share
 //! nothing but the connection pool.

@@ -13,7 +13,7 @@ use crate::sections::*;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
-    /// Version of the file schema (see [`migrate`]). Must stay the first
+    /// Version of the file schema (see `migrate`). Must stay the first
     /// field: TOML requires plain values before tables.
     pub schema_version: u32,
     pub audio: AudioConfig,
