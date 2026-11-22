@@ -183,7 +183,7 @@ impl PipelineParams {
             mt_context_clauses: 4,
             backlog: BacklogParams::default(),
             catch_up: crate::pace::CatchUpParams::default(),
-            jitter_buffer: Duration::from_millis(150),
+            jitter_buffer: Duration::from_millis(100),
             voice,
             glossary: Vec::new(),
             hotwords: Vec::new(),

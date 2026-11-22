@@ -66,7 +66,7 @@ fn pipeline_section_defaults_to_the_design_values() {
     assert_eq!(p.early_max_wait_ms, 2_500);
     assert!(!p.split_target_clauses && !p.speculative_mt);
     assert_eq!(p.mt_context_clauses, 4);
-    assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (150, 15_000));
+    assert_eq!((p.jitter_buffer_ms, p.max_backlog_ms), (100, 15_000));
     assert_eq!((p.tts_hold_max_words, p.tts_hold_max_chars), (3, 4));
     assert!(p.backlog_skipping);
     assert_eq!(p.max_lag_ms, 20_000);

@@ -447,7 +447,7 @@ pub struct PipelineConfig {
     pub speculative_mt: bool,
     /// Previous clauses given to translation as context.
     pub mt_context_clauses: u32,
-    /// Playout jitter buffer, in milliseconds.
+    /// Playout jitter buffer, in milliseconds (default 100).
     pub jitter_buffer_ms: u32,
     /// Most words of an English clause that synthesis holds back until the whole clause is made,
     /// so that a runaway generation can be retried without being heard (default 3). A longer
@@ -542,7 +542,7 @@ impl Default for PipelineConfig {
             retry_wrong_language: true,
             speculative_mt: false,
             mt_context_clauses: 4,
-            jitter_buffer_ms: 150,
+            jitter_buffer_ms: 100,
             tts_hold_max_words: 3,
             tts_hold_max_chars: 4,
             adaptive_preroll: true,
