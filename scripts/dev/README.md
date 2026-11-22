@@ -37,4 +37,4 @@ or ship them, and never use them as the owner's voice.
 1. `scripts/dev/adopt-models.sh`, then `scripts/dev/install-voices.sh`.
 2. `scripts/run-app.sh --native --no-open`, then `scripts/dev/preflight.sh`. With system translation (the default) make sure the
    Chinese (Simplified) and English packs are downloaded (System Settings, General, Language & Region, Translation Languages).
-3. Follow `docs/call-translation-test-checklist.md`. Nothing to start or stop by hand.
+3. Start a call from the Call translation window. Nothing to start or stop by hand.
