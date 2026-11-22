@@ -169,6 +169,35 @@ impl AudioSource for FlagSource {
     }
 }
 
+/// Delivers nothing until `open` is set, so a test can finish wiring before any frame flows.
+struct GatedSource {
+    inner: FakeAudioSource,
+    open: Arc<AtomicBool>,
+}
+
+impl AudioSource for GatedSource {
+    fn start(&mut self) -> Result<SourceInfo, EndpointError> {
+        self.inner.start()
+    }
+
+    fn read(&mut self, out: &mut Vec<AudioFrame>, max_wait: Duration) -> Result<(), EndpointError> {
+        if self.open.load(Ordering::SeqCst) {
+            self.inner.read(out, max_wait)
+        } else {
+            std::thread::sleep(max_wait.min(Duration::from_millis(1)));
+            Ok(())
+        }
+    }
+
+    fn health(&self) -> EndpointHealth {
+        self.inner.health()
+    }
+
+    fn stop(&mut self) {
+        self.inner.stop();
+    }
+}
+
 fn spec(name: &str, source: Box<dyn AudioSource>, route: PumpRoute) -> PumpSpec {
     PumpSpec {
         config: PumpConfig::new(name),
@@ -707,7 +736,12 @@ fn a_panic_in_a_lent_closure_fails_the_pump_and_still_releases_both_endpoints() 
     use prxvc_media::SystemClock;
 
     let (sink, _out, sink_stopped) = CollectSink::new();
-    let source = FakeAudioSource::new(RATE, ramp_frames(50)).with_frames_per_read(1);
+    // The frames must not flow before the link exists, or the pump could drain them all first.
+    let open = Arc::new(AtomicBool::new(false));
+    let source = GatedSource {
+        inner: FakeAudioSource::new(RATE, ramp_frames(50)).with_frames_per_read(1),
+        open: Arc::clone(&open),
+    };
     let mut pump = Pump::start(spec(
         "outgoing",
         Box::new(source),
@@ -727,6 +761,7 @@ fn a_panic_in_a_lent_closure_fails_the_pump_and_still_releases_both_endpoints() 
             clock: Arc::new(SystemClock::new()),
         })
         .expect("connect");
+    open.store(true, Ordering::SeqCst);
     wait_until("the pump to end", || !pump.stats().running);
     assert!(pump.stats().failed);
     assert!(sink_stopped.load(Ordering::SeqCst), "the sink is released");
