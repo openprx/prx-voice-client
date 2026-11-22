@@ -11,14 +11,14 @@ use prxvc_ports::{
 
 use super::align::{Alignment, align_after_committed};
 use super::faults::{asr_failure, vad_failure};
-use super::messages::{Commit, RecognitionEvent, StageFailure};
+use super::messages::{Commit, CommitReason, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
 use super::segmenter::Segmenter;
 use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
     ClauseReason, CommitDecision, CutPoint, RecognitionInput, decide_recognition_commit,
-    is_clause_sized, join_carry,
+    ends_sentence, is_clause_sized, join_carry,
 };
 use crate::fault::Stage;
 use crate::filler::is_pure_filler;
@@ -372,7 +372,7 @@ impl RecognitionStage {
         let end = h.audio_end.min(self.now);
         let clause = open.clause();
         if !text.trim().is_empty() {
-            self.emit_commit(text, end, refinable, out);
+            self.emit_commit(text, end, refinable, CommitReason::Forced, out);
         }
         Stats::add(&self.stats.forced_cuts, 1);
         self.tracer.mark(clause, TraceStage::SegmentCut);
@@ -489,7 +489,11 @@ impl RecognitionStage {
         if stable && self.commit_stable(out) {
             return Ok(());
         }
-        self.commit_final(false, out)
+        let reason = match reason {
+            ClauseReason::ClausePause => CommitReason::ClausePause,
+            ClauseReason::LengthCut(_) => CommitReason::LengthCut,
+        };
+        self.commit_final(reason, out)
     }
 
     /// Commit the stable part of the hypothesis without ending the round.
@@ -498,12 +502,12 @@ impl RecognitionStage {
         let Some(cut) = self.open.as_ref().and_then(stable_cut) else {
             return false;
         };
-        self.commit_prefix(cut, false, out)
+        self.commit_prefix(cut, CommitReason::LengthCut, out)
     }
 
     /// Commit the hypothesis text up to byte `cut` as a clause, without ending the round.
     /// Returns whether a clause was committed.
-    fn commit_prefix(&mut self, cut: usize, early: bool, out: &mut Out) -> bool {
+    fn commit_prefix(&mut self, cut: usize, reason: CommitReason, out: &mut Out) -> bool {
         let Some(open) = self.open.as_mut() else {
             return false;
         };
@@ -522,14 +526,20 @@ impl RecognitionStage {
         open.committed_bytes = cut;
         open.tail = hyp.text[cut..].to_owned();
         let end = hyp.audio_end.min(self.now);
+        let early = reason.is_early();
         let refinable = !open.early_round && !early;
         open.early_round |= early;
-        self.emit_commit(text, end, refinable, out);
+        self.emit_commit(text, end, refinable, reason, out);
         true
     }
 
     /// Finalise the round, commit its remaining text as a clause and start the next round.
-    fn commit_final(&mut self, ending: bool, out: &mut Out) -> Result<(), RecognitionFault> {
+    fn commit_final(
+        &mut self,
+        reason: CommitReason,
+        out: &mut Out,
+    ) -> Result<(), RecognitionFault> {
+        let ending = reason.ends_segment();
         let Some(open) = self.open.as_mut() else {
             return Ok(());
         };
@@ -574,14 +584,21 @@ impl RecognitionStage {
             open.carry = text;
             return Ok(());
         }
-        self.emit_commit(text, end, refinable, out);
+        self.emit_commit(text, end, refinable, reason, out);
         Ok(())
     }
 
     /// Emit a committed clause. With `refinable` and a refine pass configured, its audio goes along.
     /// A unit that is only filler is not emitted: it is counted and traced, and the stage moves on
     /// as if it had been committed, so that it is not decoded again.
-    fn emit_commit(&mut self, text: String, end: MonoTime, refinable: bool, out: &mut Out) {
+    fn emit_commit(
+        &mut self,
+        text: String,
+        end: MonoTime,
+        refinable: bool,
+        reason: CommitReason,
+        out: &mut Out,
+    ) {
         if self.p.drop_filler && is_pure_filler(self.p.source, &text) {
             self.drop_filler(&text, end);
             return;
@@ -595,6 +612,8 @@ impl RecognitionStage {
         let start = open.last_commit_ts;
         let end = end.max(start);
         let audio = two_pass.then(|| Arc::new(clip_audio(&open.clips, start, end, pad, rate)));
+        let continues =
+            self.p.retranslate.continuation && !reason.ends_segment() && !ends_sentence(&text);
         out.push(Envelope::new(
             open.id,
             open.revision,
@@ -604,6 +623,8 @@ impl RecognitionStage {
                 source_start: start,
                 source_end: end,
                 audio,
+                reason,
+                continues,
             }),
         ));
         open.clause_index = open.clause_index.saturating_add(1);
@@ -625,7 +646,7 @@ impl RecognitionStage {
 
     /// The segment-end pause or the length limit: commit what is left and close the segment.
     fn end_segment(&mut self, out: &mut Out) -> Result<(), RecognitionFault> {
-        self.commit_final(true, out)?;
+        self.commit_final(CommitReason::SegmentEnd, out)?;
         let Some(open) = self.open.take() else {
             return Ok(());
         };

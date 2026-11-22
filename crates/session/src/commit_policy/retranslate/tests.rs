@@ -542,3 +542,23 @@ fn the_default_parameters_are_the_documented_ones() {
     assert_eq!((p.min_chars, p.min_words), (4, 3));
     assert_eq!(p.interval, Duration::from_millis(300));
 }
+
+#[test]
+fn a_unit_ends_its_sentence_when_it_ends_with_a_sentence_final_mark() {
+    for (text, ends) in [
+        ("We should meet.", true),
+        ("Really?", true),
+        ("Stop!", true),
+        ("我们应该见面。", true),
+        ("真的吗？", true),
+        ("\"We should meet.\"  ", true),
+        ("我们应该见面，", false),
+        ("We should meet,", false),
+        ("We should meet", false),
+        ("我们应该见面", false),
+        ("it costs 3.5", false),
+        ("", false),
+    ] {
+        assert_eq!(ends_sentence(text), ends, "{text:?}");
+    }
+}

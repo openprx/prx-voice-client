@@ -546,3 +546,62 @@ fn a_chinese_partial_that_rewrites_committed_text_keeps_the_boundary_after_the_c
     assert_eq!(snap.counters.stable_violations, 1);
     assert!(run.rig.stop().clean);
 }
+
+#[test]
+fn with_continuation_on_the_second_unit_is_translated_from_the_start_of_the_sentence() {
+    let text = "if it rains tomorrow, we will move the meeting to friday and tell everyone.";
+    let whole = "如果明天下雨，我们将把会议改到周五，并通知大家。";
+    let clock = ManualClock::new();
+    let mt = FakeTranslator::new(clock.clone())
+        .with_script(
+            "if it rains tomorrow,",
+            MtScript::tokens(["如果明天下雨，"]),
+        )
+        .with_script(text, MtScript::tokens([whole]));
+    let tts = FakeSpeechSynth::new(clock.clone()).with_default_script(TtsScript::chunks(1, 2400));
+    let rig = Rig::start_with(
+        &clock,
+        IN,
+        one_utterance(10, 100),
+        script(growing(text, 3, 6), text),
+        mt,
+        tts,
+        |p| {
+            p.commit.early = EarlyCommit::Punctuation;
+            p.retranslate.enabled = true;
+            p.retranslate.continuation = true;
+        },
+    );
+    rig.wait_running();
+    let run = Run { rig, dir: IN };
+    run.rig.feed(10 + 100 + 25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        [
+            "if it rains tomorrow,",
+            "we will move the meeting to friday and tell everyone."
+        ]
+    );
+    // The second unit was asked for from the start of its sentence and speaks only what follows
+    // the first; nothing is repeated.
+    let requests = run.rig.fakes.mt.requests();
+    let asked: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(asked, ["if it rains tomorrow,", text]);
+    let translations: Vec<&str> = snap
+        .clauses
+        .iter()
+        .map(|c| c.translation.as_str())
+        .collect();
+    assert_eq!(
+        translations,
+        ["如果明天下雨，", "我们将把会议改到周五，并通知大家。"]
+    );
+    assert_eq!(snap.counters.continued, 1);
+    assert_eq!(snap.counters.continuation_diverged, 0);
+    assert_eq!(
+        run.rig.recorder.audio_clause_order(),
+        vec![run.c(0), run.c(1)]
+    );
+    assert!(run.rig.stop().clean);
+}

@@ -112,9 +112,8 @@ pub(crate) fn prefix_end(spoken: &str, full: &str) -> Option<usize> {
 /// run of them) becomes a comma in the target language, so the voice does not fall as it would at
 /// the end of a sentence.
 pub(crate) fn continuation_text(lang: Lang, text: &str) -> String {
-    const MARKS: &[char] = &['.', '?', '!', '\u{3002}', '\u{FF1F}', '\u{FF01}'];
     let body = text.trim_end();
-    let kept = body.trim_end_matches(MARKS);
+    let kept = body.trim_end_matches(SENTENCE_FINAL);
     if kept.len() == body.len() || kept.trim().is_empty() {
         return text.to_owned();
     }
@@ -123,6 +122,19 @@ pub(crate) fn continuation_text(lang: Lang, text: &str) -> String {
         Lang::Zh => '\u{FF0C}',
     };
     format!("{kept}{comma}{}", &text[body.len()..])
+}
+
+/// Marks that end a sentence, as far as a unit that continues a sentence is concerned.
+const SENTENCE_FINAL: &[char] = &['.', '?', '!', '\u{3002}', '\u{FF1F}', '\u{FF01}'];
+
+/// Whether `text` ends with a sentence-final mark (closing quotes and brackets after it do not
+/// matter): the unit then ends its source sentence.
+pub(crate) fn ends_sentence(text: &str) -> bool {
+    const CLOSERS: &[char] = &[
+        '"', '\'', '\u{201D}', '\u{2019}', ')', '\u{FF09}', '\u{300D}', '\u{300F}',
+    ];
+    text.trim_end_matches(|c: char| c.is_whitespace() || CLOSERS.contains(&c))
+        .ends_with(SENTENCE_FINAL)
 }
 
 /// How many leading unit keys all of `recent` have in common (zero for no hypotheses).

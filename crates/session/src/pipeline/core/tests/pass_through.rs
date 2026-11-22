@@ -41,6 +41,8 @@ fn commit_for_refine(h: &mut Harness, text: &str) {
             samples: vec![0.0; 160],
             rate: SampleRate::HZ_16000,
         })),
+        reason: CommitReason::ClausePause,
+        continues: false,
     };
     let e = Envelope::new(seg(1), 1, MonoTime::from_millis(100), RecognitionEvent::Commit(c));
     h.core.handle(Inbound::Recognition(e));
@@ -112,6 +114,8 @@ fn a_next_segment_that_needs_translation_does_not_inherit_the_pass_through() {
         source_start: MonoTime::from_millis(100),
         source_end: MonoTime::from_millis(600),
         audio: None::<Arc<ClauseSamples>>,
+        reason: CommitReason::ClausePause,
+        continues: false,
     };
     let e = Envelope::new(seg(2), 1, MonoTime::from_millis(100), RecognitionEvent::Commit(c));
     h.core.handle(Inbound::Recognition(e));

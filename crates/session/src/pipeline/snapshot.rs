@@ -128,6 +128,14 @@ pub struct Counters {
     pub finals_contradicting_stable: u64,
     /// Segments the recogniser ended itself at its maximum length.
     pub forced_cuts: u64,
+    /// Clauses whose translation continued the sentence: only what follows the part already spoken
+    /// was spoken.
+    pub continued: u64,
+    /// Clauses whose translation from the start of the sentence no longer began with the part
+    /// already spoken, so their own text was translated on its own.
+    pub continuation_diverged: u64,
+    /// Clauses that continued the sentence with nothing speakable left to say.
+    pub remainder_empty: u64,
     /// Clauses committed.
     pub clauses_committed: u64,
     /// Clauses played to the end.
@@ -231,6 +239,9 @@ pub(crate) struct Stats {
     pub(crate) final_unaligned: AtomicU64,
     pub(crate) finals_contradicting_stable: AtomicU64,
     pub(crate) forced_cuts: AtomicU64,
+    pub(crate) continued: AtomicU64,
+    pub(crate) continuation_diverged: AtomicU64,
+    pub(crate) remainder_empty: AtomicU64,
     pub(crate) clauses_committed: AtomicU64,
     pub(crate) clauses_played: AtomicU64,
     pub(crate) clauses_failed: AtomicU64,
@@ -272,6 +283,9 @@ impl Stats {
             final_unaligned: get(&self.final_unaligned),
             finals_contradicting_stable: get(&self.finals_contradicting_stable),
             forced_cuts: get(&self.forced_cuts),
+            continued: get(&self.continued),
+            continuation_diverged: get(&self.continuation_diverged),
+            remainder_empty: get(&self.remainder_empty),
             clauses_committed: get(&self.clauses_committed),
             clauses_played: get(&self.clauses_played),
             clauses_failed: get(&self.clauses_failed),

@@ -2,8 +2,9 @@
 
 use std::time::Duration;
 
+use super::super::messages::CommitReason;
 use super::{OpenSegment, Out, RecognitionStage};
-use crate::commit_policy::{EarlyInput, decide_early_cut};
+use crate::commit_policy::{EarlyInput, EarlyReason, decide_early_cut};
 
 impl RecognitionStage {
     /// Commit text from the recogniser's stable prefix while the speaker goes on (`early_commit`).
@@ -24,7 +25,12 @@ impl RecognitionStage {
             waited,
         };
         if let Some(cut) = decide_early_cut(&self.p.commit, &input) {
-            self.commit_prefix(cut.end, true, out);
+            let reason = match cut.reason {
+                EarlyReason::Punctuation => CommitReason::Punctuation,
+                EarlyReason::Chunk => CommitReason::Chunk,
+                EarlyReason::MaxWait => CommitReason::MaxWait,
+            };
+            self.commit_prefix(cut.end, reason, out);
         }
     }
 }

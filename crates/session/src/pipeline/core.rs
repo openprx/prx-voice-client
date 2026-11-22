@@ -99,6 +99,8 @@ struct ClauseInfo {
     source_text: String,
     /// When the clause's source speech ended.
     source_end: MonoTime,
+    /// The clause does not end its source sentence: it is translated from the start of the sentence.
+    continues: bool,
     /// When its first synthesised audio reached the control thread (for the queue wait).
     first_chunk_at: Option<MonoTime>,
     /// The translation so far: the backlog estimate until synthesis is known.
@@ -378,6 +380,7 @@ impl Core {
                 clause,
                 text,
                 token: info.token.clone(),
+                continues: info.continues,
             },
         ))
     }

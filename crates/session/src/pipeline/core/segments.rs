@@ -83,6 +83,7 @@ impl Core {
                 source_ts,
                 source_text: commit.text.clone(),
                 source_end: commit.source_end,
+                continues: commit.continues,
                 first_chunk_at: None,
                 target_text: String::new(),
                 synthesised: std::time::Duration::ZERO,

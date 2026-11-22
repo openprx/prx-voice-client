@@ -13,7 +13,9 @@ use super::*;
 use crate::fault::{DegradeReason, FaultKind, Stage};
 use crate::output::OutputSource;
 use crate::pipeline::events::PipelineEvent;
-use crate::pipeline::messages::{ClauseSamples, StageEvent, StageFailure};
+use crate::pipeline::messages::{
+    ClauseSamples, CommitReason, ContinuationOutcome, StageEvent, StageFailure,
+};
 use crate::pipeline::queue::Policy;
 use crate::pipeline::snapshot::{SnapshotSubscriber, snapshot_channel};
 use crate::segment::ClauseState;
@@ -112,6 +114,8 @@ impl Harness {
             source_start: MonoTime::from_millis(start_ms),
             source_end: MonoTime::from_millis(end_ms),
             audio: None::<Arc<ClauseSamples>>,
+            reason: CommitReason::ClausePause,
+            continues: false,
         };
         let e = Envelope::new(
             seg(s),
@@ -563,6 +567,8 @@ fn a_refine_failure_falls_back_to_the_streaming_text_and_three_in_a_row_degrade(
                 samples: vec![0.0; 160],
                 rate: SampleRate::HZ_16000,
             })),
+            reason: CommitReason::ClausePause,
+            continues: false,
         };
         let e = Envelope::new(
             seg(1),
@@ -616,6 +622,8 @@ fn refine_with(h: &mut Harness, i: u16, text: &str, result: Result<String, Stage
             samples: vec![0.0; 160],
             rate: SampleRate::HZ_16000,
         })),
+        reason: CommitReason::ClausePause,
+        continues: false,
     };
     let e = Envelope::new(
         seg(1),
@@ -657,6 +665,49 @@ fn a_refine_pass_that_hears_only_a_hum_does_not_replace_the_words_of_the_streami
         Some("我们明天见面".to_owned())
     );
     assert_eq!(h.snapshot().counters.refine_fallbacks, 1);
+}
+
+#[test]
+fn a_unit_that_continues_its_sentence_reaches_translation_as_such_and_its_outcome_is_counted() {
+    let mut h = harness(|_| {});
+    h.speech(1);
+    let c = Commit {
+        text: "我们明天见面".to_owned(),
+        source_start: MonoTime::from_millis(100),
+        source_end: MonoTime::from_millis(600),
+        audio: None::<Arc<ClauseSamples>>,
+        reason: CommitReason::Punctuation,
+        continues: true,
+    };
+    let e = Envelope::new(
+        seg(1),
+        1,
+        MonoTime::from_millis(100),
+        RecognitionEvent::Commit(c),
+    );
+    h.core.handle(Inbound::Recognition(e));
+    let Some(MtItem::Clause(job)) = h.w.mt_in.try_pop() else {
+        panic!("the clause was not queued for translation");
+    };
+    assert!(job.payload.continues);
+    let id = cl(1, 0);
+    for outcome in [
+        ContinuationOutcome::Continued,
+        ContinuationOutcome::Standalone,
+        ContinuationOutcome::Diverged,
+        ContinuationOutcome::Empty,
+    ] {
+        h.stage(id, StageEvent::MtContinuation { clause: id, outcome });
+    }
+    let counters = h.snapshot().counters;
+    assert_eq!(
+        (
+            counters.continued,
+            counters.continuation_diverged,
+            counters.remainder_empty
+        ),
+        (1, 1, 1)
+    );
 }
 
 mod pass_through;

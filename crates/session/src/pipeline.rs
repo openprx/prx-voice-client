@@ -61,6 +61,7 @@
 //! [`DirectionPipeline::start`].
 
 mod align;
+mod continuation;
 mod core;
 mod draft_cache;
 mod events;

@@ -7,7 +7,7 @@ use super::Core;
 use crate::direction_state::DirectionEvent;
 use crate::fault::{DegradeReason, Stage};
 use crate::filler::is_pure_filler;
-use crate::pipeline::messages::{StageEvent, StageFailure};
+use crate::pipeline::messages::{ContinuationOutcome, StageEvent, StageFailure};
 use crate::pipeline::snapshot::{ErrorSnapshot, Stats};
 use crate::segment::{ClauseEventKind, ClauseState};
 
@@ -18,6 +18,9 @@ impl Core {
             StageEvent::MtStarted { clause } => self.translation_started(clause),
             StageEvent::MtText { clause, delta } => self.translation_text(clause, &delta),
             StageEvent::MtDone { clause } => self.translation_done(clause),
+            StageEvent::MtContinuation { clause, outcome } => {
+                self.translation_continuation(clause, outcome);
+            }
             StageEvent::MtRetry { clause } => self.translation_retry(clause),
             StageEvent::MtFlagged { clause, flags } => self.translation_flagged(clause, flags),
             StageEvent::MtFailed {
@@ -154,6 +157,21 @@ impl Core {
         if let Some(c) = self.captions.iter_mut().find(|c| c.clause == clause) {
             c.flags = flags;
         }
+    }
+
+    /// Count how the clause's translation related to its sentence.
+    fn translation_continuation(&mut self, clause: ClauseId, outcome: ContinuationOutcome) {
+        if !self.clause_is_live(clause) {
+            self.drop_late();
+            return;
+        }
+        let counter = match outcome {
+            ContinuationOutcome::Continued => &self.w.stats.continued,
+            ContinuationOutcome::Diverged => &self.w.stats.continuation_diverged,
+            ContinuationOutcome::Empty => &self.w.stats.remainder_empty,
+            ContinuationOutcome::Standalone => return,
+        };
+        Stats::add(counter, 1);
     }
 
     fn translation_done(&mut self, clause: ClauseId) {

@@ -25,12 +25,21 @@ fn clause(index: u16) -> ClauseId {
 }
 
 fn rig(mt: FakeTranslator, cache: Option<Arc<DraftCache>>) -> Rig {
-    let p = PipelineParams::new(
+    rig_with(mt, cache, |_| {})
+}
+
+fn rig_with(
+    mt: FakeTranslator,
+    cache: Option<Arc<DraftCache>>,
+    customize: impl FnOnce(&mut PipelineParams),
+) -> Rig {
+    let mut p = PipelineParams::new(
         Direction::Incoming,
         Lang::En,
         Lang::Zh,
         VoiceSelection::Preset { name: "p".into() },
     );
+    customize(&mut p);
     let input = Arc::new(BoundedQueue::new("mt_in", 8, Policy::DropOldest));
     let tts_in = Arc::new(BoundedQueue::new("tts_in", 64, Policy::Block));
     let inbox = Arc::new(BoundedQueue::new("inbox", 256, Policy::Block));
@@ -60,11 +69,22 @@ fn rig(mt: FakeTranslator, cache: Option<Arc<DraftCache>>) -> Rig {
 impl Rig {
     /// Translate the given clauses in order and return what the stage reported.
     fn run(self, texts: &[&str]) -> Done {
-        for (i, text) in texts.iter().enumerate() {
+        let jobs: Vec<(u16, &str, bool)> = texts
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (u16::try_from(i).expect("few clauses"), *t, false))
+            .collect();
+        self.run_jobs(&jobs)
+    }
+
+    /// Translate the given units, each with its clause index and whether it continues its sentence.
+    fn run_jobs(self, jobs: &[(u16, &str, bool)]) -> Done {
+        for (index, text, continues) in jobs {
             let job = ClauseJob {
-                clause: clause(u16::try_from(i).expect("few clauses")),
+                clause: clause(*index),
                 text: (*text).to_owned(),
                 token: CancellationToken::new(),
+                continues: *continues,
             };
             let envelope = Envelope::new(job.clause.segment(), 1, MonoTime::ZERO, job);
             self.input.push(MtItem::Clause(envelope), None);
@@ -104,6 +124,40 @@ impl Done {
                 _ => None,
             })
             .collect()
+    }
+
+    fn outcomes(&self) -> Vec<(u16, ContinuationOutcome)> {
+        self.stage_events()
+            .iter()
+            .filter_map(|e| match e {
+                StageEvent::MtContinuation { clause, outcome } => Some((clause.index(), *outcome)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn failed(&self) -> bool {
+        self.stage_events()
+            .iter()
+            .any(|e| matches!(e, StageEvent::MtFailed { .. }))
+    }
+
+    /// The text of the clause's pieces and whether its end was sent, in order.
+    fn spoken_of(&self, c: ClauseId) -> Vec<String> {
+        self.pieces
+            .iter()
+            .filter_map(|p| match p {
+                TtsItem::Piece(e) if e.payload.clause == c => Some(e.payload.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn ends_of(&self, c: ClauseId) -> usize {
+        self.pieces
+            .iter()
+            .filter(|p| matches!(p, TtsItem::End(e) if e.payload.clause == c))
+            .count()
     }
 
     fn spoken(&self) -> Vec<String> {
@@ -207,4 +261,176 @@ fn a_translation_that_failed_is_not_held() {
     );
     rig(failing, Some(Arc::clone(&cache))).run(&[TEXT]);
     assert_eq!(cache.len(), 0);
+}
+
+/// Re-translation with continuation on: units translated from the start of their sentence.
+fn continuing(mt: FakeTranslator) -> Rig {
+    rig_with(mt, Some(Arc::new(DraftCache::default())), |p| {
+        p.retranslate.enabled = true;
+        p.retranslate.continuation = true;
+    })
+}
+
+fn sentence_mt() -> FakeTranslator {
+    FakeTranslator::new(ManualClock::new())
+        .with_script("we should meet", MtScript::tokens(["我们应该见面。"]))
+        .with_script(
+            "we should meet at the office",
+            MtScript::tokens(["我们应该见面，在办公室。"]),
+        )
+        .with_script(
+            "we should meet at the office tomorrow",
+            MtScript::tokens(["我们应该见面，在办公室，明天。"]),
+        )
+}
+
+#[test]
+fn the_next_unit_is_translated_from_the_start_of_the_sentence_and_speaks_only_the_suffix() {
+    let done = continuing(sentence_mt())
+        .run_jobs(&[(0, "we should meet", true), (1, "at the office", false)]);
+    let requests = done.mt.requests();
+    let texts: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(texts, ["we should meet", "we should meet at the office"]);
+    // The first unit continues its sentence: its closing mark is spoken as a comma.
+    assert_eq!(done.spoken_of(clause(0)), ["我们应该见面，"]);
+    // The second speaks what follows the first, with its own closing mark.
+    assert_eq!(done.spoken_of(clause(1)), ["在办公室。"]);
+    // Captions and the clause's text hold the suffix only.
+    assert_eq!(done.text_of(clause(1)), "在办公室。");
+    assert_eq!(
+        done.outcomes(),
+        [
+            (0, ContinuationOutcome::Standalone),
+            (1, ContinuationOutcome::Continued)
+        ]
+    );
+    assert!(!done.failed());
+    assert_eq!(done.ends_of(clause(1)), 1);
+}
+
+#[test]
+fn a_chain_of_units_speaks_the_whole_translation_once() {
+    let done = continuing(sentence_mt()).run_jobs(&[
+        (0, "we should meet", true),
+        (1, "at the office", true),
+        (2, "tomorrow", false),
+    ]);
+    let spoken: String = (0..3).flat_map(|i| done.spoken_of(clause(i))).collect();
+    assert_eq!(spoken, "我们应该见面，在办公室，明天。");
+    let requests = done.mt.requests();
+    assert_eq!(
+        requests.last().map(|r| r.text.as_str()),
+        Some("we should meet at the office tomorrow")
+    );
+}
+
+#[test]
+fn a_translation_that_no_longer_starts_with_the_spoken_part_is_translated_on_its_own() {
+    let mt = FakeTranslator::new(ManualClock::new())
+        .with_script("we should meet", MtScript::tokens(["我们应该见面。"]))
+        .with_script(
+            "we should meet at the office",
+            MtScript::tokens(["他们必须在办公室碰头。"]),
+        )
+        .with_script("at the office", MtScript::tokens(["在办公室。"]))
+        .with_script(
+            "at the office tomorrow",
+            MtScript::tokens(["在办公室，明天。"]),
+        );
+    let done = continuing(mt).run_jobs(&[
+        (0, "we should meet", true),
+        (1, "at the office", true),
+        (2, "tomorrow", false),
+    ]);
+    let requests = done.mt.requests();
+    let texts: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "we should meet",
+            "we should meet at the office",
+            "at the office",
+            "at the office tomorrow",
+        ],
+        "the divergent unit is asked for again alone, and the sentence restarts from it"
+    );
+    // Nothing spoken is repeated or taken back; the new unit speaks its own translation.
+    assert_eq!(done.spoken_of(clause(0)), ["我们应该见面，"]);
+    assert_eq!(done.spoken_of(clause(1)), ["在办公室，"]);
+    assert_eq!(done.spoken_of(clause(2)), ["明天。"]);
+    assert_eq!(
+        done.outcomes(),
+        [
+            (0, ContinuationOutcome::Standalone),
+            (1, ContinuationOutcome::Diverged),
+            (2, ContinuationOutcome::Continued),
+        ]
+    );
+    assert!(!done.failed());
+}
+
+#[test]
+fn a_gap_in_the_chain_drops_the_sentence_memory() {
+    let mt = sentence_mt().with_script("at the office", MtScript::tokens(["在办公室。"]));
+    let done = continuing(mt).run_jobs(&[(0, "we should meet", true), (2, "at the office", false)]);
+    let requests = done.mt.requests();
+    let texts: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(texts, ["we should meet", "at the office"]);
+    assert_eq!(done.spoken_of(clause(2)), ["在办公室。"]);
+    assert_eq!(
+        done.outcomes(),
+        [
+            (0, ContinuationOutcome::Standalone),
+            (2, ContinuationOutcome::Standalone)
+        ]
+    );
+}
+
+#[test]
+fn an_empty_suffix_ends_the_unit_with_the_end_alone_and_is_not_a_failure() {
+    let mt = sentence_mt().with_script(
+        "we should meet at the office",
+        MtScript::tokens(["我们应该见面。"]),
+    );
+    let done = continuing(mt).run_jobs(&[(0, "we should meet", true), (1, "at the office", false)]);
+    assert!(!done.failed());
+    assert_eq!(done.text_of(clause(1)), "");
+    assert!(done.spoken_of(clause(1)).iter().all(String::is_empty));
+    assert_eq!(done.ends_of(clause(1)), 1);
+    assert!(
+        done.stage_events()
+            .iter()
+            .any(|e| matches!(e, StageEvent::MtDone { clause: c } if *c == clause(1)))
+    );
+    assert_eq!(
+        done.outcomes(),
+        [
+            (0, ContinuationOutcome::Standalone),
+            (1, ContinuationOutcome::Empty)
+        ]
+    );
+}
+
+#[test]
+fn a_closing_mark_becomes_a_comma_only_when_the_unit_continues_its_sentence() {
+    let mt = || {
+        FakeTranslator::new(ManualClock::new())
+            .with_script("we should meet", MtScript::tokens(["我们应该见面。"]))
+    };
+    let continuing_unit = continuing(mt()).run_jobs(&[(0, "we should meet", true)]);
+    assert_eq!(continuing_unit.spoken_of(clause(0)), ["我们应该见面，"]);
+    let last_unit = continuing(mt()).run_jobs(&[(0, "we should meet", false)]);
+    assert_eq!(last_unit.spoken_of(clause(0)), ["我们应该见面。"]);
+}
+
+#[test]
+fn without_continuation_units_are_translated_alone_and_keep_their_marks() {
+    let mt = sentence_mt().with_script("at the office", MtScript::tokens(["在办公室。"]));
+    let done = rig_with(mt, None, |_| {})
+        .run_jobs(&[(0, "we should meet", true), (1, "at the office", true)]);
+    let requests = done.mt.requests();
+    let texts: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(texts, ["we should meet", "at the office"]);
+    assert!(done.outcomes().is_empty(), "no continuation event");
+    assert_eq!(done.text_of(clause(0)), "我们应该见面。");
 }

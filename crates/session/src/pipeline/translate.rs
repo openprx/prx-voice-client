@@ -3,21 +3,24 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use prxvc_media::{ClauseId, Envelope, SegmentId, has_speakable_content};
+use prxvc_media::{ClauseId, Envelope, SegmentId, has_speakable_content, trim_stray_start};
 use prxvc_ports::{
     CancellationToken, MtDelta, MtError, MtFlag, MtRequest, MtStream, TraceStage, Translator,
 };
 
+use super::continuation::SentenceMemory;
 use super::draft_cache::{Cached, CachedStream, DraftCache};
 use super::faults::mt_failure;
 use super::messages::{
-    ClauseJob, MtItem, PieceJob, StageEvent, StageFailure, TtsItem, WorkerEvent,
+    ClauseJob, ContinuationOutcome, MtItem, PieceJob, StageEvent, StageFailure, TtsItem,
+    WorkerEvent,
 };
 use super::outbox::{Meta, Outbox};
 use super::params::PipelineParams;
 use super::pieces::PieceSplitter;
 use super::queue::{BoundedQueue, Popped, Pushed, Wait};
 use super::trace::Tracer;
+use crate::commit_policy::{continuation_text, prefix_end};
 use crate::fault::{FaultKind, Stage};
 use crate::pipeline::snapshot::Stats;
 
@@ -43,16 +46,22 @@ enum Ended {
     /// The translation started in the wrong language, or opened like an answer or a refusal, and
     /// nothing of it was spoken yet: it can be asked for once more with the strict instruction.
     Retry,
+    /// The translation from the start of the sentence no longer began with the part already
+    /// spoken, and nothing of it was spoken: the unit is translated on its own instead.
+    Diverged,
 }
 
 impl MtStage {
     /// The thread body: translate clauses until the queue closes.
     pub(crate) fn run(self) {
         let mut history: VecDeque<(String, String)> = VecDeque::new();
+        let mut memory: Option<SentenceMemory> = None;
         let mut seen = 0;
         loop {
             match self.input.pop(Wait::Forever, &mut seen) {
-                Popped::Item(MtItem::Clause(job)) => self.translate_clause(job, &mut history),
+                Popped::Item(MtItem::Clause(job)) => {
+                    self.translate_clause(job, &mut history, &mut memory);
+                }
                 Popped::Item(MtItem::Probe) => self.probe(),
                 Popped::Woken | Popped::Timeout => {}
                 Popped::Closed => break,
@@ -60,7 +69,12 @@ impl MtStage {
         }
     }
 
-    fn translate_clause(&self, job: Envelope<ClauseJob>, history: &mut VecDeque<(String, String)>) {
+    fn translate_clause(
+        &self,
+        job: Envelope<ClauseJob>,
+        history: &mut VecDeque<(String, String)>,
+        memory: &mut Option<SentenceMemory>,
+    ) {
         let meta = Meta {
             revision: job.revision,
             source_ts: job.source_ts,
@@ -69,7 +83,18 @@ impl MtStage {
             clause,
             text,
             token,
+            continues,
         } = job.payload;
+        // The sentence memory is for this unit only when it is the next one of the chain. It is
+        // taken, so a unit that fails, is skipped or is dropped leaves none for the one after it:
+        // the chain breaks there and the next unit stands alone.
+        let chain = self.p.retranslate.continuation;
+        let mut prior = if chain {
+            memory.take().filter(|m| m.continues_with(clause))
+        } else {
+            None
+        };
+        let mut diverged = false;
         if token.is_cancelled() {
             Stats::add(&self.stats.late_dropped, 1);
             return;
@@ -87,11 +112,16 @@ impl MtStage {
         // the clause; one that still reads like an answer is spoken and flagged, as before.
         let mut strict = false;
         loop {
+            // From the start of the sentence when there is a spoken part to continue, else the
+            // unit alone.
+            let request_text = prior
+                .as_ref()
+                .map_or_else(|| text.clone(), |m| m.request_text(&text));
             let request = MtRequest {
                 clause,
                 source: self.p.source,
                 target: self.p.target,
-                text: text.clone(),
+                text: request_text.clone(),
                 context: history.iter().cloned().collect(),
                 glossary: self.p.glossary.clone(),
                 strict_language: strict,
@@ -111,25 +141,60 @@ impl MtStage {
                 splitter: PieceSplitter::new(self.p.commit, self.p.target),
                 full: String::new(),
                 spoken: false,
-                source: &text,
+                source: &request_text,
                 strict,
                 flags: Vec::new(),
+                prior_target: prior.as_ref().map(|m| m.target_full().to_owned()),
+                buffered: chain && (prior.is_some() || continues),
+                continues: chain && continues,
+                report: (chain && prior.is_none() && !diverged)
+                    .then_some(ContinuationOutcome::Standalone),
+                own: String::new(),
             };
             match run.drive(stream) {
-                (Ended::Done, translated) => {
+                (Ended::Done, spoken) => {
                     if let Some(cache) = &self.cache {
                         cache.put(
-                            &text,
+                            &request_text,
                             Cached {
-                                text: translated.clone(),
+                                text: run.full.clone(),
                                 flags: run.flags.clone(),
                             },
                         );
                     }
-                    history.push_back((text.clone(), translated));
+                    history.push_back((text.clone(), spoken));
                     while history.len() > self.p.mt_context_clauses {
                         history.pop_front();
                     }
+                    if chain && continues {
+                        *memory = Some(SentenceMemory::after(
+                            clause,
+                            request_text.clone(),
+                            run.full.clone(),
+                        ));
+                    }
+                }
+                (Ended::Diverged, _) => {
+                    let spoken = prior
+                        .as_ref()
+                        .map(SentenceMemory::target_full)
+                        .unwrap_or_default();
+                    let now = run.full.as_str();
+                    self.tracer
+                        .mark_text(clause, TraceStage::ContinuationDiverged, || {
+                            format!("{spoken} | {now}")
+                        });
+                    if !run.event(StageEvent::MtContinuation {
+                        clause,
+                        outcome: ContinuationOutcome::Diverged,
+                    }) {
+                        return;
+                    }
+                    // Nothing spoken is repeated or taken back: the new unit is translated alone,
+                    // and the sentence memory starts again from it.
+                    prior = None;
+                    diverged = true;
+                    continue;
                 }
                 (Ended::Retry, _) if !strict => {
                     Stats::add(&self.stats.mt_retries, 1);
@@ -239,6 +304,19 @@ struct Run<'a> {
     strict: bool,
     /// The quality flags of the finished translation.
     flags: Vec<MtFlag>,
+    /// The translation of the part of the sentence already spoken, when this request is the
+    /// sentence from its start.
+    prior_target: Option<String>,
+    /// The translation is read to its end before anything is spoken, because what is spoken is
+    /// found only in the whole of it (the part after the spoken prefix, or the text with its
+    /// closing mark turned into a comma). The system engine delivers a unit in one piece anyway.
+    buffered: bool,
+    /// The unit does not end its source sentence: its closing mark is spoken as a comma.
+    continues: bool,
+    /// How the unit related to its sentence, sent before `MtDone`.
+    report: Option<ContinuationOutcome>,
+    /// The unit's own text of a buffered translation (what was spoken); empty when unbuffered.
+    own: String,
 }
 
 impl Run<'_> {
@@ -325,35 +403,28 @@ impl Run<'_> {
                             .mark(self.clause, TraceStage::MtFirstToken);
                     }
                     self.full.push_str(&delta);
-                    let pieces = self.splitter.push(&delta);
-                    if !self.event(StageEvent::MtText {
-                        clause: self.clause,
-                        delta,
-                    }) {
-                        return (Ended::Cancelled, String::new());
-                    }
-                    if !pieces.is_empty()
-                        && (self.wrong_language_unspoken() || self.answer_unspoken())
+                    if !self.buffered
+                        && let Some(ended) = self.emit_text(delta)
                     {
-                        return (Ended::Retry, String::new());
-                    }
-                    for p in pieces {
-                        self.spoken = true;
-                        if !self.speakable(&p) {
-                            continue;
-                        }
-                        if !self.piece(p, false) {
-                            return (Ended::Cancelled, String::new());
-                        }
+                        return (ended, String::new());
                     }
                 }
                 Some(Ok(MtDelta::Done { .. })) => {
-                    let ended = self.finish();
+                    let ended = if self.buffered {
+                        self.finish_buffered()
+                    } else {
+                        self.finish()
+                    };
                     if matches!(ended, Ended::Done) {
                         self.flags = stream.flags();
                         self.report_flags();
                     }
-                    return (ended, self.full.clone());
+                    let spoken = if self.buffered {
+                        self.own.clone()
+                    } else {
+                        self.full.clone()
+                    };
+                    return (ended, spoken);
                 }
                 Some(Err(e)) if e.is_cancelled() || self.token.is_cancelled() => {
                     return (Ended::Cancelled, String::new());
@@ -398,24 +469,106 @@ impl Run<'_> {
         )
     }
 
-    fn finish(&mut self) -> Ended {
+    /// Hand a piece of the unit's own text on: to the core as caption text and, cut into pieces, to
+    /// synthesis. Returns how the request ended when it cannot go on.
+    fn emit_text(&mut self, delta: String) -> Option<Ended> {
+        let pieces = self.splitter.push(&delta);
+        if !self.event(StageEvent::MtText {
+            clause: self.clause,
+            delta,
+        }) {
+            return Some(Ended::Cancelled);
+        }
+        if !pieces.is_empty() && (self.wrong_language_unspoken() || self.answer_unspoken()) {
+            return Some(Ended::Retry);
+        }
+        for p in pieces {
+            self.spoken = true;
+            if !self.speakable(&p) {
+                continue;
+            }
+            if !self.piece(p, false) {
+                return Some(Ended::Cancelled);
+            }
+        }
+        None
+    }
+
+    /// A translation with nothing to say is a failure of the request.
+    fn check_complete(&self) -> Option<Ended> {
         if self.full.trim().is_empty() {
-            return self.suspect("empty");
+            return Some(self.suspect("empty"));
         }
         if !has_speakable_content(&self.full) {
-            return self.suspect("nothing to say aloud");
+            return Some(self.suspect("nothing to say aloud"));
+        }
+        None
+    }
+
+    fn finish(&mut self) -> Ended {
+        if let Some(ended) = self.check_complete() {
+            return ended;
         }
         let last = self.splitter.finish();
         if self.wrong_language_unspoken() || self.answer_unspoken() {
             return Ended::Retry;
         }
-        let full = &self.full;
+        self.finish_tail(last)
+    }
+
+    /// The end of a buffered translation: the language checks on the whole text, then what is
+    /// spoken. With a spoken part to continue, that is what follows it in the whole translation
+    /// (the unit's own text must begin with nothing else): nothing speakable after it ends the unit
+    /// with no text, and a translation that no longer begins with it is not spoken at all but
+    /// reported as diverged. A unit that continues its sentence has its closing mark turned into a
+    /// comma.
+    fn finish_buffered(&mut self) -> Ended {
+        if let Some(ended) = self.check_complete() {
+            return ended;
+        }
+        if self.wrong_language_unspoken() || self.answer_unspoken() {
+            return Ended::Retry;
+        }
+        let mut text = self.full.clone();
+        if let Some(spoken) = &self.prior_target {
+            let Some(from) = prefix_end(spoken, &self.full) else {
+                return Ended::Diverged;
+            };
+            text = trim_stray_start(&self.full[from..]).to_owned();
+            if has_speakable_content(&text) {
+                self.report = Some(ContinuationOutcome::Continued);
+            } else {
+                self.report = Some(ContinuationOutcome::Empty);
+                return self.finish_tail(None);
+            }
+        }
+        if self.continues {
+            text = continuation_text(self.stage.p.target, &text);
+        }
+        self.own.clone_from(&text);
+        if let Some(ended) = self.emit_text(text) {
+            return ended;
+        }
+        let last = self.splitter.finish();
+        self.finish_tail(last)
+    }
+
+    /// Report the translation as done and send the rest of it, then the end of the clause, to synthesis.
+    fn finish_tail(&mut self, last: Option<String>) -> Ended {
+        let own = if self.buffered { &self.own } else { &self.full };
         self.stage
             .tracer
-            .mark_text(self.clause, TraceStage::MtDone, || full.clone());
-        let sent = self.event(StageEvent::MtDone {
-            clause: self.clause,
+            .mark_text(self.clause, TraceStage::MtDone, || own.clone());
+        let reported = self.report.is_none_or(|outcome| {
+            self.event(StageEvent::MtContinuation {
+                clause: self.clause,
+                outcome,
+            })
         });
+        let sent = reported
+            && self.event(StageEvent::MtDone {
+                clause: self.clause,
+            });
         let ok = sent
             && last.is_none_or(|p| !self.speakable(&p) || self.piece(p, false))
             && self.piece(String::new(), true);

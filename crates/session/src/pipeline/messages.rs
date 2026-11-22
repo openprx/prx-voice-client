@@ -30,6 +30,61 @@ impl StageFailure {
     }
 }
 
+/// Why the recogniser committed a clause.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "Retranslation is committed by the recognition glue of a later task"
+)]
+pub(crate) enum CommitReason {
+    /// The segment ended.
+    SegmentEnd,
+    /// A pause inside the segment.
+    ClausePause,
+    /// The uncommitted audio reached its maximum.
+    LengthCut,
+    /// The recogniser ended the segment itself at its maximum length.
+    Forced,
+    /// Stable text reached a sentence-final or clause-level mark (early commit).
+    Punctuation,
+    /// Stable text reached the chunk size (early commit).
+    Chunk,
+    /// The maximum wait passed and a smaller chunk was taken (early commit).
+    MaxWait,
+    /// The re-translation rule: the translation of the prefix was confirmed.
+    Retranslation,
+}
+
+impl CommitReason {
+    /// Whether the clause was cut from the stable text of a hypothesis while the speaker went on.
+    pub(crate) const fn is_early(self) -> bool {
+        matches!(
+            self,
+            Self::Punctuation | Self::Chunk | Self::MaxWait | Self::Retranslation
+        )
+    }
+
+    /// Whether the commit ends its segment.
+    pub(crate) const fn ends_segment(self) -> bool {
+        matches!(self, Self::SegmentEnd | Self::Forced)
+    }
+
+    /// The name used in logs and reports.
+    #[allow(dead_code, reason = "named in the utterance figures of a later task")]
+    pub(crate) const fn name(self) -> &'static str {
+        match self {
+            Self::SegmentEnd => "segment_end",
+            Self::ClausePause => "clause_pause",
+            Self::LengthCut => "length_cut",
+            Self::Forced => "forced",
+            Self::Punctuation => "punctuation",
+            Self::Chunk => "chunk",
+            Self::MaxWait => "max_wait",
+            Self::Retranslation => "retranslation",
+        }
+    }
+}
+
 /// A clause the recogniser commits.
 #[derive(Debug)]
 pub(crate) struct Commit {
@@ -38,6 +93,12 @@ pub(crate) struct Commit {
     pub(crate) source_end: MonoTime,
     /// The audio of the clause, only when a refine pass will use it.
     pub(crate) audio: Option<Arc<ClauseSamples>>,
+    /// Why it was committed.
+    #[allow(dead_code, reason = "read by the utterance figures of a later task")]
+    pub(crate) reason: CommitReason,
+    /// The unit does not end its source sentence: what follows in the segment goes on with it, so
+    /// the translation stage translates from the start of the sentence.
+    pub(crate) continues: bool,
 }
 
 /// Segment-level events of the recogniser (envelope: segment, hypothesis revision, speech onset).
@@ -68,6 +129,12 @@ pub(crate) enum StageEvent {
     },
     MtDone {
         clause: ClauseId,
+    },
+    /// How the clause's translation related to the sentence it belongs to, sent before `MtDone`
+    /// by a stage that translates from the start of the sentence.
+    MtContinuation {
+        clause: ClauseId,
+        outcome: ContinuationOutcome,
     },
     /// The translation came back in the wrong language before any of it was spoken and is being
     /// requested again: the text so far is void.
@@ -101,6 +168,19 @@ pub(crate) enum StageEvent {
         failure: StageFailure,
         runaway: bool,
     },
+}
+
+/// How a clause translated from the start of its sentence turned out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ContinuationOutcome {
+    /// The translation began with the part already spoken: the clause speaks what follows it.
+    Continued,
+    /// It did not: the clause's own text was translated on its own.
+    Diverged,
+    /// It began with the part already spoken and nothing speakable follows it.
+    Empty,
+    /// There was nothing spoken to continue: the clause was translated on its own.
+    Standalone,
 }
 
 /// Events of the workers that belong to no clause.
@@ -169,6 +249,8 @@ pub(crate) struct ClauseJob {
     pub(crate) clause: ClauseId,
     pub(crate) text: String,
     pub(crate) token: CancellationToken,
+    /// The clause does not end its source sentence (see [`Commit::continues`]).
+    pub(crate) continues: bool,
 }
 
 /// What the translation stage reads.
