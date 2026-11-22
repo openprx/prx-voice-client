@@ -212,7 +212,7 @@ mod tests {
             ClauseState::Playing,
         ] {
             let mut s = snapshot(Activity::Listening);
-            s.clauses = vec![clause(ClauseState::Played), clause(state.clone())];
+            s.clauses = vec![clause(ClauseState::Played), clause(state)];
             assert!(direction_in_flight(Some(&s), EMPTY), "{state:?}");
         }
     }
