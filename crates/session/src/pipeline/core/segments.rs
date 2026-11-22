@@ -102,6 +102,16 @@ impl Core {
             .mark_text(clause, prxvc_ports::TraceStage::ClauseCommitted, || {
                 commit.text.clone()
             });
+        self.w
+            .tracer
+            .mark_text(clause, prxvc_ports::TraceStage::UnitCut, || {
+                let sentence = if commit.continues {
+                    "continues"
+                } else {
+                    "ends"
+                };
+                format!("{} {sentence}", commit.reason.name())
+            });
         self.clauses.insert(
             clause,
             ClauseInfo {

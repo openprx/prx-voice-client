@@ -152,7 +152,7 @@ fn start(clock: &ManualClock, words: &Words) -> Rig {
         providers,
         p,
         &CancellationToken::new(),
-        FakeTraceSink::new(false),
+        FakeTraceSink::new(true),
     )
 }
 
@@ -205,6 +205,13 @@ fn a_long_utterance_is_first_heard_from_a_re_translation_unit_before_the_segment
             .iter()
             .any(|(s, _)| *s == prxvc_ports::TraceStage::RetranslationCut)
     );
+    let cut = rig
+        .trace
+        .events()
+        .into_iter()
+        .find(|e| e.clause == first && e.stage == prxvc_ports::TraceStage::UnitCut)
+        .and_then(|e| e.text);
+    assert_eq!(cut.as_deref(), Some("retranslation continues"));
     // The rest of the audio, then the segment ends.
     rig.feed_settling_drafts(TAIL as u64);
     let snap = rig.wait_snapshot("every unit is translated", translated);
