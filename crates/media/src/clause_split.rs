@@ -1,7 +1,7 @@
 //! Cuts a stream of translated text into clauses for synthesis (pipeline-design 3.2.3).
 //!
 //! A clause is emitted as soon as a sentence-final mark (`。！？；.!?;…`) or a
-//! clause-level mark (`，、：,:`) arrives and the text before it is long
+//! clause-level mark (`，：,:`) arrives and the text before it is long
 //! enough. Length is counted in units: Chinese characters plus words. The
 //! minimums follow the recognition commit rule (`prxvc-session`
 //! `commit_policy`: 4 Chinese characters or 2 English words) for sentence
@@ -26,7 +26,9 @@ use crate::lang::Lang;
 /// Marks that end a sentence.
 const SENTENCE_MARKS: [char; 8] = ['。', '！', '？', '；', '!', '?', ';', '…'];
 /// Marks that end a clause inside a sentence.
-const CLAUSE_MARKS: [char; 5] = ['，', '、', '：', ',', ':'];
+/// The enumeration comma `、` is not one of them: it separates items of a list, and a clause cut
+/// there would split the list and be synthesised as two fragments.
+const CLAUSE_MARKS: [char; 4] = ['，', '：', ',', ':'];
 /// Characters that may close a quotation or bracket after a mark.
 const CLOSERS: [char; 8] = ['"', '\'', '\u{201D}', '\u{2019}', ')', '）', '」', '』'];
 
@@ -435,6 +437,26 @@ mod tests {
         let out = assert_boundary_independent(Lang::Zh, "如果明天下雨，我们就改期，好吗？");
         // "如果明天下雨" has 6 characters; "我们就改期" has 5 and joins the rest.
         assert_eq!(out, ["如果明天下雨，", "我们就改期，好吗？"]);
+    }
+
+    #[test]
+    fn the_enumeration_comma_is_not_a_clause_mark() {
+        // Each item of the list is long enough to be a clause on its own.
+        let out =
+            assert_boundary_independent(Lang::Zh, "大金字塔是埃及人在公元前三四、三世纪的杰作。");
+        assert_eq!(out, ["大金字塔是埃及人在公元前三四、三世纪的杰作。"]);
+        let out = assert_boundary_independent(
+            Lang::Zh,
+            "我们参观了故宫博物院、颐和园、八达岭长城，然后回家。",
+        );
+        assert_eq!(
+            out,
+            ["我们参观了故宫博物院、颐和园、八达岭长城，", "然后回家。"]
+        );
+        assert_eq!(
+            first_clause_end(Lang::Zh, "我们参观了故宫博物院、颐和园"),
+            None
+        );
     }
 
     #[test]
