@@ -531,8 +531,8 @@ mod tests {
             concat!("prxvc_", "storage"),
             concat!("serde_", "json"),
             concat!("toml::", "to_string"),
-            concat!("OpenOptions"),
-            concat!("rusqlite"),
+            "OpenOptions",
+            "rusqlite",
         ];
         for (i, src) in sources.iter().enumerate() {
             for needle in forbidden {

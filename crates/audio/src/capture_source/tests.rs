@@ -208,7 +208,7 @@ fn a_device_thread_and_a_reader_thread_keep_order_and_account_for_every_sample()
             let mut counter = 1u32;
             let mut buf = vec![0.0f32; FRAMES * 2];
             for _ in 0..CALLBACKS {
-                for frame in buf.chunks_exact_mut(2) {
+                for frame in buf.as_chunks_mut::<2>().0 {
                     frame.fill(counter as f32);
                     counter += 1;
                 }

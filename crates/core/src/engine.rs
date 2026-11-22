@@ -342,10 +342,10 @@ impl Engine {
     /// session and for sessions created from now on.
     pub fn set_auto_play_reply(&mut self, enabled: bool) {
         self.auto_play_reply = enabled;
-        if let Some(id) = self.active_session {
-            if let Some(session) = self.session_manager.get_session_mut(&id) {
-                session.config.auto_play_reply = enabled;
-            }
+        if let Some(id) = self.active_session
+            && let Some(session) = self.session_manager.get_session_mut(&id)
+        {
+            session.config.auto_play_reply = enabled;
         }
     }
 

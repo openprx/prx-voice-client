@@ -262,10 +262,10 @@ pub fn export_diagnostics(
     let json = serde_json::to_string_pretty(bundle)
         .map_err(|e| ObserveError::ExportError(format!("serialization failed: {e}")))?;
 
-    if let Some(parent) = output_path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = output_path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     std::fs::write(output_path, json.as_bytes())?;

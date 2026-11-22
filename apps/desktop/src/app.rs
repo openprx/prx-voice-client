@@ -84,48 +84,48 @@ impl eframe::App for PrxVoiceApp {
         );
 
         // Check hotkey
-        if let Some(ref mut hk) = self.hotkey_manager {
-            if hk.was_triggered() {
-                if self.ui_state.session_state == "Starting" {
-                    // Loading: ignored, never queued behind the start.
-                } else if !self.ui_state.session_active {
-                    self.shared.push_command("CreateSession");
-                    self.shared.push_command("StartSession");
-                } else {
-                    self.shared.push_command("StopSession");
-                }
+        if let Some(ref mut hk) = self.hotkey_manager
+            && hk.was_triggered()
+        {
+            if self.ui_state.session_state == "Starting" {
+                // Loading: ignored, never queued behind the start.
+            } else if !self.ui_state.session_active {
+                self.shared.push_command("CreateSession");
+                self.shared.push_command("StartSession");
+            } else {
+                self.shared.push_command("StopSession");
             }
         }
 
         // Check tray actions
-        if let Some(ref tray) = self.tray_manager {
-            if let Some(action) = tray.poll_action() {
-                match action {
-                    tray::TrayAction::StartSession => {
-                        self.shared.push_command("CreateSession");
-                        self.shared.push_command("StartSession");
-                        // Optimistic update so orb responds immediately
-                        self.shared.update_session_state("Listening", true);
-                    }
-                    tray::TrayAction::StopSession => {
-                        self.shared.push_command("StopSession");
-                        // Optimistic update so orb responds immediately
-                        self.shared.update_session_state("Idle", false);
-                        self.shared.clear_transcript();
-                    }
-                    tray::TrayAction::CallTranslation => {
-                        open_call_window(ctx, &mut self.ui_state);
-                    }
-                    tray::TrayAction::Settings => {
-                        self.ui_state.open_settings(None);
-                    }
-                    tray::TrayAction::Quit => {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                    tray::TrayAction::Show => {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                    }
+        if let Some(ref tray) = self.tray_manager
+            && let Some(action) = tray.poll_action()
+        {
+            match action {
+                tray::TrayAction::StartSession => {
+                    self.shared.push_command("CreateSession");
+                    self.shared.push_command("StartSession");
+                    // Optimistic update so orb responds immediately
+                    self.shared.update_session_state("Listening", true);
+                }
+                tray::TrayAction::StopSession => {
+                    self.shared.push_command("StopSession");
+                    // Optimistic update so orb responds immediately
+                    self.shared.update_session_state("Idle", false);
+                    self.shared.clear_transcript();
+                }
+                tray::TrayAction::CallTranslation => {
+                    open_call_window(ctx, &mut self.ui_state);
+                }
+                tray::TrayAction::Settings => {
+                    self.ui_state.open_settings(None);
+                }
+                tray::TrayAction::Quit => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                tray::TrayAction::Show => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
             }
         }
@@ -136,11 +136,11 @@ impl eframe::App for PrxVoiceApp {
         prxvc_desktop_ui::render_app(ui, &mut self.ui_state);
 
         // Apply pending theme change (if settings changed the theme)
-        if let Some(theme_name) = self.ui_state.pending_theme.take() {
-            if let Some(new_theme) = Theme::all().into_iter().find(|t| t.name == theme_name) {
-                // The new theme's style is applied by the UI on its next frame.
-                self.ui_state.theme = new_theme;
-            }
+        if let Some(theme_name) = self.ui_state.pending_theme.take()
+            && let Some(new_theme) = Theme::all().into_iter().find(|t| t.name == theme_name)
+        {
+            // The new theme's style is applied by the UI on its next frame.
+            self.ui_state.theme = new_theme;
         }
 
         // Refresh tray menu labels when locale changes

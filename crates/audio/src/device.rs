@@ -88,29 +88,6 @@ pub fn default_output_config() -> Result<cpal::SupportedStreamConfig, AudioError
         .map_err(|e| AudioError::InitializationFailed(format!("output config: {}", e)))
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_list_audio_devices_no_panic() {
-        // In CI there may be no audio devices; just verify it returns Ok.
-        let result = list_audio_devices();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_default_device_names() {
-        // These may return None in CI; just verify they don't panic.
-        let _input = default_input_device_name();
-        let _output = default_output_device_name();
-    }
-}
-
 /// Find an output device by name.
 ///
 /// `name` may be a bare device name, a name fragment, or an id as produced by
@@ -138,4 +115,27 @@ pub fn find_output_device(name: &str) -> Result<cpal::Device, AudioError> {
         }
     }
     partial.ok_or(AudioError::OutputDeviceUnavailable)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list_audio_devices_no_panic() {
+        // In CI there may be no audio devices; just verify it returns Ok.
+        let result = list_audio_devices();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_default_device_names() {
+        // These may return None in CI; just verify they don't panic.
+        let _input = default_input_device_name();
+        let _output = default_output_device_name();
+    }
 }

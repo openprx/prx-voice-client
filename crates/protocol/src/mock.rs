@@ -313,10 +313,10 @@ impl Transport for MockGateway {
         let parsed_id = Uuid::parse_str(session_id)
             .map_err(|e| TransportError::SendFailed(format!("invalid session id: {e}")))?;
 
-        if self.audio_counter % 10 == 0 && !self.response_pending {
+        if self.audio_counter.is_multiple_of(10) && !self.response_pending {
             self.response_pending = true;
             self.simulate_conversation_turn(parsed_id);
-        } else if self.audio_counter % 5 == 0 {
+        } else if self.audio_counter.is_multiple_of(5) {
             self.event_queue
                 .push_back(Event::InterimTranscriptProduced {
                     session_id: parsed_id,

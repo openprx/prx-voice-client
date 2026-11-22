@@ -224,10 +224,10 @@ impl AssistantHost {
 
     /// Show one event of the loop; true when it was the end of the session.
     fn on_event(&mut self, event: AssistantEvent) -> bool {
-        if let Some(active) = self.active.as_mut() {
-            if let Some(line) = active.log.on_event(std::time::Instant::now(), &event) {
-                tracing::info!("assistant {line}");
-            }
+        if let Some(active) = self.active.as_mut()
+            && let Some(line) = active.log.on_event(std::time::Instant::now(), &event)
+        {
+            tracing::info!("assistant {line}");
         }
         if let Some(recorder) = self.active.as_mut().and_then(|a| a.recorder.as_mut()) {
             recorder.on_event(&event);

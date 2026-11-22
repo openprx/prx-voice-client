@@ -69,10 +69,10 @@ impl SessionRecord {
     /// Uses `transcript_preview` when available, otherwise falls back to
     /// `"Voice Session at {created_at}"`.
     pub fn summary_title(&self) -> String {
-        if let Some(ref preview) = self.transcript_preview {
-            if !preview.is_empty() {
-                return preview.clone();
-            }
+        if let Some(ref preview) = self.transcript_preview
+            && !preview.is_empty()
+        {
+            return preview.clone();
         }
         format!("Voice Session at {}", self.created_at)
     }

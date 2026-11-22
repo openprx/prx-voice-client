@@ -17,7 +17,7 @@ pub struct TranscriptLine {
 }
 
 /// A history list entry representing a past session.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HistoryEntry {
     /// Unique identifier for the session.
     pub session_id: String,
@@ -29,18 +29,6 @@ pub struct HistoryEntry {
     pub duration: String,
     /// Final state of the session (e.g., "Completed", "Failed").
     pub state: String,
-}
-
-impl Default for HistoryEntry {
-    fn default() -> Self {
-        Self {
-            session_id: String::new(),
-            title: String::new(),
-            created_at: String::new(),
-            duration: String::new(),
-            state: String::new(),
-        }
-    }
 }
 
 /// UI-level settings (mirrors config but for display/editing).

@@ -209,10 +209,10 @@ fn migrate_models_impl(legacy: &Path, dest: &Path, allow_rename: bool) -> Migrat
     // on a non-empty directory, which is what we want).
     if fs::remove_dir(legacy).is_ok() {
         report.removed_dirs.push(legacy.to_path_buf());
-        if let Some(parent) = legacy.parent() {
-            if fs::remove_dir(parent).is_ok() {
-                report.removed_dirs.push(parent.to_path_buf());
-            }
+        if let Some(parent) = legacy.parent()
+            && fs::remove_dir(parent).is_ok()
+        {
+            report.removed_dirs.push(parent.to_path_buf());
         }
     }
     report

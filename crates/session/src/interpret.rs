@@ -44,7 +44,7 @@ impl Direction {
     }
 
     /// Language code of the speech being captured for this direction.
-    pub fn source_language<'a>(self, cfg: &'a InterpretConfig) -> &'a str {
+    pub fn source_language(self, cfg: &InterpretConfig) -> &str {
         match self {
             Self::SelfToPeer => &cfg.self_language,
             Self::PeerToSelf => &cfg.peer_language,
@@ -52,7 +52,7 @@ impl Direction {
     }
 
     /// Language code the translation is rendered into for this direction.
-    pub fn target_language<'a>(self, cfg: &'a InterpretConfig) -> &'a str {
+    pub fn target_language(self, cfg: &InterpretConfig) -> &str {
         match self {
             Self::SelfToPeer => &cfg.peer_language,
             Self::PeerToSelf => &cfg.self_language,

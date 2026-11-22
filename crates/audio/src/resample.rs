@@ -393,7 +393,7 @@ impl MonoResampler16k {
 
 /// Wrap 16 kHz mono float32 samples into an [`AudioFrame`] for downstream stages.
 pub fn mono_16k_frame(sequence_no: u64, samples: &[f32]) -> AudioFrame {
-    let mut data = Vec::with_capacity(samples.len() * std::mem::size_of::<f32>());
+    let mut data = Vec::with_capacity(std::mem::size_of_val(samples));
     for s in samples {
         data.extend_from_slice(&s.to_le_bytes());
     }

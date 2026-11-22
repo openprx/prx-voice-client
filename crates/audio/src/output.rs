@@ -297,7 +297,7 @@ mod tests {
         let mut conv = FrameConverter::new(16_000, 3).unwrap();
         let out = conv.convert(&tone_frame(16_000, 100)).unwrap();
         assert_eq!(out.len(), 300);
-        for f in out.chunks_exact(3) {
+        for f in out.as_chunks::<3>().0 {
             assert_eq!(f[0], f[1]);
             assert_eq!(f[1], f[2]);
         }

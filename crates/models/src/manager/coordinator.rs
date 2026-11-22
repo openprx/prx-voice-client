@@ -390,12 +390,11 @@ impl Coordinator {
     }
 
     fn remove_job(&mut self, id: &ModelId) {
-        if let Some(mut j) = self.jobs.remove(id) {
-            if let Some(t) = j.thread.take()
-                && t.is_finished()
-            {
-                let _ = t.join();
-            }
+        if let Some(mut j) = self.jobs.remove(id)
+            && let Some(t) = j.thread.take()
+            && t.is_finished()
+        {
+            let _ = t.join();
         }
         self.queue.retain(|q| q != id);
         self.sh.store.release(id);

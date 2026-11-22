@@ -164,8 +164,7 @@ impl Disclosure {
     /// A notice that is ready at once (tests, and a cached one).
     #[cfg(test)]
     pub(super) fn ready(chunks: Vec<PcmChunk>) -> Self {
-        let this = Self::start_state(Prep::Ready(Arc::new(chunks)));
-        this
+        Self::start_state(Prep::Ready(Arc::new(chunks)))
     }
 
     #[cfg(test)]
