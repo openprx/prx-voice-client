@@ -285,6 +285,8 @@ pub(crate) struct Stats {
     pub(crate) flag_think_residue: AtomicU64,
     /// Frames the recogniser consumed; tests use it to pace their input.
     pub(crate) frames_consumed: AtomicU64,
+    /// Frames the recogniser has finished processing (every event of the frame sent on).
+    pub(crate) frames_processed: AtomicU64,
 }
 
 impl Stats {

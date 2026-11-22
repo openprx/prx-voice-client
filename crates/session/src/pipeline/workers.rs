@@ -265,6 +265,11 @@ impl RecognizerThread {
 
     fn on_frame(&self, st: &mut LoopState, frame: &AudioFrame) {
         self.stats.frames_consumed.fetch_add(1, Ordering::Relaxed);
+        self.handle_frame(st, frame);
+        self.stats.frames_processed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn handle_frame(&self, st: &mut LoopState, frame: &AudioFrame) {
         self.track_overrun(st);
         if !self.gate.is_active() {
             if std::mem::take(&mut st.was_active)

@@ -366,6 +366,38 @@ impl Rig {
         }
     }
 
+    /// Push `n` frames one at a time. After each frame wait until the recogniser has processed it
+    /// and the draft worker has answered every job submitted so far, so that a reply is taken at
+    /// the end of the next frame whatever the timing of the threads. Yields, never sleeps.
+    pub fn feed_settling_drafts(&self, n: u64) {
+        for _ in 0..n {
+            self.feed_nowait(1);
+            self.wait_drafts_settled();
+        }
+    }
+
+    /// Wait until every frame pushed was processed and every draft job has its answer queued (or
+    /// was replaced in the queue before it was taken).
+    pub fn wait_drafts_settled(&self) {
+        let target = self.pushed.load(Ordering::SeqCst);
+        let deadline = Instant::now() + WATCHDOG;
+        loop {
+            let s = self.pipeline.stats();
+            let queue = |name: &str| s.queues.iter().find(|q| q.name == name);
+            let answered = queue("draft_out").map_or(0, |q| q.pushed);
+            let replaced = queue("draft_in").map_or(0, |q| q.coalesced);
+            if s.frames_processed >= target && answered + replaced == s.drafts_requested {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the drafts did not settle: {s:#?}\n{:#?}",
+                self.latest()
+            );
+            thread::yield_now();
+        }
+    }
+
     pub fn frames_pushed(&self) -> u64 {
         self.pushed.load(Ordering::SeqCst)
     }

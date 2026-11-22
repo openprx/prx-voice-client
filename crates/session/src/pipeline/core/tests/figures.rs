@@ -9,7 +9,10 @@ use crate::pipeline::messages::DraftTally;
 
 /// Records the fields of every event as `name=value` text.
 #[derive(Clone, Default)]
-struct Capture(Arc<Mutex<Vec<Vec<(String, String)>>>>);
+struct Capture(Arc<Mutex<Vec<Line>>>);
+
+/// The fields of one event as `(name, value)`.
+type Line = Vec<(String, String)>;
 
 struct Fields<'a>(&'a mut Vec<(String, String)>);
 
@@ -63,7 +66,7 @@ fn commit_with(h: &mut Harness, reason: CommitReason, start_ms: u64, end_ms: u64
     h.core.handle(Inbound::Recognition(e));
 }
 
-fn utterance_line(capture: &Capture) -> Vec<(String, String)> {
+fn utterance_line(capture: &Capture) -> Line {
     capture
         .0
         .lock()

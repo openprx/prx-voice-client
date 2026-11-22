@@ -1,10 +1,5 @@
 //! Draft worker: translates the hypotheses the recognition stage asks about, off the recognition thread, and the link the recognition stage uses to submit jobs and poll replies (incremental-retranslation 4.4, 5.2).
 
-#![allow(
-    dead_code,
-    reason = "wired into the recognition stage by the next task"
-)]
-
 use std::sync::Arc;
 
 use prxvc_media::{ClauseId, SegmentId};

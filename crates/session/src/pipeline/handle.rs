@@ -76,6 +76,11 @@ pub struct PipelineStats {
     pub queues: Vec<QueueStats>,
     /// Audio frames the recogniser has taken from the capture queue.
     pub frames_consumed: u64,
+    /// Audio frames the recogniser has finished with: every event of the frame was sent on and, with
+    /// re-translation on, the draft replies that were ready were taken.
+    pub frames_processed: u64,
+    /// Draft jobs the recogniser has submitted (zero with re-translation off).
+    pub drafts_requested: u64,
 }
 
 /// The reading end of the events a pipeline produces.
@@ -451,6 +456,8 @@ impl DirectionPipeline {
         PipelineStats {
             queues,
             frames_consumed: self.stats.frames_consumed.load(Ordering::Relaxed),
+            frames_processed: self.stats.frames_processed.load(Ordering::Relaxed),
+            drafts_requested: self.stats.drafts_requested.load(Ordering::Relaxed),
         }
     }
 
