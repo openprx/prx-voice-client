@@ -484,6 +484,28 @@ pub struct PipelineConfig {
     pub asr_stable_agreement: u32,
     /// Words or characters at the end of a growing partial result that are never declared stable.
     pub asr_stable_tail_guard: u32,
+    /// Commit a source prefix while the speaker goes on, once its translation is confirmed as the
+    /// start of the translations of longer, later readings: `"auto"` (when the translation engine
+    /// takes no conversation context), `"on"` (every engine) or `"off"` (never). Always off when
+    /// the early commit in force is `"segment_end"`.
+    pub retranslation: String,
+    /// Confirming translations of longer readings that a prefix needs before it is spoken (at least 1).
+    pub retranslate_agreement: u32,
+    /// Units a confirming reading must extend past the prefix to count (at least 1).
+    pub retranslate_lookahead: u32,
+    /// Consecutive partial results whose units must agree on a prefix before it is a candidate (at least 2).
+    pub retranslate_source_agreement: u32,
+    /// Units at the end of the agreed prefix that are never part of a candidate.
+    pub retranslate_source_guard: u32,
+    /// Fewest Chinese characters in the new source part of a candidate.
+    pub retranslate_min_chars: u32,
+    /// Fewest words (other scripts) in the new source part of a candidate.
+    pub retranslate_min_words: u32,
+    /// Least time between two draft translations of one direction, in milliseconds.
+    pub retranslate_interval_ms: u32,
+    /// Largest share of the spoken units that may differ from the start of a new full translation
+    /// for it to still count as continuing it (0.0 to 1.0; 0.0 asks for an exact start).
+    pub retranslate_align_max_ratio: f32,
 }
 
 impl Default for PipelineConfig {
@@ -526,6 +548,15 @@ impl Default for PipelineConfig {
             asr_first_decode_after_ms: 480,
             asr_stable_agreement: 4,
             asr_stable_tail_guard: 6,
+            retranslation: "auto".to_owned(),
+            retranslate_agreement: 2,
+            retranslate_lookahead: 2,
+            retranslate_source_agreement: 2,
+            retranslate_source_guard: 1,
+            retranslate_min_chars: 4,
+            retranslate_min_words: 3,
+            retranslate_interval_ms: 300,
+            retranslate_align_max_ratio: 0.5,
         }
     }
 }

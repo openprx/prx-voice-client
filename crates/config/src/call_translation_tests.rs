@@ -325,3 +325,47 @@ fn a_migration_is_written_once_with_a_backup_and_the_next_load_is_silent() {
     assert!(second.notices.is_empty(), "{:?}", second.notices);
     assert_eq!(second.config, first.config);
 }
+
+#[test]
+fn the_re_translation_keys_default_to_the_design_values() {
+    let p = AppConfig::default().pipeline;
+    assert_eq!(p.retranslation, "auto");
+    assert_eq!((p.retranslate_agreement, p.retranslate_lookahead), (2, 2));
+    assert_eq!(
+        (p.retranslate_source_agreement, p.retranslate_source_guard),
+        (2, 1)
+    );
+    assert_eq!((p.retranslate_min_chars, p.retranslate_min_words), (4, 3));
+    assert_eq!(p.retranslate_interval_ms, 300);
+    assert_eq!(p.retranslate_align_max_ratio, 0.5);
+}
+
+#[test]
+fn a_version_four_file_without_the_re_translation_keys_loads_with_their_defaults() {
+    let dir = TempDir::new("ct_retranslate_absent");
+    write_config(&dir, "schema_version = 4\n[pipeline]\nmax_segment_s = 20\n");
+    let report = mgr(&dir).load_report().unwrap();
+    assert!(report.notices.is_empty(), "{:?}", report.notices);
+    assert_eq!(report.config.schema_version, 4, "no schema bump");
+    assert_eq!(report.config.pipeline.max_segment_s, 20);
+    assert_eq!(report.config.pipeline.retranslation, "auto");
+    assert_eq!(report.config.pipeline.retranslate_agreement, 2);
+    assert_eq!(report.config.pipeline.retranslate_interval_ms, 300);
+    assert_eq!(report.config.pipeline.retranslate_align_max_ratio, 0.5);
+}
+
+#[test]
+fn a_saved_off_stays_off_through_a_save_and_a_load() {
+    let dir = TempDir::new("ct_retranslate_off");
+    write_config(
+        &dir,
+        "schema_version = 4\n[pipeline]\nretranslation = \"off\"\nretranslate_agreement = 1\nretranslate_align_max_ratio = 0.25\n",
+    );
+    let m = mgr(&dir);
+    let loaded = m.load().unwrap();
+    assert_eq!(loaded.pipeline.retranslation, "off");
+    assert_eq!(loaded.pipeline.retranslate_agreement, 1);
+    assert_eq!(loaded.pipeline.retranslate_align_max_ratio, 0.25);
+    m.save(&loaded).unwrap();
+    assert_eq!(m.load().unwrap(), loaded);
+}

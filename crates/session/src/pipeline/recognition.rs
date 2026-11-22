@@ -10,19 +10,27 @@ use prxvc_ports::{
 };
 
 use super::align::{Alignment, align_after_committed};
+use super::draft::DraftLink;
 use super::faults::{asr_failure, vad_failure};
-use super::messages::{ClauseSamples, Commit, RecognitionEvent, StageFailure};
+use super::messages::{Commit, CommitReason, DraftTally, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
 use super::segmenter::Segmenter;
 use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
-    ClauseReason, CommitDecision, CutPoint, EarlyInput, RecognitionInput, decide_early_cut,
-    decide_recognition_commit, is_clause_sized,
+    ClauseReason, CommitDecision, CutPoint, DraftBook, RecognitionInput, decide_recognition_commit,
+    ends_sentence, is_clause_sized, join_carry,
 };
 use crate::fault::Stage;
 use crate::filler::is_pure_filler;
 use crate::pipeline::snapshot::Stats;
+
+mod clips;
+mod early;
+mod retranslate;
+
+use clips::{advance_past, clip_audio, trim_clips};
+use early::{floor_boundary, stable_cut};
 
 /// Stands in for the unknown text of a clause when the recogniser gives finals only: it makes the pause rule fire once speech has been heard.
 const UNKNOWN_TEXT: &str = "x x";
@@ -94,6 +102,22 @@ struct OpenSegment {
     /// A unit of this round was committed from the stable prefix: the audio positions of the cuts
     /// are not known, so what follows in the round is not given to the refine pass.
     early_round: bool,
+    /// A partial of this round contradicted the committed text and was counted already.
+    violation_counted: bool,
+    /// Counts the segment's rounds; a draft reply made for another round is stale.
+    round: u32,
+    /// The committed source text of the current source sentence (re-translation).
+    sentence: String,
+    /// Candidates and agreement of the re-translation rule.
+    book: DraftBook,
+    /// When the last draft job was submitted, on the pipeline clock.
+    last_draft: Option<MonoTime>,
+    /// Candidates the book dropped that were counted already.
+    rejected_counted: u64,
+    /// A unit of this round was committed by the re-translation rule.
+    retranslated_round: bool,
+    /// What the draft worker did for this segment, reported when it ends.
+    tally: DraftTally,
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
@@ -109,6 +133,10 @@ impl OpenSegment {
 
     fn reset_round(&mut self) {
         self.early_round = false;
+        self.violation_counted = false;
+        self.round += 1;
+        self.retranslated_round = false;
+        self.book.reset();
         self.committed_bytes = 0;
         self.committed_prefix.clear();
         self.hyp = None;
@@ -131,6 +159,8 @@ pub(crate) struct RecognitionStage {
     preroll: VecDeque<(MonoTime, Duration, Vec<f32>)>,
     preroll_span: Duration,
     open: Option<OpenSegment>,
+    /// The draft worker, when re-translation is on (`with_drafts`).
+    drafts: Option<Box<dyn DraftLink>>,
     next_seq: u64,
     now: MonoTime,
 }
@@ -170,6 +200,7 @@ impl RecognitionStage {
             reframer,
             preroll: VecDeque::new(),
             open: None,
+            drafts: None,
             next_seq: 1,
             now: MonoTime::ZERO,
         }
@@ -220,6 +251,7 @@ impl RecognitionStage {
         }
         if self.open.as_ref().is_some_and(|o| o.token.is_cancelled()) {
             self.abandon();
+            self.poll_drafts(out);
             return Ok(());
         }
         if self.open.is_some() {
@@ -228,6 +260,7 @@ impl RecognitionStage {
             }
             self.evaluate(out)?;
         }
+        self.poll_drafts(out);
         Ok(())
     }
 
@@ -305,6 +338,14 @@ impl RecognitionStage {
             committed_prefix: String::new(),
             carry: String::new(),
             early_round: false,
+            violation_counted: false,
+            round: 0,
+            sentence: String::new(),
+            book: DraftBook::default(),
+            last_draft: None,
+            rejected_counted: 0,
+            retranslated_round: false,
+            tally: DraftTally::default(),
             hyp: None,
             partial_seen: false,
             tail: String::new(),
@@ -362,13 +403,14 @@ impl RecognitionStage {
         let end = h.audio_end.min(self.now);
         let clause = open.clause();
         if !text.trim().is_empty() {
-            self.emit_commit(text, end, refinable, out);
+            self.emit_commit(text, end, refinable, CommitReason::Forced, out);
         }
         Stats::add(&self.stats.forced_cuts, 1);
         self.tracer.mark(clause, TraceStage::SegmentCut);
         let Some(mut old) = self.open.take() else {
             return;
         };
+        self.push_draft_tally(&mut old, out);
         out.push(Envelope::new(
             old.id,
             old.revision,
@@ -386,12 +428,18 @@ impl RecognitionStage {
         open.revision += 1;
         let mut committed = open.committed_bytes.min(text.len());
         if open.committed_bytes > 0 && !text.starts_with(&open.committed_prefix) {
-            Stats::add(&self.stats.stable_violations, 1);
-            while !text.is_char_boundary(committed) {
-                committed -= 1;
+            // The partial no longer starts with the committed text: the boundary is found by
+            // content, so it never lands inside a word. The committed text stays as committed.
+            if !open.violation_counted {
+                open.violation_counted = true;
+                Stats::add(&self.stats.stable_violations, 1);
+                if open.retranslated_round {
+                    Stats::add(&self.stats.retranslate_src_rewrites, 1);
+                    open.tally.src_rewrites += 1;
+                }
             }
+            committed = align_after_committed(&open.committed_prefix, &text).start;
             open.committed_bytes = committed;
-            open.committed_prefix = text[..committed].to_owned();
         }
         let tail = text[committed..].to_owned();
         let stable_in_tail = floor_boundary(&tail, stable.saturating_sub(committed));
@@ -415,6 +463,7 @@ impl RecognitionStage {
                 stable_prefix_len: stable_in_tail,
             },
         ));
+        self.submit_drafts();
     }
 
     /// Apply the commit rule to the state after this frame.
@@ -468,28 +517,6 @@ impl RecognitionStage {
         }
     }
 
-    /// Commit text from the recogniser's stable prefix while the speaker goes on (`early_commit`).
-    /// Not with a refine pass: it decodes the audio of a clause again and would not match a cut that
-    /// the stable text chose.
-    fn commit_early(&mut self, waited: Duration, out: &mut Out) {
-        let Some(open) = self.open.as_ref() else {
-            return;
-        };
-        let (Some(hyp), Some(stable)) = (open.hyp.as_ref(), stable_cut(open)) else {
-            return;
-        };
-        let input = EarlyInput {
-            lang: self.p.source,
-            text: &hyp.text,
-            committed: open.committed_bytes,
-            stable,
-            waited,
-        };
-        if let Some(cut) = decide_early_cut(&self.p.commit, &input) {
-            self.commit_prefix(cut.end, true, out);
-        }
-    }
-
     fn commit_clause(
         &mut self,
         reason: ClauseReason,
@@ -499,7 +526,11 @@ impl RecognitionStage {
         if stable && self.commit_stable(out) {
             return Ok(());
         }
-        self.commit_final(false, out)
+        let reason = match reason {
+            ClauseReason::ClausePause => CommitReason::ClausePause,
+            ClauseReason::LengthCut(_) => CommitReason::LengthCut,
+        };
+        self.commit_final(reason, out)
     }
 
     /// Commit the stable part of the hypothesis without ending the round.
@@ -508,12 +539,12 @@ impl RecognitionStage {
         let Some(cut) = self.open.as_ref().and_then(stable_cut) else {
             return false;
         };
-        self.commit_prefix(cut, false, out)
+        self.commit_prefix(cut, CommitReason::LengthCut, out)
     }
 
     /// Commit the hypothesis text up to byte `cut` as a clause, without ending the round.
     /// Returns whether a clause was committed.
-    fn commit_prefix(&mut self, cut: usize, early: bool, out: &mut Out) -> bool {
+    fn commit_prefix(&mut self, cut: usize, reason: CommitReason, out: &mut Out) -> bool {
         let Some(open) = self.open.as_mut() else {
             return false;
         };
@@ -532,14 +563,20 @@ impl RecognitionStage {
         open.committed_bytes = cut;
         open.tail = hyp.text[cut..].to_owned();
         let end = hyp.audio_end.min(self.now);
+        let early = reason.is_early();
         let refinable = !open.early_round && !early;
         open.early_round |= early;
-        self.emit_commit(text, end, refinable, out);
+        self.emit_commit(text, end, refinable, reason, out);
         true
     }
 
     /// Finalise the round, commit its remaining text as a clause and start the next round.
-    fn commit_final(&mut self, ending: bool, out: &mut Out) -> Result<(), RecognitionFault> {
+    fn commit_final(
+        &mut self,
+        reason: CommitReason,
+        out: &mut Out,
+    ) -> Result<(), RecognitionFault> {
+        let ending = reason.ends_segment();
         let Some(open) = self.open.as_mut() else {
             return Ok(());
         };
@@ -584,14 +621,21 @@ impl RecognitionStage {
             open.carry = text;
             return Ok(());
         }
-        self.emit_commit(text, end, refinable, out);
+        self.emit_commit(text, end, refinable, reason, out);
         Ok(())
     }
 
     /// Emit a committed clause. With `refinable` and a refine pass configured, its audio goes along.
     /// A unit that is only filler is not emitted: it is counted and traced, and the stage moves on
     /// as if it had been committed, so that it is not decoded again.
-    fn emit_commit(&mut self, text: String, end: MonoTime, refinable: bool, out: &mut Out) {
+    fn emit_commit(
+        &mut self,
+        text: String,
+        end: MonoTime,
+        refinable: bool,
+        reason: CommitReason,
+        out: &mut Out,
+    ) {
         if self.p.drop_filler && is_pure_filler(self.p.source, &text) {
             self.drop_filler(&text, end);
             return;
@@ -605,6 +649,9 @@ impl RecognitionStage {
         let start = open.last_commit_ts;
         let end = end.max(start);
         let audio = two_pass.then(|| Arc::new(clip_audio(&open.clips, start, end, pad, rate)));
+        let continues =
+            self.p.retranslate.continuation && !reason.ends_segment() && !ends_sentence(&text);
+        open.note_commit(continues, &text);
         out.push(Envelope::new(
             open.id,
             open.revision,
@@ -614,6 +661,8 @@ impl RecognitionStage {
                 source_start: start,
                 source_end: end,
                 audio,
+                reason,
+                continues,
             }),
         ));
         open.clause_index = open.clause_index.saturating_add(1);
@@ -635,10 +684,11 @@ impl RecognitionStage {
 
     /// The segment-end pause or the length limit: commit what is left and close the segment.
     fn end_segment(&mut self, out: &mut Out) -> Result<(), RecognitionFault> {
-        self.commit_final(true, out)?;
-        let Some(open) = self.open.take() else {
+        self.commit_final(CommitReason::SegmentEnd, out)?;
+        let Some(mut open) = self.open.take() else {
             return Ok(());
         };
+        self.push_draft_tally(&mut open, out);
         out.push(Envelope::new(
             open.id,
             open.revision,
@@ -666,28 +716,12 @@ impl RecognitionStage {
     }
 }
 
-/// The segment's position after a unit that ended at `end` (committed or dropped): what follows
-/// starts there, and the audio before it is no longer kept for the refine pass.
-fn advance_past(open: &mut OpenSegment, end: MonoTime, pad: Duration) {
-    open.last_commit_ts = end;
-    open.carry.clear();
-    open.first_partial_traced = false;
-    let keep_from = end.as_nanos().saturating_sub(duration_nanos(pad));
-    while open
-        .clips
-        .front()
-        .is_some_and(|(ts, _)| ts.as_nanos() < keep_from)
-    {
-        open.clips.pop_front();
-    }
-}
-
 /// The part of a final that is not committed yet. Committed text stays as committed and is never
 /// taken from the final again: the remainder is found by content ([`align_after_committed`]). A
 /// final that disagrees with the committed text is counted and traced, never patched into what was
 /// committed and never spoken again.
 fn committed_remainder(
-    open: &OpenSegment,
+    open: &mut OpenSegment,
     fin: &AsrHypothesis,
     stats: &Stats,
     tracer: &Tracer,
@@ -698,6 +732,10 @@ fn committed_remainder(
     let aligned = align_after_committed(&open.committed_prefix, &fin.text);
     if aligned.alignment != Alignment::Agrees {
         Stats::add(&stats.final_rewrites, 1);
+        if open.retranslated_round {
+            Stats::add(&stats.retranslate_src_rewrites, 1);
+            open.tally.src_rewrites += 1;
+        }
         if aligned.alignment == Alignment::Unaligned {
             Stats::add(&stats.final_unaligned, 1);
         }
@@ -715,79 +753,5 @@ fn asr_fault(e: &AsrError) -> RecognitionFault {
     }
 }
 
-fn join_carry(carry: &str, text: &str) -> String {
-    if carry.is_empty() {
-        text.to_owned()
-    } else if text.is_empty() {
-        carry.to_owned()
-    } else {
-        format!("{carry} {text}")
-    }
-}
-
-fn duration_nanos(d: Duration) -> u64 {
-    u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
-}
-
-/// The largest index `<= at` that is a char boundary of `text`.
-fn floor_boundary(text: &str, at: usize) -> usize {
-    let mut at = at.min(text.len());
-    while !text.is_char_boundary(at) {
-        at -= 1;
-    }
-    at
-}
-
-/// Where the stable, uncommitted text can be cut: just after its last word,
-/// never inside an ASCII word. `None` when there is nothing to cut.
-fn stable_cut(open: &OpenSegment) -> Option<usize> {
-    let hyp = open.hyp.as_ref()?;
-    let text = &hyp.text;
-    let mut cut = floor_boundary(text, hyp.stable_prefix_len);
-    if cut <= open.committed_bytes {
-        return None;
-    }
-    let ascii_word = |c: char| c.is_ascii_alphanumeric();
-    if cut < text.len() {
-        let before = text[..cut].chars().next_back();
-        let after = text[cut..].chars().next();
-        if before.is_some_and(ascii_word) && after.is_some_and(ascii_word) {
-            cut = text[..cut].rfind(|c: char| !ascii_word(c)).map_or(0, |i| {
-                i + text[i..].chars().next().map_or(1, char::len_utf8)
-            });
-        }
-    }
-    (cut > open.committed_bytes && !text[open.committed_bytes..cut].trim().is_empty())
-        .then_some(cut)
-}
-
-/// Drop the oldest clips beyond `keep` of audio.
-fn trim_clips(clips: &mut VecDeque<(MonoTime, Vec<f32>)>, keep: Duration, rate: SampleRate) {
-    let mut total: usize = clips.iter().map(|(_, s)| s.len()).sum();
-    while rate.duration_of(total) > keep {
-        match clips.pop_front() {
-            Some((_, s)) => total -= s.len(),
-            None => break,
-        }
-    }
-}
-
-/// The audio of `[start - pad, end + pad]` from the kept clips.
-fn clip_audio(
-    clips: &VecDeque<(MonoTime, Vec<f32>)>,
-    start: MonoTime,
-    end: MonoTime,
-    pad: Duration,
-    rate: SampleRate,
-) -> ClauseSamples {
-    let from = start.as_nanos().saturating_sub(duration_nanos(pad));
-    let to = end.saturating_add(pad).as_nanos();
-    let mut samples = Vec::new();
-    for (ts, s) in clips {
-        let clip_end = ts.saturating_add(rate.duration_of(s.len())).as_nanos();
-        if clip_end > from && ts.as_nanos() < to {
-            samples.extend_from_slice(s);
-        }
-    }
-    ClauseSamples { samples, rate }
-}
+#[cfg(test)]
+mod tests;

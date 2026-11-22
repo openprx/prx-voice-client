@@ -11,6 +11,8 @@ use prxvc_ports::{
 };
 
 use super::core::{Core, Gate, Wiring};
+use super::draft::{DraftQueues, DraftWorker};
+use super::draft_cache::DraftCache;
 use super::events::PipelineEvent;
 use super::input::AudioInput;
 use super::messages::{Command, Inbound, MtItem, TtsItem};
@@ -74,6 +76,11 @@ pub struct PipelineStats {
     pub queues: Vec<QueueStats>,
     /// Audio frames the recogniser has taken from the capture queue.
     pub frames_consumed: u64,
+    /// Audio frames the recogniser has finished with: every event of the frame was sent on and, with
+    /// re-translation on, the draft replies that were ready were taken.
+    pub frames_processed: u64,
+    /// Draft jobs the recogniser has submitted (zero with re-translation off).
+    pub drafts_requested: u64,
 }
 
 /// The reading end of the events a pipeline produces.
@@ -119,6 +126,8 @@ struct Queues {
     mt_in: Arc<BoundedQueue<MtItem>>,
     tts_in: Arc<BoundedQueue<TtsItem>>,
     events: Arc<BoundedQueue<PipelineEvent>>,
+    /// Present only when re-translation is on.
+    draft: Option<DraftQueues>,
 }
 
 impl Queues {
@@ -149,6 +158,10 @@ impl Queues {
                 caps.events_out,
                 Policy::Block,
             )),
+            draft: params
+                .retranslate
+                .enabled
+                .then(|| DraftQueues::new(caps.draft_in, caps.draft_out)),
         }
     }
 }
@@ -172,6 +185,7 @@ pub struct DirectionPipeline {
     mt_in: Arc<BoundedQueue<MtItem>>,
     tts_in: Arc<BoundedQueue<TtsItem>>,
     events: Arc<BoundedQueue<PipelineEvent>>,
+    draft: Option<DraftQueues>,
     input: AudioInput,
     gate: Arc<Gate>,
     outbox: Outbox,
@@ -227,6 +241,7 @@ impl DirectionPipeline {
             mt_in: Arc::clone(&q.mt_in),
             tts_in: Arc::clone(&q.tts_in),
             events: Arc::clone(&q.events),
+            draft: q.draft.clone(),
             outbox: Outbox::new(Arc::clone(&q.inbox)),
             stats: Arc::clone(&stats),
             workers: Arc::new(Threads::new()),
@@ -279,9 +294,27 @@ impl DirectionPipeline {
             outbox: self.outbox.clone(),
             audio_in: Arc::clone(&q.audio_in),
             gate: Arc::clone(&ctx.gate),
+            draft: q.draft.clone(),
         };
         w.spawn(name("recognize"), move || recognizer.run())
             .map_err(|e| spawn_error("recognize", &e))?;
+        let cache = DraftCache::for_params(&params.retranslate);
+        if let Some(draft) = q.draft.clone() {
+            let worker = DraftWorker {
+                mt: Arc::clone(&providers.mt),
+                p: params.clone(),
+                // Shared with the translation stage when it continues sentences; the worker's
+                // own otherwise.
+                cache: cache.clone().unwrap_or_default(),
+                tracer: tracer.clone(),
+                stats: Arc::clone(stats),
+                warned: None,
+            };
+            w.spawn(name("draft"), move || {
+                worker.run(&draft.input, &draft.output);
+            })
+            .map_err(|e| spawn_error("draft", &e))?;
+        }
         let mt = MtStage {
             mt: providers.mt,
             p: params.clone(),
@@ -291,6 +324,7 @@ impl DirectionPipeline {
             call: tree.call().clone(),
             tracer: tracer.clone(),
             stats: Arc::clone(stats),
+            cache,
         };
         w.spawn(name("translate"), move || mt.run())
             .map_err(|e| spawn_error("translate", &e))?;
@@ -407,16 +441,23 @@ impl DirectionPipeline {
 
     /// Counters of every queue.
     pub fn stats(&self) -> PipelineStats {
+        let mut queues = vec![
+            self.audio_in.stats(),
+            self.inbox.stats(),
+            self.refine_in.stats(),
+            self.mt_in.stats(),
+            self.tts_in.stats(),
+            self.events.stats(),
+        ];
+        if let Some(draft) = &self.draft {
+            queues.push(draft.input.stats());
+            queues.push(draft.output.stats());
+        }
         PipelineStats {
-            queues: vec![
-                self.audio_in.stats(),
-                self.inbox.stats(),
-                self.refine_in.stats(),
-                self.mt_in.stats(),
-                self.tts_in.stats(),
-                self.events.stats(),
-            ],
+            queues,
             frames_consumed: self.stats.frames_consumed.load(Ordering::Relaxed),
+            frames_processed: self.stats.frames_processed.load(Ordering::Relaxed),
+            drafts_requested: self.stats.drafts_requested.load(Ordering::Relaxed),
         }
     }
 
@@ -440,6 +481,10 @@ impl DirectionPipeline {
         self.mt_in.close_discard();
         self.tts_in.close_discard();
         self.refine_in.close_discard();
+        if let Some(draft) = &self.draft {
+            draft.input.close_discard();
+            draft.output.close_discard();
+        }
         self.events.wake();
         let clean = self.workers.wait_idle(timeout);
         self.command(Command::Joined { clean });

@@ -9,6 +9,7 @@ use prxvc_providers::RecognitionMode as PlannedMode;
 use prxvc_session::pipeline::{PipelineParams, RecognitionMode};
 use prxvc_session::{
     BacklogParams, CommitParams, EarlyCommit, InterruptParams, OutputPolicy, Passthrough,
+    RetranslateParams,
 };
 
 fn ms(n: u32) -> Duration {
@@ -79,6 +80,94 @@ pub(crate) fn effective_early_commit(
     }
 }
 
+/// Whether re-translation runs, and whether clause translations continue the sentence.
+///
+/// `pipeline.retranslation`: `"off"` never, `"on"` for every engine, `"auto"` (and any unknown
+/// spelling, which is reported) for an engine that takes no conversation context. Never with the
+/// early commit in force `segment_end`. Continuation (speaking only what follows the part of the
+/// sentence already spoken) is for an engine without context only: context covers it otherwise.
+pub(crate) fn effective_retranslation(
+    p: &prxvc_config::PipelineConfig,
+    mt_uses_context: bool,
+    early: EarlyCommit,
+) -> (bool, bool) {
+    let wanted = match p.retranslation.as_str() {
+        "off" => false,
+        "on" => true,
+        "auto" => !mt_uses_context,
+        other => {
+            tracing::warn!(
+                key = "pipeline.retranslation",
+                value = other,
+                "unknown re-translation setting; using \"auto\""
+            );
+            !mt_uses_context
+        }
+    };
+    let enabled = wanted && early != EarlyCommit::SegmentEnd;
+    (enabled, enabled && !mt_uses_context)
+}
+
+/// `value` raised to `min`, reported when it had to be.
+fn at_least(key: &'static str, value: u32, min: u32) -> u32 {
+    if value < min {
+        tracing::warn!(
+            key,
+            value,
+            min,
+            "value below its minimum; using the minimum"
+        );
+    }
+    value.max(min)
+}
+
+/// `value` clamped to `0.0..=1.0`, reported when it had to be (not a number counts as 0.0).
+fn ratio(key: &'static str, value: f32) -> f32 {
+    let clamped = if value.is_nan() {
+        0.0
+    } else {
+        value.clamp(0.0, 1.0)
+    };
+    if clamped.to_bits() != value.to_bits() {
+        tracing::warn!(
+            key,
+            value,
+            clamped,
+            "value outside 0.0 to 1.0; using the nearest"
+        );
+    }
+    clamped
+}
+
+/// The re-translation parameters of a direction: `[pipeline]` keys with their minimums applied,
+/// switched on or off by [`effective_retranslation`].
+pub(crate) fn retranslate_params(
+    p: &prxvc_config::PipelineConfig,
+    mt_uses_context: bool,
+    early: EarlyCommit,
+) -> RetranslateParams {
+    let (enabled, continuation) = effective_retranslation(p, mt_uses_context, early);
+    RetranslateParams {
+        enabled,
+        continuation,
+        agreement: at_least("pipeline.retranslate_agreement", p.retranslate_agreement, 1),
+        lookahead: at_least("pipeline.retranslate_lookahead", p.retranslate_lookahead, 1) as usize,
+        source_agreement: at_least(
+            "pipeline.retranslate_source_agreement",
+            p.retranslate_source_agreement,
+            2,
+        ) as usize,
+        source_guard: p.retranslate_source_guard as usize,
+        min_chars: at_least("pipeline.retranslate_min_chars", p.retranslate_min_chars, 1) as usize,
+        min_words: at_least("pipeline.retranslate_min_words", p.retranslate_min_words, 1) as usize,
+        interval: ms(p.retranslate_interval_ms),
+        align_max_ratio: ratio(
+            "pipeline.retranslate_align_max_ratio",
+            p.retranslate_align_max_ratio,
+        ),
+    }
+}
+
 /// What the listener of each direction hears while it is paused or failed (`call.*_when_paused`, `call.*_on_failure`).
 pub(crate) fn output_policy(config: &AppConfig, direction: Direction) -> OutputPolicy {
     let call = &config.call;
@@ -141,6 +230,7 @@ pub(crate) fn pipeline_params_for_engine(
         split_target_clauses: p.split_target_clauses,
         ..CommitParams::default()
     };
+    params.retranslate = retranslate_params(p, mt_uses_context, params.commit.early);
     params.interrupt = InterruptParams {
         barge_in: config.call.barge_in,
         max_lag: ms(config.call.barge_in_max_lag_ms),
@@ -355,5 +445,139 @@ mod tests {
         assert_eq!(outgoing.output.on_failure, Passthrough::Original);
         assert_eq!(incoming.output.on_failure, Passthrough::Silence);
         assert_eq!(outgoing.recognition_mode, RecognitionMode::Streaming);
+    }
+
+    fn retranslation(setting: &str, mt_uses_context: bool, early: EarlyCommit) -> (bool, bool) {
+        let p = prxvc_config::PipelineConfig {
+            retranslation: setting.into(),
+            ..Default::default()
+        };
+        effective_retranslation(&p, mt_uses_context, early)
+    }
+
+    #[test]
+    fn auto_runs_for_an_engine_without_context_and_continues_the_sentence() {
+        assert_eq!(
+            retranslation("auto", false, EarlyCommit::Punctuation),
+            (true, true)
+        );
+        assert_eq!(
+            retranslation("auto", true, EarlyCommit::Chunk),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn on_runs_for_every_engine_and_continues_only_without_context() {
+        assert_eq!(retranslation("on", false, EarlyCommit::Chunk), (true, true));
+        assert_eq!(retranslation("on", true, EarlyCommit::Chunk), (true, false));
+    }
+
+    #[test]
+    fn off_never_runs() {
+        for context in [false, true] {
+            assert_eq!(
+                retranslation("off", context, EarlyCommit::Chunk),
+                (false, false)
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_runs_while_units_are_committed_only_at_the_segment_end() {
+        for setting in ["auto", "on"] {
+            assert_eq!(
+                retranslation(setting, false, EarlyCommit::SegmentEnd),
+                (false, false)
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_spelling_means_auto() {
+        assert_eq!(
+            retranslation("sometimes", false, EarlyCommit::Punctuation),
+            (true, true)
+        );
+        assert_eq!(
+            retranslation("sometimes", true, EarlyCommit::Chunk),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn the_default_configuration_turns_re_translation_on_for_the_system_engine_only() {
+        let config = AppConfig::default();
+        let params = |context| {
+            pipeline_params_for_engine(
+                &config,
+                Direction::Outgoing,
+                (Lang::Zh, Lang::En),
+                voice(),
+                PlannedMode::Streaming,
+                context,
+            )
+            .retranslate
+        };
+        let without_context = params(false);
+        assert!(without_context.enabled && without_context.continuation);
+        assert_eq!(
+            RetranslateParams {
+                enabled: false,
+                continuation: false,
+                ..without_context
+            },
+            RetranslateParams::disabled(),
+            "the numbers are the documented defaults"
+        );
+        assert!(!params(true).enabled);
+    }
+
+    #[test]
+    fn the_re_translation_keys_are_read_and_held_to_their_minimums() {
+        let mut p = prxvc_config::PipelineConfig {
+            retranslate_agreement: 1,
+            retranslate_lookahead: 3,
+            retranslate_source_agreement: 3,
+            retranslate_source_guard: 0,
+            retranslate_min_chars: 5,
+            retranslate_min_words: 4,
+            retranslate_interval_ms: 250,
+            retranslate_align_max_ratio: 0.3,
+            ..Default::default()
+        };
+        let r = retranslate_params(&p, false, EarlyCommit::Punctuation);
+        assert_eq!(
+            (r.agreement, r.lookahead, r.source_agreement, r.source_guard),
+            (1, 3, 3, 0)
+        );
+        assert_eq!((r.min_chars, r.min_words), (5, 4));
+        assert_eq!(r.interval, Duration::from_millis(250));
+        assert_eq!(r.align_max_ratio, 0.3);
+
+        p.retranslate_agreement = 0;
+        p.retranslate_lookahead = 0;
+        p.retranslate_source_agreement = 1;
+        p.retranslate_min_chars = 0;
+        p.retranslate_min_words = 0;
+        let r = retranslate_params(&p, false, EarlyCommit::Punctuation);
+        assert_eq!(
+            (r.agreement, r.lookahead, r.source_agreement),
+            (1, 1, 2),
+            "clamped"
+        );
+        assert_eq!((r.min_chars, r.min_words), (1, 1));
+
+        for (given, held) in [
+            (-0.2, 0.0),
+            (1.7, 1.0),
+            (f32::NAN, 0.0),
+            (0.0, 0.0),
+            (1.0, 1.0),
+        ] {
+            p.retranslate_align_max_ratio = given;
+            let r = retranslate_params(&p, false, EarlyCommit::Punctuation);
+            assert_eq!(r.align_max_ratio, held, "{given}");
+        }
     }
 }

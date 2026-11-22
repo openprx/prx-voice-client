@@ -10,6 +10,7 @@ use prxvc_media::{AudioFrame, Clock};
 use prxvc_ports::{AsrContext, AudioSource, CancellationToken, StreamingAsr, VadProvider};
 
 use super::core::{Core, Gate};
+use super::draft::{DraftQueues, ThreadedLink};
 use super::faults::{asr_failure, vad_failure};
 use super::input::AudioInput;
 use super::messages::{Inbound, StageFailure, WorkerEvent};
@@ -126,6 +127,8 @@ pub(crate) struct RecognizerThread {
     pub(crate) outbox: Outbox,
     pub(crate) audio_in: Arc<BoundedQueue<AudioFrame>>,
     pub(crate) gate: Arc<Gate>,
+    /// The queues of the draft worker, when re-translation is on.
+    pub(crate) draft: Option<DraftQueues>,
 }
 
 /// What the loop keeps between frames.
@@ -152,14 +155,20 @@ impl RecognizerThread {
             .asr
             .open(self.p.source, ctx)
             .map_err(|e| (Stage::Asr, asr_failure(&e, false)))?;
-        Ok(RecognitionStage::new(
+        let stage = RecognitionStage::new(
             &self.p,
             Arc::clone(&self.tree),
             self.tracer.clone(),
             Arc::clone(&self.stats),
             vad,
             asr,
-        ))
+        );
+        Ok(match &self.draft {
+            Some(queues) => {
+                stage.with_drafts(Box::new(ThreadedLink::new(queues, Arc::clone(&self.stats))))
+            }
+            None => stage,
+        })
     }
 
     /// The thread body.
@@ -256,6 +265,11 @@ impl RecognizerThread {
 
     fn on_frame(&self, st: &mut LoopState, frame: &AudioFrame) {
         self.stats.frames_consumed.fetch_add(1, Ordering::Relaxed);
+        self.handle_frame(st, frame);
+        self.stats.frames_processed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn handle_frame(&self, st: &mut LoopState, frame: &AudioFrame) {
         self.track_overrun(st);
         if !self.gate.is_active() {
             if std::mem::take(&mut st.was_active)

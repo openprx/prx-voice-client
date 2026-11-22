@@ -128,6 +128,35 @@ pub struct Counters {
     pub finals_contradicting_stable: u64,
     /// Segments the recogniser ended itself at its maximum length.
     pub forced_cuts: u64,
+    /// Clauses whose translation continued the sentence: only what follows the part already spoken
+    /// was spoken.
+    pub continued: u64,
+    /// Clauses that continued the sentence from a start of the new translation that was close to,
+    /// not the same as, the part already spoken.
+    pub continued_approx: u64,
+    /// Clauses whose translation from the start of the sentence no longer began with the part
+    /// already spoken, so their own text was translated on its own.
+    pub continuation_diverged: u64,
+    /// Clauses that continued the sentence with nothing speakable left to say.
+    pub remainder_empty: u64,
+    /// Draft jobs the recognition stage submitted (re-translation).
+    pub drafts_requested: u64,
+    /// Draft jobs answered (or replaced in the queue before they were taken).
+    pub drafts_replied: u64,
+    /// Engine calls made for drafts.
+    pub drafts_engine_calls: u64,
+    /// Draft texts served from the cache.
+    pub drafts_cache_hits: u64,
+    /// Draft replies discarded because the round they were made for had moved on.
+    pub drafts_stale: u64,
+    /// Draft texts that failed (an engine error or a flagged translation); latency only.
+    pub drafts_failed: u64,
+    /// Candidates dropped because their translation no longer began with the part already spoken.
+    pub drafts_rejected_spoken: u64,
+    /// Units committed by the re-translation rule.
+    pub retranslated_units: u64,
+    /// Partials or finals that contradicted text committed by the re-translation rule.
+    pub retranslate_src_rewrites: u64,
     /// Clauses committed.
     pub clauses_committed: u64,
     /// Clauses played to the end.
@@ -231,6 +260,19 @@ pub(crate) struct Stats {
     pub(crate) final_unaligned: AtomicU64,
     pub(crate) finals_contradicting_stable: AtomicU64,
     pub(crate) forced_cuts: AtomicU64,
+    pub(crate) continued: AtomicU64,
+    pub(crate) continued_approx: AtomicU64,
+    pub(crate) continuation_diverged: AtomicU64,
+    pub(crate) remainder_empty: AtomicU64,
+    pub(crate) drafts_requested: AtomicU64,
+    pub(crate) drafts_replied: AtomicU64,
+    pub(crate) drafts_engine_calls: AtomicU64,
+    pub(crate) drafts_cache_hits: AtomicU64,
+    pub(crate) drafts_stale: AtomicU64,
+    pub(crate) drafts_failed: AtomicU64,
+    pub(crate) drafts_rejected_spoken: AtomicU64,
+    pub(crate) retranslated_units: AtomicU64,
+    pub(crate) retranslate_src_rewrites: AtomicU64,
     pub(crate) clauses_committed: AtomicU64,
     pub(crate) clauses_played: AtomicU64,
     pub(crate) clauses_failed: AtomicU64,
@@ -247,6 +289,8 @@ pub(crate) struct Stats {
     pub(crate) flag_think_residue: AtomicU64,
     /// Frames the recogniser consumed; tests use it to pace their input.
     pub(crate) frames_consumed: AtomicU64,
+    /// Frames the recogniser has finished processing (every event of the frame sent on).
+    pub(crate) frames_processed: AtomicU64,
 }
 
 impl Stats {
@@ -272,6 +316,19 @@ impl Stats {
             final_unaligned: get(&self.final_unaligned),
             finals_contradicting_stable: get(&self.finals_contradicting_stable),
             forced_cuts: get(&self.forced_cuts),
+            continued: get(&self.continued),
+            continued_approx: get(&self.continued_approx),
+            continuation_diverged: get(&self.continuation_diverged),
+            remainder_empty: get(&self.remainder_empty),
+            drafts_requested: get(&self.drafts_requested),
+            drafts_replied: get(&self.drafts_replied),
+            drafts_engine_calls: get(&self.drafts_engine_calls),
+            drafts_cache_hits: get(&self.drafts_cache_hits),
+            drafts_stale: get(&self.drafts_stale),
+            drafts_failed: get(&self.drafts_failed),
+            drafts_rejected_spoken: get(&self.drafts_rejected_spoken),
+            retranslated_units: get(&self.retranslated_units),
+            retranslate_src_rewrites: get(&self.retranslate_src_rewrites),
             clauses_committed: get(&self.clauses_committed),
             clauses_played: get(&self.clauses_played),
             clauses_failed: get(&self.clauses_failed),

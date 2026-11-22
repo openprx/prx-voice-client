@@ -136,7 +136,10 @@ impl DirectionTotals {
              skips(stale={} backlog={} other={}) passed_through={} self_echo_dropped={} suspects={} flags({}) \
              mt_retries={} synth_runaways={} {} \
              start_to_first_audio_ms(median/p95)={} end_to_first_audio_ms(median/p95)={} \
-             queue_wait_ms(median/p95)={} catch_up(clauses={} max_speed={}%){}",
+             queue_wait_ms(median/p95)={} catch_up(clauses={} max_speed={}%) \
+             retranslation(units={} drafts={} hits={} stale={} failed={} src_rewrites={} \
+             continued={} approx={} diverged={} empty={}) \
+             first_commit_ms(median/p95)={} draft_ms(median/p95)={}{}",
             s.ledger.utterances,
             c.clauses_committed,
             c.clauses_played,
@@ -158,6 +161,18 @@ impl DirectionTotals {
             percentiles(s.ledger.queue_wait),
             s.ledger.sped_clauses,
             s.ledger.max_speed_pct,
+            c.retranslated_units,
+            c.drafts_engine_calls,
+            c.drafts_cache_hits,
+            c.drafts_stale,
+            c.drafts_failed,
+            c.retranslate_src_rewrites,
+            c.continued,
+            c.continued_approx,
+            c.continuation_diverged,
+            c.remainder_empty,
+            percentiles(s.ledger.first_commit),
+            percentiles(s.ledger.draft_ms),
             notice,
         )
     }
@@ -238,6 +253,16 @@ mod tests {
                     median_ms: 1500,
                     p95_ms: 3900,
                 },
+                first_commit: Percentiles {
+                    n: 6,
+                    median_ms: 1_900,
+                    p95_ms: 2_700,
+                },
+                draft_ms: Percentiles {
+                    n: 40,
+                    median_ms: 85,
+                    p95_ms: 130,
+                },
                 sped_clauses: 4,
                 max_speed_pct: 125,
             },
@@ -299,6 +324,16 @@ mod tests {
                 flag_wrong_language: 3,
                 mt_retries: 2,
                 runaway_synth: 1,
+                retranslated_units: 3,
+                drafts_engine_calls: 21,
+                drafts_cache_hits: 9,
+                drafts_stale: 4,
+                drafts_failed: 2,
+                retranslate_src_rewrites: 1,
+                continued: 5,
+                continued_approx: 3,
+                continuation_diverged: 2,
+                remainder_empty: 1,
                 ..Counters::default()
             })),
             playback: PlaybackTotals {
@@ -339,6 +374,9 @@ mod tests {
             "end_to_first_audio_ms(median/p95)=-",
             "queue_wait_ms(median/p95)=1500/3900 (n=5)",
             "catch_up(clauses=4 max_speed=125%)",
+            "retranslation(units=3 drafts=21 hits=9 stale=4 failed=2 src_rewrites=1 continued=5 approx=3 diverged=2 empty=1)",
+            "first_commit_ms(median/p95)=1900/2700 (n=6)",
+            "draft_ms(median/p95)=85/130 (n=40)",
             "notice(played played=2 interrupted=1)",
         ] {
             assert!(line.contains(part), "{part} missing from: {line}");

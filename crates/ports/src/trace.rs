@@ -27,6 +27,20 @@ pub enum TraceStage {
     /// A recognised unit that was only filler ("嗯", "Mm.") was dropped: not translated, not
     /// spoken. Recorded against the clause the unit would have been; with text, the unit.
     FillerDropped,
+    /// A unit was committed by the re-translation rule while the speaker went on. Recorded against
+    /// the clause it committed.
+    RetranslationCut,
+    /// Why a unit was cut and whether its sentence goes on. With text, the reason's name and
+    /// `continues` or `ends` (a name, never spoken text). Recorded against the unit's clause.
+    UnitCut,
+    /// A clause translated from the start of its sentence no longer began with the part already
+    /// spoken, so the new part was translated on its own. With text, the spoken translation and
+    /// the new one (for the development harness only: a trace sink that logs must not log it).
+    ContinuationDiverged,
+    /// A clause translated from the start of its sentence began with something close to, but not
+    /// the same as, the part already spoken, and went on from there. Text as for
+    /// `ContinuationDiverged` (development harness only).
+    ContinuationApprox,
     /// The refine pass finished.
     RefineDone,
     /// The translation request was sent.

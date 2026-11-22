@@ -335,7 +335,16 @@ fn our_own_translation_heard_by_the_microphone_is_dropped_and_never_passed_throu
         |_| {},
     );
     rig.wait_running();
-    rig.feed(110);
+    // The guard compares with the translations the core already holds. Feed the first utterance and
+    // its gap, and let its translation arrive before the microphone hears it again: without this the
+    // recogniser thread races the translation thread and the echo can be judged first.
+    rig.feed(58);
+    rig.wait_snapshot("the first translation is held", |s| {
+        s.clauses
+            .first()
+            .is_some_and(|c| c.translation == "The weather is nice today.")
+    });
+    rig.feed(52);
     let snap = rig.wait_snapshot("the echo is dropped", |s| s.counters.self_echo_dropped >= 1);
     assert_eq!(snap.counters.self_echo_dropped, 1);
     assert_eq!(snap.counters.in_target_passed, 0, "never passed through as the original");

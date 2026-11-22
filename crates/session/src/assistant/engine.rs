@@ -585,6 +585,8 @@ impl Session {
                 let shown = join_words(&self.segment_text, "");
                 self.emit(AssistantEvent::Partial { text: shown });
             }
+            // The assistant has no draft worker: re-translation is off in its recognition stage.
+            RecognitionEvent::DraftTally(_) => {}
             RecognitionEvent::EndSegment => {
                 let text = join_words(&self.segment_text, "");
                 self.segment_text.clear();

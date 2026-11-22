@@ -4,8 +4,18 @@ use std::time::Duration;
 
 use prxvc_media::{Lang, first_clause_end};
 
+mod approx_prefix;
+pub(crate) use approx_prefix::approx_prefix_end;
+
 mod early;
 pub use early::{EarlyCommit, EarlyCut, EarlyInput, EarlyReason, decide_early_cut};
+
+mod retranslate;
+pub use retranslate::RetranslateParams;
+pub(crate) use retranslate::{
+    DraftBook, DraftReplyView, DraftTranslation, HypInput, MAX_SENTENCE_UNITS, continuation_text,
+    ends_sentence, join_carry, join_sentence, prefix_end,
+};
 
 /// Thresholds of the commit rules, shaped like the `[pipeline]` configuration keys.
 ///

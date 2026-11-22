@@ -470,3 +470,138 @@ fn with_a_refine_pass_early_units_and_the_rest_of_their_round_keep_the_streaming
     assert!(refine.audio_lens().is_empty());
     assert!(run.rig.stop().clean);
 }
+
+/// Partials of `text` up to `upto` words, then partials of `rewritten` from there on with nothing
+/// declared stable: the recogniser rewrote a word inside the part that was already committed.
+fn rewriting_partials(text: &str, rewritten: &str, upto: usize) -> Vec<(String, usize)> {
+    let mut partials = growing(text, 3, 6);
+    partials.truncate(upto * 3);
+    let later = growing(rewritten, 3, 6);
+    partials.extend(later.into_iter().skip(upto * 3).map(|(t, _)| (t, 0)));
+    partials
+}
+
+#[test]
+fn a_partial_that_rewrites_committed_text_keeps_the_boundary_after_the_committed_words() {
+    let text = "if it rains tomorrow, we will move the meeting to friday and tell everyone";
+    // "rains" becomes "raining" inside the committed part: the byte offset of the commit now falls
+    // inside "tomorrow".
+    let rewritten = "if it raining tomorrow, we will move the meeting to friday and tell everyone";
+    let run = Run::start(
+        IN,
+        script(rewriting_partials(text, rewritten, 10), rewritten),
+        one_utterance(10, 100),
+        EarlyCommit::Punctuation,
+    );
+    // While the speaker still talks, the open clause starts after the committed words.
+    run.rig.feed(10 + 100);
+    let snap = run.rig.wait_snapshot("the rewritten partial", |s| {
+        s.partial
+            .as_ref()
+            .is_some_and(|p| p.text.ends_with("everyone"))
+    });
+    assert_eq!(
+        snap.partial.as_ref().map(|p| p.text.as_str()),
+        Some("we will move the meeting to friday and tell everyone")
+    );
+    run.rig.feed(25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        [
+            "if it rains tomorrow,",
+            "we will move the meeting to friday and tell everyone"
+        ]
+    );
+    assert_eq!(snap.counters.stable_violations, 1);
+    assert!(run.rig.stop().clean);
+}
+
+#[test]
+fn a_chinese_partial_that_rewrites_committed_text_keeps_the_boundary_after_the_committed_words() {
+    let text = "如果明天下雨，我们就改期然后通知大家明天不用来公司了";
+    // A character inside the committed part is dropped: the committed byte offset now falls in
+    // the middle of the next unit, which is cut from its first character.
+    let rewritten = "如果明天雨，我们就改期然后通知大家明天不用来公司了";
+    let mut partials = growing_chars(text, 2, 6);
+    partials.truncate(13 * 2);
+    partials.extend(
+        growing_chars(rewritten, 2, 6)
+            .into_iter()
+            .skip(14 * 2)
+            .map(|(t, _)| (t, 0)),
+    );
+    let run = Run::start(
+        OUT,
+        script(partials, rewritten),
+        one_utterance(10, 120),
+        EarlyCommit::Punctuation,
+    );
+    run.rig.feed(10 + 120 + 25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        ["如果明天下雨，", "我们就改期然后通知大家明天不用来公司了"]
+    );
+    assert_eq!(snap.counters.stable_violations, 1);
+    assert!(run.rig.stop().clean);
+}
+
+#[test]
+fn with_continuation_on_the_second_unit_is_translated_from_the_start_of_the_sentence() {
+    let text = "if it rains tomorrow, we will move the meeting to friday and tell everyone.";
+    let whole = "如果明天下雨，我们将把会议改到周五，并通知大家。";
+    let clock = ManualClock::new();
+    let mt = FakeTranslator::new(clock.clone())
+        .with_script(
+            "if it rains tomorrow,",
+            MtScript::tokens(["如果明天下雨，"]),
+        )
+        .with_script(text, MtScript::tokens([whole]));
+    let tts = FakeSpeechSynth::new(clock.clone()).with_default_script(TtsScript::chunks(1, 2400));
+    let rig = Rig::start_with(
+        &clock,
+        IN,
+        one_utterance(10, 100),
+        script(growing(text, 3, 6), text),
+        mt,
+        tts,
+        |p| {
+            p.commit.early = EarlyCommit::Punctuation;
+            p.retranslate.enabled = true;
+            p.retranslate.continuation = true;
+        },
+    );
+    rig.wait_running();
+    let run = Run { rig, dir: IN };
+    run.rig.feed(10 + 100 + 25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        [
+            "if it rains tomorrow,",
+            "we will move the meeting to friday and tell everyone."
+        ]
+    );
+    // The second unit was asked for from the start of its sentence and speaks only what follows
+    // the first; nothing is repeated.
+    let requests = run.rig.fakes.mt.requests();
+    let asked: Vec<&str> = requests.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(asked, ["if it rains tomorrow,", text]);
+    let translations: Vec<&str> = snap
+        .clauses
+        .iter()
+        .map(|c| c.translation.as_str())
+        .collect();
+    assert_eq!(
+        translations,
+        ["如果明天下雨，", "我们将把会议改到周五，并通知大家。"]
+    );
+    assert_eq!(snap.counters.continued, 1);
+    assert_eq!(snap.counters.continuation_diverged, 0);
+    assert_eq!(
+        run.rig.recorder.audio_clause_order(),
+        vec![run.c(0), run.c(1)]
+    );
+    assert!(run.rig.stop().clean);
+}

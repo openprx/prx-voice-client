@@ -60,6 +60,49 @@ fn ns(t: prxvc_media::MonoTime) -> f64 {
     t.as_nanos() as f64
 }
 
+/// Why a unit was cut and whether its sentence goes on, from its `UnitCut` record (`punctuation
+/// continues`); `None` when the clause has none (the record carries text only when the sink asked).
+pub(crate) fn unit_cut(c: &ClauseTimeline) -> Option<(&str, bool)> {
+    let text = &c.texts.iter().find(|(s, _)| *s == S::UnitCut)?.1;
+    let (reason, sentence) = text.split_once(' ')?;
+    Some((reason, sentence == "continues"))
+}
+
+impl UtteranceRun {
+    /// The reason the first unit committed was cut.
+    pub(crate) fn first_cut(&self) -> Option<&str> {
+        self.clauses
+            .iter()
+            .filter_map(|c| Some((c.at(S::ClauseCommitted)?, c)))
+            .min_by(|a, b| a.0.cmp(&b.0))
+            .and_then(|(_, c)| unit_cut(c).map(|(reason, _)| reason))
+    }
+
+    /// Units the re-translation rule committed.
+    pub(crate) fn retranslated(&self) -> usize {
+        self.clauses
+            .iter()
+            .filter(|c| c.at(S::RetranslationCut).is_some())
+            .count()
+    }
+
+    /// Units whose translation began with something close to what was spoken and went on from there.
+    pub(crate) fn approx(&self) -> usize {
+        self.clauses
+            .iter()
+            .filter(|c| c.at(S::ContinuationApprox).is_some())
+            .count()
+    }
+
+    /// Units whose translation from the start of the sentence did not begin with what was spoken.
+    pub(crate) fn diverged(&self) -> usize {
+        self.clauses
+            .iter()
+            .filter(|c| c.at(S::ContinuationDiverged).is_some())
+            .count()
+    }
+}
+
 /// The figures of one utterance in the prototype's terms, in seconds. Missing stages leave a figure out.
 pub(crate) fn figures(run: &UtteranceRun) -> Vec<(&'static str, f64)> {
     let mut out = Vec::new();
@@ -68,6 +111,29 @@ pub(crate) fn figures(run: &UtteranceRun) -> Vec<(&'static str, f64)> {
     out.push(("committed units per utterance (count)", run.clauses.len() as f64));
     out.push(("clauses skipped per utterance (count)", run.clauses_skipped as f64));
     let at = |c: &ClauseTimeline, s| c.at(s).map(ns);
+    if let Some(c) = run
+        .clauses
+        .iter()
+        .filter_map(|c| at(c, S::ClauseCommitted))
+        .reduce(f64::min)
+    {
+        out.push((
+            "first_commit_s (speech start -> first unit committed)",
+            secs(run.speech_start_ns, c),
+        ));
+    }
+    out.push((
+        "retranslated (units cut by the rule per utterance)",
+        run.retranslated() as f64,
+    ));
+    out.push((
+        "approx (continuations aligned approximately per utterance)",
+        run.approx() as f64,
+    ));
+    out.push((
+        "diverged (continuations translated alone per utterance)",
+        run.diverged() as f64,
+    ));
     if let Some(p) = run
         .clauses
         .iter()
@@ -182,6 +248,18 @@ pub(crate) fn table(runs: &[UtteranceRun]) -> String {
                 values.len()
             ));
         }
+    }
+    let mut cuts: BTreeMap<&str, usize> = BTreeMap::new();
+    for reason in runs.iter().filter_map(UtteranceRun::first_cut) {
+        *cuts.entry(reason).or_default() += 1;
+    }
+    if !cuts.is_empty() {
+        let list: Vec<String> = cuts.iter().map(|(r, n)| format!("{r}={n}")).collect();
+        out.push_str(&format!(
+            "| first_cut (utterances by the reason of their first unit) | {} | {} | |\n",
+            cuts.values().sum::<usize>(),
+            list.join(" ")
+        ));
     }
     let errors: Vec<f64> = runs.iter().filter_map(|r| r.recognition_error).collect();
     if !errors.is_empty() {

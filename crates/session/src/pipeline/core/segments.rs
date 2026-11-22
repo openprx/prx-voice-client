@@ -3,19 +3,41 @@
 use super::{ClauseInfo, Core, Stats};
 use crate::interrupt::CancelAction;
 use crate::pipeline::events::PipelineEvent;
-use crate::pipeline::messages::{MtItem, TtsItem};
+use crate::pipeline::messages::{CommitReason, MtItem, TtsItem};
 use crate::pipeline::queue::Pushed;
 use crate::pipeline::snapshot::{ClauseSnapshot, SkipReason};
 use crate::segment::{ClauseEventKind, ClauseState, SegmentState};
 use crate::direction_state::DirectionState;
 use crate::pipeline::utterance::{Ms, Utterance, notes, skip_name};
 use crate::segment_book::{SegmentAction, SegmentEvent};
-use prxvc_media::ClauseId;
-use prxvc_media::Envelope;
+use crate::segment::ClauseView;
+use prxvc_media::{ClauseId, Envelope, MonoTime, SegmentId};
 
 use crate::pipeline::messages::RefineJob;
 
 impl Core {
+    /// The clauses the book knows, aged for the barge-in and backlog rules. A unit that does not
+    /// end its source sentence was cut early, so its own speech ended earlier than the sentence it
+    /// belongs to: it is aged from the end of the newest clause of its segment, and the middle of
+    /// a long sentence is not dropped as stale while its end is still young
+    /// (incremental-retranslation 4.7.7). The rules themselves are unchanged.
+    pub(super) fn aged_clause_views(&self) -> Vec<ClauseView> {
+        let mut views = self.book.clause_views();
+        let mut newest: std::collections::HashMap<SegmentId, MonoTime> =
+            std::collections::HashMap::new();
+        for v in &views {
+            let end = newest.entry(v.clause.segment()).or_insert(v.source_end);
+            *end = (*end).max(v.source_end);
+        }
+        for v in &mut views {
+            let continues = self.clauses.get(&v.clause).is_some_and(|i| i.continues);
+            if let Some(end) = newest.get(&v.clause.segment()).filter(|_| continues) {
+                v.source_end = *end;
+            }
+        }
+        views
+    }
+
     /// Feed `event` to the segment book and execute its actions. Returns
     /// `false` when the book refused the event or dropped it as late.
     pub(super) fn apply_segment(&mut self, event: SegmentEvent) -> bool {
@@ -69,11 +91,26 @@ impl Core {
         );
         let token = self.w.tree.clause(clause);
         Stats::add(&self.w.stats.clauses_committed, 1);
-        self.tallies.entry(clause.segment()).or_default().clauses += 1;
+        let tally = self.tallies.entry(clause.segment()).or_default();
+        tally.clauses += 1;
+        tally.first_cut.get_or_insert(commit.reason.name());
+        if commit.reason == CommitReason::Retranslation {
+            tally.retranslated += 1;
+        }
         self.w
             .tracer
             .mark_text(clause, prxvc_ports::TraceStage::ClauseCommitted, || {
                 commit.text.clone()
+            });
+        self.w
+            .tracer
+            .mark_text(clause, prxvc_ports::TraceStage::UnitCut, || {
+                let sentence = if commit.continues {
+                    "continues"
+                } else {
+                    "ends"
+                };
+                format!("{} {sentence}", commit.reason.name())
             });
         self.clauses.insert(
             clause,
@@ -83,6 +120,7 @@ impl Core {
                 source_ts,
                 source_text: commit.text.clone(),
                 source_end: commit.source_end,
+                continues: commit.continues,
                 first_chunk_at: None,
                 target_text: String::new(),
                 synthesised: std::time::Duration::ZERO,
@@ -139,6 +177,17 @@ impl Core {
             clauses = u.tally.clauses,
             outcome = u.outcome(),
             speech_ms = %Ms(u.speech_ms),
+            first_commit_ms = %Ms(u.first_commit_ms),
+            first_cut = u.tally.first_cut.unwrap_or("-"),
+            retranslated = u.tally.retranslated,
+            drafts = u.tally.drafts,
+            draft_hits = u.tally.draft_hits,
+            drafts_stale = u.tally.drafts_stale,
+            continued = u.tally.continued,
+            continued_approx = u.tally.continued_approx,
+            diverged = u.tally.diverged,
+            remainder_empty = u.tally.remainder_empty,
+            src_rewrites = u.tally.src_rewrites,
             asr_final_ms = %Ms(u.asr_final_ms),
             mt_first_token_ms = %Ms(u.mt_first_token_ms),
             first_audio_ms = %Ms(u.first_audio_ms),

@@ -6,7 +6,7 @@ use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 
 use crate::backlog::BacklogParams;
-use crate::commit_policy::CommitParams;
+use crate::commit_policy::{CommitParams, RetranslateParams};
 use crate::interrupt::InterruptParams;
 use crate::output::OutputPolicy;
 
@@ -42,6 +42,10 @@ pub struct QueueCaps {
     pub hold: Duration,
     /// Q7, events to the caller: items.
     pub events_out: usize,
+    /// Q8, draft jobs of re-translation waiting for the draft worker: items.
+    pub draft_in: usize,
+    /// Q9, draft replies waiting for the recognition thread: items.
+    pub draft_out: usize,
 }
 
 impl Default for QueueCaps {
@@ -55,6 +59,8 @@ impl Default for QueueCaps {
             tts_in: 8,
             hold: Duration::from_secs(20),
             events_out: 256,
+            draft_in: 1,
+            draft_out: 4,
         }
     }
 }
@@ -92,6 +98,9 @@ pub struct PipelineParams {
     /// `max_clause_s`, `max_segment_s`, `early_commit`, `early_chunk_chars`,
     /// `early_chunk_words`, `early_max_wait_ms`, `split_target_clauses`.
     pub commit: CommitParams,
+    /// `pipeline.retranslation` and `retranslate_*`: commit a source prefix while the speaker goes
+    /// on, once its translation is confirmed. Off unless the composition root turns it on.
+    pub retranslate: RetranslateParams,
     /// `call.barge_in` and `call.barge_in_max_lag_ms`.
     pub interrupt: InterruptParams,
     /// `call.<direction>_when_paused` and `call.<direction>_on_failure`.
@@ -159,6 +168,7 @@ impl PipelineParams {
             source,
             target,
             commit: CommitParams::default(),
+            retranslate: RetranslateParams::disabled(),
             interrupt: InterruptParams::default(),
             output: OutputPolicy::default(),
             recognition_mode: RecognitionMode::Streaming,

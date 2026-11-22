@@ -1,7 +1,7 @@
 //! `call_harness`: one direction of the real pipeline with the real providers, a WAV file as the source and either a WAV file or the virtual microphone as the output (pipeline-design CT-15). No call application, no real microphone, no system default device is touched.
 //!
 //! ```text
-//! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk]
+//! call_harness --direction outgoing|incoming --set zh|en [--commit segment|punctuation|chunk] [--retranslate auto|on|off] [--retranslate-agreement N] [--redecode-ms N] [--units-out FILE]
 //!              [--output wav|vmic] [--count 10] [--numbers 5] [--out DIR] [--tag NAME]
 //!              [--engine system|llm] [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--file X.wav --reference "text"] [--bench-asr DIR]
 //!              [--own zh --peer en] [--max-backlog-ms N] [--no-backlog-skip] [--subset NAME] [--default-pipeline] [--no-barge-in] [--own-set DIR] [--no-adaptive-preroll] [--notice off|speech|audio] [--notice-old-text] [--conversation N [--gap-ms 900]] [--no-catch-up] [--no-trim] [--recognition streaming|two_pass] [--file X.wav --reference "text"] [--bench-asr DIR]
@@ -37,6 +37,15 @@
 //! * `--recognition streaming|two_pass` sets `pipeline.recognition_mode` for the run (the default
 //!   is `streaming`, one model per direction; `two_pass` adds the refine decode of every clause).
 //!   The table then has the error rate of the text that was translated against the reference.
+//! * `--retranslate auto|on|off` sets `pipeline.retranslation` for the run (incremental re-translation:
+//!   a source prefix is committed while the speaker goes on, once the translation of it is confirmed;
+//!   `auto` is on for an engine without context); `--retranslate-agreement N` sets
+//!   `pipeline.retranslate_agreement` and `--redecode-ms N` sets `pipeline.asr_redecode_interval_ms`.
+//!   The line "retranslation in force" says what the pipeline will do, and the table gains the rows
+//!   `first_commit_s`, `retranslated`, `approx`, `diverged` and `first_cut`. `--units-out FILE` writes one line
+//!   per unit (`id`, `segment.index`, reason of the cut, whether the sentence continues, source text,
+//!   spoken translation, and for an approximate alignment or a divergence the trace text): it holds spoken text, so it is bench
+//!   material and never an app log.
 //! * `--vad-profile` prints, for each input, how much of it the VAD calls speech, the longest
 //!   voiced run and its level, and runs nothing else (for choosing the segment gate).
 //! * `--output wav` writes `<out>/<utterance>.wav`. `--output vmic` plays to the virtual microphone,
@@ -54,6 +63,7 @@ mod run;
 mod sinks;
 mod source;
 mod sysinfo;
+mod units;
 mod vad_profile;
 
 use std::path::PathBuf;
@@ -109,6 +119,10 @@ struct Options {
     no_catch_up: bool,
     no_trim: bool,
     recognition: Option<String>,
+    retranslate: Option<String>,
+    retranslate_agreement: Option<u32>,
+    redecode_ms: Option<u32>,
+    units_out: Option<PathBuf>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -141,6 +155,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         no_catch_up: false,
         no_trim: false,
         recognition: None,
+        retranslate: None,
+        retranslate_agreement: None,
+        redecode_ms: None,
+        units_out: None,
     };
     let (mut file, mut reference) = (None, String::new());
     let mut it = args.iter();
@@ -206,6 +224,22 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--no-catch-up" => o.no_catch_up = true,
             "--no-trim" => o.no_trim = true,
             "--recognition" => o.recognition = Some(value(arg, &mut it)?),
+            "--retranslate" => o.retranslate = Some(units::parse_mode(&value(arg, &mut it)?)?),
+            "--retranslate-agreement" => {
+                o.retranslate_agreement = Some(
+                    value(arg, &mut it)?
+                        .parse()
+                        .map_err(|_| "bad --retranslate-agreement")?,
+                );
+            }
+            "--redecode-ms" => {
+                o.redecode_ms = Some(
+                    value(arg, &mut it)?
+                        .parse()
+                        .map_err(|_| "bad --redecode-ms")?,
+                );
+            }
+            "--units-out" => o.units_out = Some(PathBuf::from(value(arg, &mut it)?)),
             "--own" => o.own = value(arg, &mut it)?,
             "--peer" => o.peer = value(arg, &mut it)?,
             "--bench-asr" => o.bench_asr = PathBuf::from(value(arg, &mut it)?),
@@ -345,6 +379,12 @@ fn execute(o: &Options) -> Result<bool, String> {
     if let Some(mode) = &o.recognition {
         config.pipeline.recognition_mode.clone_from(mode);
     }
+    units::apply(
+        &mut config.pipeline,
+        o.retranslate.as_deref(),
+        o.retranslate_agreement,
+        o.redecode_ms,
+    );
     if o.no_catch_up {
         config.pipeline.catch_up = false;
     }
@@ -424,6 +464,7 @@ fn execute(o: &Options) -> Result<bool, String> {
         config.pipeline.early_commit_without_context,
         if build.providers.mt.descriptor().supports_context { "uses" } else { "does not use" },
     );
+    println!("{}", units::in_force_line(&params));
     if o.vad_profile {
         // Only the VAD: voiced time, longest voiced run and its level, per input.
         println!("id\tvoiced_ms\tlongest_run_ms\trun_rms_dbfs\tpeak_frame_dbfs");
@@ -534,6 +575,7 @@ fn execute(o: &Options) -> Result<bool, String> {
         println!("{}", sysinfo::snapshot("machine after"));
         println!("\n{}", table(&runs));
         println!("utterances measured: {} of the set", runs.len());
+        write_units(o, &runs)?;
         return Ok(!runs.is_empty());
     }
     for item in &items {
@@ -622,10 +664,20 @@ fn execute(o: &Options) -> Result<bool, String> {
     println!("{}", sysinfo::snapshot("machine after"));
     println!("\n{}", table(&runs));
     summary(&runs, o);
+    write_units(o, &runs)?;
     drop(rig);
     drop(build);
     drop(registry);
     Ok(!runs.is_empty())
+}
+
+/// The units file, when `--units-out` asked for one.
+fn write_units(o: &Options, runs: &[UtteranceRun]) -> Result<(), String> {
+    if let Some(path) = &o.units_out {
+        units::write(path, runs)?;
+        println!("units written to {}", path.display());
+    }
+    Ok(())
 }
 
 /// The round trip's verdict and the free-engine check.
