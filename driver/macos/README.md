@@ -103,7 +103,7 @@ or remove it through the system administrator password prompt (`osascript` with 
 privileges). The privileged shell command is fixed except for the bundle path, which is
 validated and single-quoted; the staged copy is verified as root (identifier, signature) before it
 replaces the installed driver; then the audio daemon is restarted exactly as `install.sh` does and
-the app waits for the device to appear. There is no UI for it yet.
+the app waits for the device to appear. The Permissions page of the settings window installs, updates and removes the driver through these commands.
 
 ## Self-test
 
