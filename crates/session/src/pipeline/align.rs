@@ -90,6 +90,23 @@ fn floor_boundary(text: &str, at: usize) -> usize {
     at
 }
 
+/// `at`, moved back to the start of the word it falls inside when that word is of a script that
+/// spaces its words; CJK text and positions between words are unchanged.
+fn word_start_floor(text: &str, at: usize) -> usize {
+    let at = floor_boundary(text, at);
+    let spaced = |c: char| c.is_alphanumeric() && !is_cjk(c);
+    let inside = text[..at].chars().next_back().is_some_and(spaced)
+        && text[at..].chars().next().is_some_and(spaced);
+    if !inside {
+        return at;
+    }
+    text[..at]
+        .char_indices()
+        .rev()
+        .find(|&(_, c)| !spaced(c))
+        .map_or(0, |(i, c)| i + c.len_utf8())
+}
+
 /// The letters and digits of `text`, case folded, each with the byte offset just after it.
 fn letters(text: &str) -> Vec<(char, usize)> {
     text.char_indices()
@@ -172,7 +189,7 @@ pub(crate) fn align_after_committed(committed: &str, fin: &str) -> Aligned {
         };
     }
     Aligned {
-        start: floor_boundary(fin, committed.len()),
+        start: word_start_floor(fin, committed.len()),
         alignment: Alignment::Unaligned,
     }
 }
@@ -200,6 +217,35 @@ mod tests {
             ),
             ("and then we break for lunch.", Alignment::Agrees)
         );
+    }
+
+    #[test]
+    fn an_unaligned_remainder_never_starts_inside_a_word() {
+        let committed =
+            "First among is seventy recommendations is that a new diplomatic initiative, s";
+        let fin = "Number one of the seventy points is a new initiative, should be taken before the end of this year";
+        let a = align_after_committed(committed, fin);
+        assert_eq!(a.alignment, Alignment::Unaligned);
+        assert!(
+            fin[..a.start].is_empty() || fin[..a.start].ends_with(' '),
+            "boundary at {:?}",
+            &fin[a.start..]
+        );
+        let a = align_after_committed(&committed[..committed.len() - 2], fin);
+        assert_eq!(a.alignment, Alignment::Unaligned);
+        assert!(fin[..a.start].ends_with(' ') || a.start == 0);
+        // Chinese text has no words to snap to.
+        let a = align_after_committed("今天天气很好我们去公园玩", "完全不同的另一句话在这里说完了");
+        assert_eq!(a.alignment, Alignment::Unaligned);
+    }
+
+    #[test]
+    fn word_start_floor_snaps_latin_words_only() {
+        assert_eq!(word_start_floor("a should b", 4), 2);
+        assert_eq!(word_start_floor("a should b", 2), 2);
+        assert_eq!(word_start_floor("a should b", 8), 8);
+        assert_eq!(word_start_floor("should", 3), 0);
+        assert_eq!(word_start_floor("今天天气", 3), 3);
     }
 
     #[test]
@@ -326,7 +372,8 @@ mod tests {
         assert_eq!(rest, "步吧");
         let (rest, alignment) = split("good morning everyone", "see you later alligator, bye");
         assert_eq!(alignment, Alignment::Unaligned);
-        assert_eq!(rest, "or, bye");
+        // 21 bytes fall inside "alligator": the boundary moves back to the start of that word.
+        assert_eq!(rest, "alligator, bye");
         // The fallback never splits a character: 8 bytes fall inside the third one.
         let (rest, alignment) = split("abcd efg", "你好啊你好");
         assert_eq!(alignment, Alignment::Unaligned);
