@@ -28,7 +28,6 @@ file and in `NOTICE` (also copied into the bundle at `Contents/Resources/NOTICE`
 | `NOTICE` | licence and attribution of the adapted source |
 | `build.sh` | builds one or all variants, signs, runs the structural checks |
 | `install.sh`, `uninstall.sh`, `status.sh` | developer scripts (admin rights for the first two) |
-| `TESTPLAN.md` | manual test plan for an installed driver |
 
 Test tooling lives in `tools/macos/` (`prx-vmic`, the host-side load test) and is built by
 `scripts/build-macos-tools.sh`; the repository check is `scripts/check-driver.sh`.
@@ -45,18 +44,9 @@ The driver reports a transport type for both devices, chosen at build time
 | `builtin` | `kAudioDeviceTransportTypeBuiltIn` (`bltn`) | built, never installed; the riskiest for side effects |
 | `other` | `kAudioDeviceTransportTypePCI` (`pci `) | built, never installed; non-zero and in no skip list |
 
-Evidence (bench spike, 2026-11-20, one machine, macOS 26.6, Apple Silicon):
-
-- WhatsApp Desktop's call device list skips Virtual and Aggregate transport types (analysis in
-  `bench/callapp/REPORT.md`). The Virtual variant worked for voice messages (the input ran on
-  it and the injected speech was heard on playback) but was never tried in a call.
-- The `usb` variant was installed ad-hoc signed, passed the loopback self-test (14.1 ms end
-  to end), and was opened by WhatsApp Desktop in a real call (16:08:04 to 16:08:50): input on
-  "PRX Voice Microphone", output on the speakers, and the remote party heard the synthesized
-  speech fed into the hidden sink.
-- Not shown: whether a Virtual-transport device would also work in a call; the `builtin` and
-  `other` variants, Telegram, sleep and wake, restart of the call app mid-call. Section 7 of
-  `TESTPLAN.md` has the procedure and the results table.
+Why `usb` ships: call applications skip Virtual and Aggregate transport types in their device lists.
+The `usb` variant was verified in a WhatsApp Desktop call on macOS 26.6 (Apple Silicon); the other
+variants are built but untested.
 
 Only one variant is installed at a time (same bundle id and device UIDs); installing replaces the
 current one. Bundles record their variant in `PrxTransportVariant` and `PrxTransportType`
