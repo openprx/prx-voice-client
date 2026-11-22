@@ -6,7 +6,7 @@ use prxvc_media::{Direction, Lang};
 use prxvc_ports::VoiceSelection;
 
 use crate::backlog::BacklogParams;
-use crate::commit_policy::CommitParams;
+use crate::commit_policy::{CommitParams, RetranslateParams};
 use crate::interrupt::InterruptParams;
 use crate::output::OutputPolicy;
 
@@ -92,6 +92,9 @@ pub struct PipelineParams {
     /// `max_clause_s`, `max_segment_s`, `early_commit`, `early_chunk_chars`,
     /// `early_chunk_words`, `early_max_wait_ms`, `split_target_clauses`.
     pub commit: CommitParams,
+    /// `pipeline.retranslation` and `retranslate_*`: commit a source prefix while the speaker goes
+    /// on, once its translation is confirmed. Off unless the composition root turns it on.
+    pub retranslate: RetranslateParams,
     /// `call.barge_in` and `call.barge_in_max_lag_ms`.
     pub interrupt: InterruptParams,
     /// `call.<direction>_when_paused` and `call.<direction>_on_failure`.
@@ -159,6 +162,7 @@ impl PipelineParams {
             source,
             target,
             commit: CommitParams::default(),
+            retranslate: RetranslateParams::disabled(),
             interrupt: InterruptParams::default(),
             output: OutputPolicy::default(),
             recognition_mode: RecognitionMode::Streaming,
