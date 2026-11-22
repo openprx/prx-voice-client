@@ -7,14 +7,11 @@ use prxvc_media::{Lang, first_clause_end};
 mod early;
 pub use early::{EarlyCommit, EarlyCut, EarlyInput, EarlyReason, decide_early_cut};
 
-#[allow(
-    dead_code,
-    reason = "the recognition and translation stages use it from the tasks that wire re-translation in"
-)]
 mod retranslate;
 pub use retranslate::RetranslateParams;
 pub(crate) use retranslate::{
-    MAX_SENTENCE_UNITS, continuation_text, ends_sentence, join_carry, join_sentence, prefix_end,
+    DraftBook, DraftReplyView, DraftTranslation, HypInput, MAX_SENTENCE_UNITS, continuation_text,
+    ends_sentence, join_carry, join_sentence, prefix_end,
 };
 
 /// Thresholds of the commit rules, shaped like the `[pipeline]` configuration keys.

@@ -79,7 +79,6 @@ impl Rig {
         let sentence = self.sentence.clone();
         let input = HypInput {
             source: self.source,
-            target: self.target,
             round_text: text,
             committed: 0,
             carry: "",

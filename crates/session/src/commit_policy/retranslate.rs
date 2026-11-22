@@ -152,7 +152,6 @@ pub(crate) fn agreed_prefix_units(recent: &[Vec<String>]) -> usize {
 /// What the book needs from one hypothesis.
 pub(crate) struct HypInput<'a> {
     pub source: Lang,
-    pub target: Lang,
     /// The recogniser's text of the round.
     pub round_text: &'a str,
     /// Bytes of `round_text` that are committed.
@@ -172,8 +171,6 @@ pub(crate) struct DraftPlan {
     pub candidate: Option<String>,
     /// The whole uncommitted hypothesis from the start of the sentence.
     pub reference: String,
-    /// For each live candidate: its cut and how many units the reference extends past it.
-    pub reference_extends: Vec<(usize, usize)>,
 }
 
 /// A successful draft translation, as the book needs it.
@@ -292,7 +289,7 @@ impl DraftBook {
         self.pending.push(PendingReference {
             revision: i.revision,
             source: reference_text.clone(),
-            extends: extends.clone(),
+            extends,
         });
         if self.pending.len() > MAX_PENDING_REFERENCES {
             self.pending.remove(0);
@@ -302,7 +299,6 @@ impl DraftBook {
             sentence: sentence_unknown.then(|| sentence.to_owned()),
             candidate,
             reference: reference_text,
-            reference_extends: extends,
         })
     }
 

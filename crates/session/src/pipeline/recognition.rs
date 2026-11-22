@@ -10,6 +10,7 @@ use prxvc_ports::{
 };
 
 use super::align::{Alignment, align_after_committed};
+use super::draft::DraftLink;
 use super::faults::{asr_failure, vad_failure};
 use super::messages::{Commit, CommitReason, RecognitionEvent, StageFailure};
 use super::params::PipelineParams;
@@ -17,7 +18,7 @@ use super::segmenter::Segmenter;
 use super::trace::Tracer;
 use super::tree::TokenTree;
 use crate::commit_policy::{
-    ClauseReason, CommitDecision, CutPoint, RecognitionInput, decide_recognition_commit,
+    ClauseReason, CommitDecision, CutPoint, DraftBook, RecognitionInput, decide_recognition_commit,
     ends_sentence, is_clause_sized, join_carry,
 };
 use crate::fault::Stage;
@@ -26,6 +27,7 @@ use crate::pipeline::snapshot::Stats;
 
 mod clips;
 mod early;
+mod retranslate;
 
 use clips::{advance_past, clip_audio, trim_clips};
 use early::{floor_boundary, stable_cut};
@@ -102,6 +104,18 @@ struct OpenSegment {
     early_round: bool,
     /// A partial of this round contradicted the committed text and was counted already.
     violation_counted: bool,
+    /// Counts the segment's rounds; a draft reply made for another round is stale.
+    round: u32,
+    /// The committed source text of the current source sentence (re-translation).
+    sentence: String,
+    /// Candidates and agreement of the re-translation rule.
+    book: DraftBook,
+    /// When the last draft job was submitted, on the pipeline clock.
+    last_draft: Option<MonoTime>,
+    /// Candidates the book dropped that were counted already.
+    rejected_counted: u64,
+    /// A unit of this round was committed by the re-translation rule.
+    retranslated_round: bool,
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
@@ -118,6 +132,9 @@ impl OpenSegment {
     fn reset_round(&mut self) {
         self.early_round = false;
         self.violation_counted = false;
+        self.round += 1;
+        self.retranslated_round = false;
+        self.book.reset();
         self.committed_bytes = 0;
         self.committed_prefix.clear();
         self.hyp = None;
@@ -140,6 +157,8 @@ pub(crate) struct RecognitionStage {
     preroll: VecDeque<(MonoTime, Duration, Vec<f32>)>,
     preroll_span: Duration,
     open: Option<OpenSegment>,
+    /// The draft worker, when re-translation is on (`with_drafts`).
+    drafts: Option<Box<dyn DraftLink>>,
     next_seq: u64,
     now: MonoTime,
 }
@@ -179,6 +198,7 @@ impl RecognitionStage {
             reframer,
             preroll: VecDeque::new(),
             open: None,
+            drafts: None,
             next_seq: 1,
             now: MonoTime::ZERO,
         }
@@ -229,6 +249,7 @@ impl RecognitionStage {
         }
         if self.open.as_ref().is_some_and(|o| o.token.is_cancelled()) {
             self.abandon();
+            self.poll_drafts(out);
             return Ok(());
         }
         if self.open.is_some() {
@@ -237,6 +258,7 @@ impl RecognitionStage {
             }
             self.evaluate(out)?;
         }
+        self.poll_drafts(out);
         Ok(())
     }
 
@@ -315,6 +337,12 @@ impl RecognitionStage {
             carry: String::new(),
             early_round: false,
             violation_counted: false,
+            round: 0,
+            sentence: String::new(),
+            book: DraftBook::default(),
+            last_draft: None,
+            rejected_counted: 0,
+            retranslated_round: false,
             hyp: None,
             partial_seen: false,
             tail: String::new(),
@@ -401,6 +429,9 @@ impl RecognitionStage {
             if !open.violation_counted {
                 open.violation_counted = true;
                 Stats::add(&self.stats.stable_violations, 1);
+                if open.retranslated_round {
+                    Stats::add(&self.stats.retranslate_src_rewrites, 1);
+                }
             }
             committed = align_after_committed(&open.committed_prefix, &text).start;
             open.committed_bytes = committed;
@@ -427,6 +458,7 @@ impl RecognitionStage {
                 stable_prefix_len: stable_in_tail,
             },
         ));
+        self.submit_drafts();
     }
 
     /// Apply the commit rule to the state after this frame.
@@ -614,6 +646,7 @@ impl RecognitionStage {
         let audio = two_pass.then(|| Arc::new(clip_audio(&open.clips, start, end, pad, rate)));
         let continues =
             self.p.retranslate.continuation && !reason.ends_segment() && !ends_sentence(&text);
+        open.note_commit(continues, &text);
         out.push(Envelope::new(
             open.id,
             open.revision,
@@ -693,6 +726,9 @@ fn committed_remainder(
     let aligned = align_after_committed(&open.committed_prefix, &fin.text);
     if aligned.alignment != Alignment::Agrees {
         Stats::add(&stats.final_rewrites, 1);
+        if open.retranslated_round {
+            Stats::add(&stats.retranslate_src_rewrites, 1);
+        }
         if aligned.alignment == Alignment::Unaligned {
             Stats::add(&stats.final_unaligned, 1);
         }
@@ -709,3 +745,6 @@ fn asr_fault(e: &AsrError) -> RecognitionFault {
         failure: asr_failure(e, true),
     }
 }
+
+#[cfg(test)]
+mod tests;

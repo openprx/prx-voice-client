@@ -32,10 +32,6 @@ impl StageFailure {
 
 /// Why the recogniser committed a clause.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "Retranslation is committed by the recognition glue of a later task"
-)]
 pub(crate) enum CommitReason {
     /// The segment ended.
     SegmentEnd,

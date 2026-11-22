@@ -10,7 +10,7 @@ use prxvc_media::{AudioFrame, Clock};
 use prxvc_ports::{AsrContext, AudioSource, CancellationToken, StreamingAsr, VadProvider};
 
 use super::core::{Core, Gate};
-use super::draft::DraftQueues;
+use super::draft::{DraftQueues, ThreadedLink};
 use super::faults::{asr_failure, vad_failure};
 use super::input::AudioInput;
 use super::messages::{Inbound, StageFailure, WorkerEvent};
@@ -128,7 +128,6 @@ pub(crate) struct RecognizerThread {
     pub(crate) audio_in: Arc<BoundedQueue<AudioFrame>>,
     pub(crate) gate: Arc<Gate>,
     /// The queues of the draft worker, when re-translation is on.
-    #[allow(dead_code, reason = "read by the recognition glue of the next task")]
     pub(crate) draft: Option<DraftQueues>,
 }
 
@@ -156,14 +155,20 @@ impl RecognizerThread {
             .asr
             .open(self.p.source, ctx)
             .map_err(|e| (Stage::Asr, asr_failure(&e, false)))?;
-        Ok(RecognitionStage::new(
+        let stage = RecognitionStage::new(
             &self.p,
             Arc::clone(&self.tree),
             self.tracer.clone(),
             Arc::clone(&self.stats),
             vad,
             asr,
-        ))
+        );
+        Ok(match &self.draft {
+            Some(queues) => {
+                stage.with_drafts(Box::new(ThreadedLink::new(queues, Arc::clone(&self.stats))))
+            }
+            None => stage,
+        })
     }
 
     /// The thread body.
