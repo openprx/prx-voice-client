@@ -316,3 +316,36 @@ fn a_reply_that_arrives_after_a_punctuation_commit_is_discarded_as_stale() {
     let c = h.counters();
     assert!(c.drafts_stale >= 1, "{c:?}");
 }
+
+/// Commit `text` as a unit of the open segment for `reason`, and say whether it continues.
+fn continues_after(text: &str, reason: CommitReason) -> bool {
+    let mut h = Harness::new(growing(&sentence(2), 10), 120, 0, |_| {});
+    h.frames(10 + 5);
+    let end = MonoTime::from_millis(500);
+    h.stage
+        .emit_commit(text.to_owned(), end, false, reason, &mut h.out);
+    h.commits()
+        .last()
+        .map(|c| c.continues)
+        .expect("the unit was emitted")
+}
+
+#[test]
+fn a_unit_that_ends_its_sentence_does_not_continue_it() {
+    for (text, reason, expected) in [
+        ("我们先开会。", CommitReason::ClausePause, false),
+        ("We start the meeting.", CommitReason::ClausePause, false),
+        ("Is it ready?\u{201D}", CommitReason::Punctuation, false),
+        ("我们先开会，", CommitReason::ClausePause, true),
+        ("我们先开会", CommitReason::ClausePause, true),
+        ("we start the meeting", CommitReason::Retranslation, true),
+        ("we start the meeting.", CommitReason::Retranslation, false),
+        ("we start the meeting", CommitReason::SegmentEnd, false),
+    ] {
+        assert_eq!(
+            continues_after(text, reason),
+            expected,
+            "{text:?} {reason:?}"
+        );
+    }
+}
