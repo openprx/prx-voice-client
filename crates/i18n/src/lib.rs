@@ -39,6 +39,8 @@ impl Locale {
     /// Recognised inputs (case-insensitive): `"zh-cn"`, `"zh_cn"`, `"zh"`,
     /// `"chinese"` all map to [`Locale::ZhCn`]. Everything else maps to
     /// [`Locale::En`].
+    // Infallible lenient parse; a `FromStr` impl would need a pointless error type.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "zh-cn" | "zh_cn" | "zh" | "chinese" => Locale::ZhCn,
@@ -114,18 +116,17 @@ pub fn current_locale() -> Locale {
 pub fn t(key: &str) -> String {
     let store = STORE.read();
     // Try current locale first.
-    if let Some(map) = store.translations.get(&store.current_locale) {
-        if let Some(val) = map.get(key) {
-            return val.clone();
-        }
+    if let Some(map) = store.translations.get(&store.current_locale)
+        && let Some(val) = map.get(key)
+    {
+        return val.clone();
     }
     // Fallback to English.
-    if store.current_locale != Locale::En {
-        if let Some(map) = store.translations.get(&Locale::En) {
-            if let Some(val) = map.get(key) {
-                return val.clone();
-            }
-        }
+    if store.current_locale != Locale::En
+        && let Some(map) = store.translations.get(&Locale::En)
+        && let Some(val) = map.get(key)
+    {
+        return val.clone();
     }
     // Last resort: return the key itself.
     key.to_owned()
