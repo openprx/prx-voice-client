@@ -470,3 +470,79 @@ fn with_a_refine_pass_early_units_and_the_rest_of_their_round_keep_the_streaming
     assert!(refine.audio_lens().is_empty());
     assert!(run.rig.stop().clean);
 }
+
+/// Partials of `text` up to `upto` words, then partials of `rewritten` from there on with nothing
+/// declared stable: the recogniser rewrote a word inside the part that was already committed.
+fn rewriting_partials(text: &str, rewritten: &str, upto: usize) -> Vec<(String, usize)> {
+    let mut partials = growing(text, 3, 6);
+    partials.truncate(upto * 3);
+    let later = growing(rewritten, 3, 6);
+    partials.extend(later.into_iter().skip(upto * 3).map(|(t, _)| (t, 0)));
+    partials
+}
+
+#[test]
+fn a_partial_that_rewrites_committed_text_keeps_the_boundary_after_the_committed_words() {
+    let text = "if it rains tomorrow, we will move the meeting to friday and tell everyone";
+    // "rains" becomes "raining" inside the committed part: the byte offset of the commit now falls
+    // inside "tomorrow".
+    let rewritten = "if it raining tomorrow, we will move the meeting to friday and tell everyone";
+    let run = Run::start(
+        IN,
+        script(rewriting_partials(text, rewritten, 10), rewritten),
+        one_utterance(10, 100),
+        EarlyCommit::Punctuation,
+    );
+    // While the speaker still talks, the open clause starts after the committed words.
+    run.rig.feed(10 + 100);
+    let snap = run.rig.wait_snapshot("the rewritten partial", |s| {
+        s.partial
+            .as_ref()
+            .is_some_and(|p| p.text.ends_with("everyone"))
+    });
+    assert_eq!(
+        snap.partial.as_ref().map(|p| p.text.as_str()),
+        Some("we will move the meeting to friday and tell everyone")
+    );
+    run.rig.feed(25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        [
+            "if it rains tomorrow,",
+            "we will move the meeting to friday and tell everyone"
+        ]
+    );
+    assert_eq!(snap.counters.stable_violations, 1);
+    assert!(run.rig.stop().clean);
+}
+
+#[test]
+fn a_chinese_partial_that_rewrites_committed_text_keeps_the_boundary_after_the_committed_words() {
+    let text = "如果明天下雨，我们就改期然后通知大家明天不用来公司了";
+    // A character inside the committed part is dropped: the committed byte offset now falls in
+    // the middle of the next unit, which is cut from its first character.
+    let rewritten = "如果明天雨，我们就改期然后通知大家明天不用来公司了";
+    let mut partials = growing_chars(text, 2, 6);
+    partials.truncate(13 * 2);
+    partials.extend(
+        growing_chars(rewritten, 2, 6)
+            .into_iter()
+            .skip(14 * 2)
+            .map(|(t, _)| (t, 0)),
+    );
+    let run = Run::start(
+        OUT,
+        script(partials, rewritten),
+        one_utterance(10, 120),
+        EarlyCommit::Punctuation,
+    );
+    run.rig.feed(10 + 120 + 25 + 25);
+    let snap = run.finish(2);
+    assert_eq!(
+        Run::texts(&snap),
+        ["如果明天下雨，", "我们就改期然后通知大家明天不用来公司了"]
+    );
+    assert_eq!(snap.counters.stable_violations, 1);
+    assert!(run.rig.stop().clean);
+}

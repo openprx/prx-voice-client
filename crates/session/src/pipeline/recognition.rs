@@ -100,6 +100,8 @@ struct OpenSegment {
     /// A unit of this round was committed from the stable prefix: the audio positions of the cuts
     /// are not known, so what follows in the round is not given to the refine pass.
     early_round: bool,
+    /// A partial of this round contradicted the committed text and was counted already.
+    violation_counted: bool,
     hyp: Option<Hyp>,
     partial_seen: bool,
     tail: String,
@@ -115,6 +117,7 @@ impl OpenSegment {
 
     fn reset_round(&mut self) {
         self.early_round = false;
+        self.violation_counted = false;
         self.committed_bytes = 0;
         self.committed_prefix.clear();
         self.hyp = None;
@@ -311,6 +314,7 @@ impl RecognitionStage {
             committed_prefix: String::new(),
             carry: String::new(),
             early_round: false,
+            violation_counted: false,
             hyp: None,
             partial_seen: false,
             tail: String::new(),
@@ -392,12 +396,14 @@ impl RecognitionStage {
         open.revision += 1;
         let mut committed = open.committed_bytes.min(text.len());
         if open.committed_bytes > 0 && !text.starts_with(&open.committed_prefix) {
-            Stats::add(&self.stats.stable_violations, 1);
-            while !text.is_char_boundary(committed) {
-                committed -= 1;
+            // The partial no longer starts with the committed text: the boundary is found by
+            // content, so it never lands inside a word. The committed text stays as committed.
+            if !open.violation_counted {
+                open.violation_counted = true;
+                Stats::add(&self.stats.stable_violations, 1);
             }
+            committed = align_after_committed(&open.committed_prefix, &text).start;
             open.committed_bytes = committed;
-            open.committed_prefix = text[..committed].to_owned();
         }
         let tail = text[committed..].to_owned();
         let stable_in_tail = floor_boundary(&tail, stable.saturating_sub(committed));
