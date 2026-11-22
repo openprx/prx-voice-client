@@ -8,8 +8,7 @@
 //! (`bench/tts/REPORT.md` section 5): about 0.25 s per Chinese character and 0.28 s per English
 //! word, times a safety factor of 3, with headroom for a short text (a word or two is spoken with
 //! a lead-in and a tail that the per-word rate does not cover). The factor and the headroom were
-//! checked on 320 fragments of 1 to 10 words (`tests/qwentts_runaway_bench.rs`; the lengths are in
-//! `docs/call-translation-test-checklist.md`).
+//! checked on 320 fragments of 1 to 10 words (`tests/qwentts_runaway_bench.rs`; the run prints the lengths).
 
 use prxvc_media::Lang;
 
