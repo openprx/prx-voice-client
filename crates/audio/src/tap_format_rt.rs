@@ -68,6 +68,7 @@ impl StreamLayout {
 /// A tap whose application has no audio-capture consent delivers buffers of
 /// exact `0.0`; real audio, even a quiet room, is practically never exactly
 /// zero over a whole callback. Negative zero counts as zero.
+#[cfg(any(target_os = "macos", test))]
 pub fn any_nonzero(buffers: &[InputBuffer<'_>]) -> bool {
     buffers.iter().any(|b| b.samples.iter().any(|&s| s != 0.0))
 }
