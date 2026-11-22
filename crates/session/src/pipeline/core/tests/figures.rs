@@ -164,6 +164,9 @@ fn the_utterance_line_names_the_new_figures_and_carries_no_spoken_text() {
     let capture = Capture::default();
     let mut h = harness(|_| {});
     tracing::subscriber::with_default(capture.clone(), || {
+        // Another test may have registered the call site first, on a thread without a subscriber;
+        // the cached "never" interest would then hide the line from this capture.
+        tracing::callsite::rebuild_interest_cache();
         h.speech(1);
         commit_with(&mut h, CommitReason::Retranslation, 100, 600);
         let c = cl(1, 0);
