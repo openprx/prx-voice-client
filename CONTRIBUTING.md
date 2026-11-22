@@ -50,6 +50,13 @@ This project follows strict production-grade Rust standards:
 - Use conventional format: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `ci:`
 - Keep the first line under 72 characters
 
+## Dependency Upgrade Policy
+
+- Direct dependencies are reviewed monthly
+- Security patches applied immediately
+- Platform-sensitive deps (cpal, egui, tungstenite) undergo gray-scale upgrade
+- Audio regression suite must pass before any audio-related dep upgrade
+
 ## Architecture
 
 See [docs/architecture.md](docs/architecture.md) for the crate map and design overview.
