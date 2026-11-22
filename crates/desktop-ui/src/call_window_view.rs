@@ -12,6 +12,7 @@ use crate::call_window_footer;
 use crate::call_window_header::{self, language_codes, language_name};
 use crate::call_window_issues;
 use crate::call_window_notice;
+use crate::call_window_send;
 use crate::call_window_state::{CallWindowState, CaptionSize};
 use crate::settings_section::SettingsSection;
 use crate::state::UiSettings;
@@ -149,6 +150,7 @@ fn flow(
     let origin = ui.cursor().top();
     call_window_header::header(ui, tk, panel, translate, settings, w, actions);
     call_window_notice::notice_line(ui, tk, panel, actions);
+    call_window_send::indicator(ui, tk, panel, w.drained_for());
     call_window_issues::issues(ui, tk, panel, actions);
     ui.add_space(space::S12);
     if w.details_open {

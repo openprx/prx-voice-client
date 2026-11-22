@@ -220,8 +220,14 @@ mod tests {
     #[test]
     fn audio_still_queued_in_the_sink_is_in_flight_until_it_is_played() {
         let s = snapshot(Activity::Listening);
-        assert!(direction_in_flight(Some(&s), Some(Duration::from_millis(400))));
+        assert!(direction_in_flight(
+            Some(&s),
+            Some(Duration::from_millis(400))
+        ));
         assert!(direction_in_flight(Some(&s), Some(SINK_EMPTY)));
-        assert!(!direction_in_flight(Some(&s), Some(Duration::from_millis(10))));
+        assert!(!direction_in_flight(
+            Some(&s),
+            Some(Duration::from_millis(10))
+        ));
     }
 }

@@ -91,6 +91,8 @@ pub struct CallWindowState {
     pub(crate) unseen: usize,
     /// What was copied last, and when (the "Copied" note).
     pub(crate) copied: Option<(Option<u64>, f64)>,
+    /// Since when the outgoing lane has had nothing pending or playing; `None` while it has.
+    drained_since: Option<Instant>,
 }
 
 impl CallWindowState {
@@ -100,12 +102,27 @@ impl CallWindowState {
             .map_or(0, |b| u32::try_from(b.elapsed().as_secs()).unwrap_or(u32::MAX))
     }
 
+    /// How long the outgoing lane has been drained (zero while speech is pending or playing).
+    pub(crate) fn drained_for(&self) -> std::time::Duration {
+        self.drained_since.map_or(std::time::Duration::ZERO, |t| t.elapsed())
+    }
+
+    /// Note whether the outgoing lane has speech pending or playing, as of `now`.
+    fn track_drain(&mut self, in_flight: bool, now: Instant) {
+        if in_flight {
+            self.drained_since = None;
+        } else {
+            self.drained_since.get_or_insert(now);
+        }
+    }
+
     /// Take in a new panel: start a fresh session when a call begins, then merge both lanes into
     /// the conversation. Cheap when nothing changed.
     pub fn sync(&mut self, panel: &CallPanel) {
         if *panel == self.seen {
             return;
         }
+        self.track_drain(panel.outgoing.in_flight, Instant::now());
         let was_idle = self.seen.phase == CallPhase::Idle;
         let is_idle = panel.phase == CallPhase::Idle;
         if was_idle && !is_idle {
@@ -222,6 +239,22 @@ mod tests {
             w.transcript.items()[0].activity(),
             crate::call_transcript::Activity::Done
         );
+    }
+
+    #[test]
+    fn the_drain_clock_starts_when_the_lane_empties_and_resets_with_new_speech() {
+        let mut w = CallWindowState::default();
+        let t0 = Instant::now();
+        w.track_drain(true, t0);
+        assert!(w.drained_since.is_none());
+        w.track_drain(false, t0);
+        assert_eq!(w.drained_since, Some(t0));
+        // A later quiet frame does not move the start.
+        w.track_drain(false, t0 + std::time::Duration::from_secs(1));
+        assert_eq!(w.drained_since, Some(t0));
+        w.track_drain(true, t0 + std::time::Duration::from_secs(2));
+        assert!(w.drained_since.is_none());
+        assert_eq!(w.drained_for(), std::time::Duration::ZERO);
     }
 
     #[test]

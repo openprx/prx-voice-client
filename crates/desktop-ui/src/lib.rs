@@ -38,6 +38,7 @@ mod call_window_footer;
 mod call_window_header;
 mod call_window_issues;
 mod call_window_notice;
+mod call_window_send;
 pub mod call_window_state;
 mod call_window_view;
 mod context_menu;
